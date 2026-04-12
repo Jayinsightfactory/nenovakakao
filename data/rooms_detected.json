@@ -1,0 +1,72 @@
+[
+  {
+    "name": "수입방",
+    "unread": 7,
+    "order": 1
+  },
+  {
+    "name": "영업방팀 발주 및 추가 재고확인",
+    "unread": 2,
+    "order": 2
+  },
+  {
+    "name": "영업방팀 발주+수량확인방",
+    "unread": 0,
+    "order": 3
+  },
+  {
+    "name": "네노바 수입(불량 공유방)",
+    "unread": 194,
+    "order": 4
+  },
+  {
+    "name": "네노바 정재훈님",
+    "unread": 0,
+    "order": 5
+  },
+  {
+    "name": "현장 추가취소방",
+    "unread": 1,
+    "order": 6
+  },
+  {
+    "name": "전산테스트팀",
+    "unread": 40,
+    "order": 7
+  },
+  {
+    "name": "현장단체방",
+    "unread": 5,
+    "order": 8
+  },
+  {
+    "name": "네노바 수입출발방 공유방",
+    "unread": 0,
+    "order": 9
+  },
+  {
+    "name": "네노바 현장단 공유방",
+    "unread": 0,
+    "order": 10
+  },
+  {
+    "name": "네노바 수건출발방 공유방",
+    "unread": 0,
+    "order": 11
+  },
+  {
+    "name": "현장인력방",
+    "unread": 0,
+    "order": 12
+  },
+  {
+    "name": "LH네노바건설방",
+    "unread": 0,
+    "order": 13
+  },
+  {
+    "name": "네노바 현장관리방",
+    "unread": 0,
+    "order": 14
+  }
+]

@@ -1,0 +1,166 @@
+{
+  "_meta": {
+    "version": "1.0",
+    "description": "카톡 자연어 → 전산 품명 매칭 규칙서",
+    "goal": "매칭율 100% 달성 후 API 수량 변경 자동화"
+  },
+
+  "current_status": {
+    "total_messages": 18250,
+    "classified": 6738,
+    "classification_rate": "36.9%",
+    "product_extracted": 5251,
+    "product_unmatched": 1748,
+    "product_extraction_rate": "75.0% (추출 대상 중)",
+    "unique_products": 13,
+    "unique_varieties": 22,
+    "unique_suppliers": 28,
+    "unique_origins": 8
+  },
+
+  "gap_analysis": {
+    "문제1_멀티라인_미파싱": {
+      "description": "카톡 메시지가 여러 줄인데 첫 줄만 파싱",
+      "impact": "1,748건 품목 미추출의 주요 원인",
+      "example": "42차 호주 변경사항\\n주광\\n카네이션 문라이트 10단 → 15단",
+      "solution": "MSG_PATTERN 이후 비매칭 줄들을 이전 메시지에 병합"
+    },
+    "문제2_품종_DB_미연결": {
+      "description": "카톡 품종명과 DB 품명이 다름",
+      "impact": "품종 22종만 추출 (실제 수백 종 존재)",
+      "examples": {
+        "카톡": "문라이트, 돈셀, 헤르메스, 프라우드",
+        "DB_추정": "Moonlight, Doncel, Hermes, Proud",
+        "문제": "한글-영문 매핑, 약칭, 오타 포함"
+      },
+      "solution": "nenovaweb DB 품목 리스트와 Levenshtein/자모 분해 매칭"
+    },
+    "문제3_복합_품명": {
+      "description": "스프레이카네이션, 미니카네이션 등 복합 품명",
+      "examples": ["스프레이카네이션 화이트", "콜 카네이션", "중국 장미", "콜 장미"],
+      "solution": "복합 패턴 추가: 스프레이+카네이션 → 카네이션/스프레이"
+    },
+    "문제4_거래처_중복": {
+      "description": "주광 vs 주광농원, 소재2호 vs 소재장터",
+      "impact": "같은 거래처가 다른 이름으로 카운트",
+      "solution": "거래처 별칭 테이블"
+    },
+    "문제5_방향성_미구분": {
+      "description": "추가/감소/교체 구분 미흡",
+      "examples": ["10단 → 15단 (증가)", "10단 → 5단 (감소)", "문라이트 → 돈셀 (교체)"],
+      "solution": "화살표(→) 패턴 파싱, 수량 비교"
+    }
+  },
+
+  "카톡_품명_사전": {
+    "_doc": "카톡에서 실제 사용되는 자연어 품명 목록 (18,250건 분석 결과)",
+    "꽃_대분류": {
+      "카네이션": {
+        "aliases": ["카네이션", "카네", "콜 카네이션", "스프레이카네이션", "미니카네이션"],
+        "varieties_found": ["문라이트", "돈셀", "헤르메스", "헤르메스오렌지", "노비아",
+          "지오지아", "폴림니아", "체리오", "유카리체리", "브루트", "네스",
+          "마리포사", "일렉트릭퍼플", "콜리브리", "파리다", "미뉴에또",
+          "스프레이화이트", "스프레이연핑크"]
+      },
+      "장미": {
+        "aliases": ["장미", "콜 장미", "중국 장미", "콜롬비아 장미"],
+        "varieties_found": ["프라우드", "캔들라이트", "만달라", "코랄리프",
+          "핑크플로이드", "스타플레티넘", "로라", "레드팬서", "핑크몬디알",
+          "블랙잭", "핑크익스프레션", "주밀리아", "핑크스노우버그",
+          "스윗아발란체", "줄링", "가이타나오렌지플레임", "마티나"]
+      },
+      "수국": {
+        "aliases": ["수국", "콜 수국"],
+        "varieties_found": ["화이트", "블루", "연핑크", "핑크", "그린"]
+      },
+      "알스트로메리아": {
+        "aliases": ["알스트로", "알스트로메리아"],
+        "varieties_found": []
+      },
+      "루스커스": {
+        "aliases": ["루스커스"],
+        "varieties_found": []
+      },
+      "레몬잎": {
+        "aliases": ["레몬잎", "레몬"],
+        "varieties_found": []
+      },
+      "모카라": {
+        "aliases": ["모카라", "태국 모카라"],
+        "varieties_found": []
+      },
+      "리시안셔스": {
+        "aliases": ["리시안셔스", "유스토마", "Lisianthus", "Eustoma"],
+        "varieties_found": ["Pink", "White", "White&Purple"]
+      },
+      "튤립": {
+        "aliases": ["튤립", "별튤립"],
+        "varieties_found": ["화이트"]
+      },
+      "아마릴리스": {
+        "aliases": ["아마릴리스"],
+        "varieties_found": ["심포니"]
+      },
+      "알륨": {
+        "aliases": ["알륨"],
+        "varieties_found": ["글래디에터"]
+      },
+      "은방울꽃": {
+        "aliases": ["은방울꽃"],
+        "varieties_found": []
+      },
+      "살릭스": {
+        "aliases": ["살릭스", "salix", "sauce"],
+        "varieties_found": []
+      },
+      "칼라": {
+        "aliases": ["칼라"],
+        "varieties_found": []
+      },
+      "에린지움": {
+        "aliases": ["에린지움"],
+        "varieties_found": []
+      },
+      "아스파라거스": {
+        "aliases": ["asparagus", "아스파라거스"],
+        "varieties_found": ["미디오"]
+      }
+    },
+
+    "원산지_매핑": {
+      "콜롬비아": {"aliases": ["콜", "콜롬비아", "Colombia"], "count": 348},
+      "중국": {"aliases": ["중국", "China", "멜로디"], "count": 1211, "note": "멜로디=중국농장"},
+      "네덜란드": {"aliases": ["네덜란드", "Holland", "Dutch"], "count": 589},
+      "호주": {"aliases": ["호주", "Australia"], "count": 511},
+      "태국": {"aliases": ["태국", "Thailand"], "count": 286},
+      "에콰도르": {"aliases": ["에콰도르", "Ecuador"], "count": 95},
+      "베트남": {"aliases": ["베트남", "Vietnam"], "count": 32},
+      "일본": {"aliases": ["일본"], "count": 0}
+    },
+
+    "거래처_별칭": {
+      "주광농원": ["주광", "주광농원"],
+      "레바논꽃방": ["레바논꽃방", "레바논"],
+      "소재장터": ["소재2호", "소재장터"],
+      "경부청화": ["경부청화", "청화원예"],
+      "원협가빈": ["원협가빈", "부산인터넷꽃도매"]
+    }
+  },
+
+  "매칭_알고리즘": {
+    "step1_멀티라인_병합": "비매칭 줄을 이전 메시지에 합치기",
+    "step2_품목_추출": "known list + aliases로 1차 매칭",
+    "step3_품종_추출": "품목별 varieties_found + 원산지 prefix 제거",
+    "step4_DB_매칭": "nenovaweb /api/master?entity=products에서 prodKey 조회",
+    "step5_퍼지_매칭": "매칭 실패 시 Levenshtein distance + 자모분해 + 초성매칭",
+    "step6_학습": "매칭 실패 품명을 후보로 기록, 관리자 확인 후 사전 추가"
+  },
+
+  "100%_달성_조건": [
+    "nenovaweb DB 품목 리스트 확보 (API 로그인 해결)",
+    "멀티라인 파서 완성",
+    "카톡 품명 ↔ DB 품명 매핑 테이블 완성 (수백 종)",
+    "퍼지 매칭으로 오타/약칭 대응",
+    "관리자 피드백 루프 (미매칭 건 수동 확인 → 사전 추가)"
+  ]
+}

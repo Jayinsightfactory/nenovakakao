@@ -1,0 +1,9 @@
+pyautogui==0.9.54
+pygetwindow==0.0.9
+mss==9.0.2
+Pillow==10.4.0
+google-generativeai==0.8.3
+python-dotenv==1.0.1
+requests==2.32.3
+pywin32==306
+pyperclip==1.9.0

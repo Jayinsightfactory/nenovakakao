@@ -1,0 +1,52 @@
+[
+  {
+    "title": "ToastWindow",
+    "pos": "1620,0",
+    "size": "300x1032"
+  },
+  {
+    "title": "설정 - USER - Cursor",
+    "pos": "867,150",
+    "size": "1009x882"
+  },
+  {
+    "title": "카카오워크",
+    "pos": "0,21",
+    "size": "1130x640"
+  },
+  {
+    "title": "카카오톡",
+    "pos": "0,103",
+    "size": "500x900"
+  },
+  {
+    "title": "네노바 AI 학습 데이터 - Google Sheets - Chrome",
+    "pos": "-8,-8",
+    "size": "1936x1048"
+  },
+  {
+    "title": "Claude",
+    "pos": "674,140",
+    "size": "1200x800"
+  },
+  {
+    "title": "설정",
+    "pos": "0,1",
+    "size": "1200x932"
+  },
+  {
+    "title": "설정",
+    "pos": "680,50",
+    "size": "1216x941"
+  },
+  {
+    "title": "Windows 입력 환경",
+    "pos": "0,0",
+    "size": "1920x1080"
+  },
+  {
+    "title": "Program Manager",
+    "pos": "0,0",
+    "size": "1920x1080"
+  }
+]

@@ -1,0 +1,838 @@
+{
+  "summary": {
+    "total_messages": 18250,
+    "classified": 6738,
+    "rate": 36.9,
+    "rooms": 13
+  },
+  "room_stats": {
+    "영업방팀 발주 및 추가 재고확인": {
+      "total": 5791,
+      "classified": 3508
+    },
+    "수입방": {
+      "total": 10243,
+      "classified": 2000
+    },
+    "현장단체방": {
+      "total": 251,
+      "classified": 105
+    },
+    "백상": {
+      "total": 52,
+      "classified": 22
+    },
+    "네노바현장팀": {
+      "total": 17,
+      "classified": 1
+    },
+    "현장 추가취소방": {
+      "total": 1459,
+      "classified": 1036
+    },
+    "네노바 수입(불량 공유방)": {
+      "total": 138,
+      "classified": 24
+    },
+    "전산테스트팀": {
+      "total": 26,
+      "classified": 4
+    },
+    "견적방": {
+      "total": 26,
+      "classified": 15
+    },
+    "한국방역": {
+      "total": 6,
+      "classified": 6
+    },
+    "네노바연주": {
+      "total": 185,
+      "classified": 7
+    },
+    "네노바&선율": {
+      "total": 48,
+      "classified": 7
+    },
+    "빌번호및 입고수량확인방": {
+      "total": 8,
+      "classified": 3
+    }
+  },
+  "products": {
+    "카네이션": 1868,
+    "장미": 1373,
+    "수국": 1202,
+    "알스트로": 262,
+    "레몬잎": 243,
+    "루스커스": 208,
+    "튤립": 31,
+    "모카라": 29,
+    "아마릴리스": 13,
+    "리시안셔스": 9,
+    "알륨": 9,
+    "은방울꽃": 3,
+    "살릭스": 1
+  },
+  "varieties": {
+    "수국/화이트": 31,
+    "수국/블루": 11,
+    "카네이션/문라이트": 6,
+    "수국/그린": 6,
+    "수국/핑크": 6,
+    "수국/연핑크": 6,
+    "장미/캔들라이트": 3,
+    "카네이션/노비아": 3,
+    "카네이션/폴림니아": 3,
+    "장미/로라": 2,
+    "카네이션/헤르메스": 2,
+    "카네이션/네스": 1,
+    "장미/만달라": 1,
+    "카네이션/콜리브리": 1,
+    "알륨/글래디에터": 1,
+    "장미/블랙잭": 1,
+    "장미/핑크익스프레션": 1,
+    "카네이션/마리포사": 1,
+    "카네이션/지오지아": 1,
+    "아마릴리스/심포니": 1,
+    "카네이션/유카리체리": 1,
+    "카네이션/브루트": 1
+  },
+  "suppliers": {
+    "주광": 204,
+    "대한": 85,
+    "신라": 81,
+    "주광농원": 75,
+    "그린": 61,
+    "미우": 60,
+    "태림": 44,
+    "소재2호": 26,
+    "수연": 24,
+    "꽃길": 16,
+    "알파": 14,
+    "원협가빈": 13,
+    "남대문청화": 12,
+    "광주천사": 10,
+    "참좋은원예": 9,
+    "미카엘": 9,
+    "꽃동산": 8,
+    "친구플라워": 8,
+    "일신원예": 5,
+    "성남": 5,
+    "시흥": 4,
+    "경향": 3,
+    "대지원예": 3,
+    "꿀벌": 3,
+    "레바논꽃방": 3,
+    "경부청화": 2,
+    "상희원예": 1,
+    "영남소재": 1
+  },
+  "origins": {
+    "중국": 1133,
+    "네덜란드": 589,
+    "호주": 511,
+    "콜롬비아": 348,
+    "태국": 286,
+    "에콰도르": 95,
+    "멜로디": 78,
+    "베트남": 32
+  },
+  "sequences": {
+    "6-1": 311,
+    "10-1": 289,
+    "5-1": 204,
+    "14-1": 195,
+    "51-1": 183,
+    "44-1": 181,
+    "3-1": 179,
+    "43-1": 171,
+    "45-1": 169,
+    "8-1": 169,
+    "2-1": 166,
+    "48-1": 159,
+    "10-2": 150,
+    "13-1": 146,
+    "11-1": 144,
+    "12-1": 142,
+    "42-1": 140,
+    "7-1": 138,
+    "9-1": 138,
+    "50-1": 137
+  },
+  "unmatched_count": 1748,
+  "unmatched_samples": [
+    {
+      "room": "영업방팀 발주 및 추가 재고확인",
+      "content": "42차 네덜란드 발주 추가",
+      "major": "ORDER",
+      "minor": "ORDER_CHANGE_ADD"
+    },
+    {
+      "room": "영업방팀 발주 및 추가 재고확인",
+      "content": "43차 호주발주 추가",
+      "major": "ORDER",
+      "minor": "ORDER_CHANGE_ADD"
+    },
+    {
+      "room": "영업방팀 발주 및 추가 재고확인",
+      "content": "41-2차 네덜란드 검역차감",
+      "major": "DEFECT",
+      "minor": "DEFECT_DEDUCTION"
+    },
+    {
+      "room": "영업방팀 발주 및 추가 재고확인",
+      "content": "42차 주광 추가 출고 요청",
+      "major": "ORDER",
+      "minor": "ORDER_CHANGE_ADD"
+    },
+    {
+      "room": "영업방팀 발주 및 추가 재고확인",
+      "content": "42차 네덜란드 발주추가",
+      "major": "ORDER",
+      "minor": "ORDER_CHANGE_ADD"
+    },
+    {
+      "room": "영업방팀 발주 및 추가 재고확인",
+      "content": "42-2차 중국 발주 추가",
+      "major": "ORDER",
+      "minor": "ORDER_CHANGE_ADD"
+    },
+    {
+      "room": "영업방팀 발주 및 추가 재고확인",
+      "content": "42-1 네덜란드 발주 추가",
+      "major": "ORDER",
+      "minor": "ORDER_CHANGE_ADD"
+    },
+    {
+      "room": "영업방팀 발주 및 추가 재고확인",
+      "content": "주광 추가출고 요청분",
+      "major": "ORDER",
+      "minor": "ORDER_CHANGE_ADD"
+    },
+    {
+      "room": "영업방팀 발주 및 추가 재고확인",
+      "content": "주광 추가출고 요청분",
+      "major": "ORDER",
+      "minor": "ORDER_CHANGE_ADD"
+    },
+    {
+      "room": "영업방팀 발주 및 추가 재고확인",
+      "content": "43-1 중국 발주 변경사항",
+      "major": "ORDER",
+      "minor": "ORDER_CHANGE_ADD"
+    },
+    {
+      "room": "영업방팀 발주 및 추가 재고확인",
+      "content": "주광 추가출고 요청분",
+      "major": "ORDER",
+      "minor": "ORDER_CHANGE_ADD"
+    },
+    {
+      "room": "영업방팀 발주 및 추가 재고확인",
+      "content": "주광 추가출고 요청분",
+      "major": "ORDER",
+      "minor": "ORDER_CHANGE_ADD"
+    },
+    {
+      "room": "영업방팀 발주 및 추가 재고확인",
+      "content": "42-1 네덜란드 발주 추가",
+      "major": "ORDER",
+      "minor": "ORDER_CHANGE_ADD"
+    },
+    {
+      "room": "영업방팀 발주 및 추가 재고확인",
+      "content": "추가 요청분 정미",
+      "major": "ORDER",
+      "minor": "ORDER_CHANGE_ADD"
+    },
+    {
+      "room": "영업방팀 발주 및 추가 재고확인",
+      "content": "42차 호주 변경사항",
+      "major": "ORDER",
+      "minor": "ORDER_CHANGE_ADD"
+    },
+    {
+      "room": "영업방팀 발주 및 추가 재고확인",
+      "content": "43-1 중국 발주 변경사항",
+      "major": "ORDER",
+      "minor": "ORDER_CHANGE_ADD"
+    },
+    {
+      "room": "영업방팀 발주 및 추가 재고확인",
+      "content": "화이트 계통이 아닌 라벤더 계통 총 20단 추가 진행하겠습니다",
+      "major": "ORDER",
+      "minor": "ORDER_CHANGE_ADD"
+    },
+    {
+      "room": "영업방팀 발주 및 추가 재고확인",
+      "content": "취소\n확인부탁드립니다.",
+      "major": "ORDER",
+      "minor": "ORDER_CHANGE_CANCEL"
+    },
+    {
+      "room": "영업방팀 발주 및 추가 재고확인",
+      "content": "43차 중국 발주 추가",
+      "major": "ORDER",
+      "minor": "ORDER_CHANGE_ADD"
+    },
+    {
+      "room": "영업방팀 발주 및 추가 재고확인",
+      "content": "신라호텔 아직까지 추가 발주품목 올라온건 없습니다.",
+      "major": "ORDER",
+      "minor": "ORDER_CHANGE_ADD"
+    },
+    {
+      "room": "영업방팀 발주 및 추가 재고확인",
+      "content": "넵 추가 요청 드립니다",
+      "major": "ORDER",
+      "minor": "ORDER_CHANGE_ADD"
+    },
+    {
+      "room": "영업방팀 발주 및 추가 재고확인",
+      "content": "42차 호주 추가",
+      "major": "ORDER",
+      "minor": "ORDER_CHANGE_ADD"
+    },
+    {
+      "room": "영업방팀 발주 및 추가 재고확인",
+      "content": "주광 추가 출고 요청",
+      "major": "ORDER",
+      "minor": "ORDER_CHANGE_ADD"
+    },
+    {
+      "room": "영업방팀 발주 및 추가 재고확인",
+      "content": "오늘 주광 추가 건으로, 미우 수량까지 사용한 후라서, 추가가 어렵습니다",
+      "major": "ORDER",
+      "minor": "ORDER_CHANGE_ADD"
+    },
+    {
+      "room": "영업방팀 발주 및 추가 재고확인",
+      "content": "추가 출고 요청 정리",
+      "major": "ORDER",
+      "minor": "ORDER_CHANGE_ADD"
+    },
+    {
+      "room": "영업방팀 발주 및 추가 재고확인",
+      "content": "42차 호주 추가\n출고 분 이 후 잔량 확인도 부탁드립니다.",
+      "major": "ORDER",
+      "minor": "ORDER_CHANGE_ADD"
+    },
+    {
+      "room": "영업방팀 발주 및 추가 재고확인",
+      "content": "42-1차 네덜란드 검역차감",
+      "major": "DEFECT",
+      "minor": "DEFECT_DEDUCTION"
+    },
+    {
+      "room": "영업방팀 발주 및 추가 재고확인",
+      "content": "43-1 중국 발주 추가",
+      "major": "ORDER",
+      "minor": "ORDER_CHANGE_ADD"
+    },
+    {
+      "room": "영업방팀 발주 및 추가 재고확인",
+      "content": "42-2차 중국 변경사항",
+      "major": "ORDER",
+      "minor": "ORDER_CHANGE_ADD"
+    },
+    {
+      "room": "영업방팀 발주 및 추가 재고확인",
+      "content": "42차 태국 변경사항",
+      "major": "ORDER",
+      "minor": "ORDER_CHANGE_ADD"
+    },
+    {
+      "room": "영업방팀 발주 및 추가 재고확인",
+      "content": "42차 호주 출고 추가 사항",
+      "major": "ORDER",
+      "minor": "ORDER_CHANGE_ADD"
+    },
+    {
+      "room": "영업방팀 발주 및 추가 재고확인",
+      "content": "43-1 네덜란드 발주 추가",
+      "major": "ORDER",
+      "minor": "ORDER_CHANGE_ADD"
+    },
+    {
+      "room": "영업방팀 발주 및 추가 재고확인",
+      "content": "42차 중국 추가 출고건",
+      "major": "ORDER",
+      "minor": "ORDER_CHANGE_ADD"
+    },
+    {
+      "room": "영업방팀 발주 및 추가 재고확인",
+      "content": "43차 태국 발주 추가\n44차 중국 발주 추가",
+      "major": "ORDER",
+      "minor": "ORDER_CHANGE_ADD"
+    },
+    {
+      "room": "영업방팀 발주 및 추가 재고확인",
+      "content": "43차 네덜란드 발주\n43차 네덜란드 발주 추가",
+      "major": "ORDER",
+      "minor": "ORDER_CHANGE_ADD"
+    },
+    {
+      "room": "영업방팀 발주 및 추가 재고확인",
+      "content": "43-2차에는 진핑크 재고가 있는데, 44-1차에는 재고가 없는 상태라서 추가가 어렵습니다",
+      "major": "ORDER",
+      "minor": "ORDER_CHANGE_ADD"
+    },
+    {
+      "room": "영업방팀 발주 및 추가 재고확인",
+      "content": "넵 그러면 블루만 2박스 취소 부탁드릴게요\n43차 네덜란드 발주",
+      "major": "ORDER",
+      "minor": "ORDER_CHANGE_CANCEL"
+    },
+    {
+      "room": "영업방팀 발주 및 추가 재고확인",
+      "content": "43-2차 중국 발주 추가",
+      "major": "ORDER",
+      "minor": "ORDER_CHANGE_ADD"
+    },
+    {
+      "room": "영업방팀 발주 및 추가 재고확인",
+      "content": "43차 네덜란드 발주 추가",
+      "major": "ORDER",
+      "minor": "ORDER_CHANGE_ADD"
+    },
+    {
+      "room": "영업방팀 발주 및 추가 재고확인",
+      "content": "43-2차 중국 발주 추가 및 취소",
+      "major": "ORDER",
+      "minor": "ORDER_CHANGE_CANCEL"
+    },
+    {
+      "room": "영업방팀 발주 및 추가 재고확인",
+      "content": "* 양재동 박스 표기 변경사항",
+      "major": "ORDER",
+      "minor": "ORDER_CHANGE_ADD"
+    },
+    {
+      "room": "영업방팀 발주 및 추가 재고확인",
+      "content": "43-2차 중국 발주 추가",
+      "major": "ORDER",
+      "minor": "ORDER_CHANGE_ADD"
+    },
+    {
+      "room": "영업방팀 발주 및 추가 재고확인",
+      "content": "43-2차 중국 발주 추가",
+      "major": "ORDER",
+      "minor": "ORDER_CHANGE_ADD"
+    },
+    {
+      "room": "영업방팀 발주 및 추가 재고확인",
+      "content": "[워녕이] [오전 9:02] 43-2차 중국 발주 추가",
+      "major": "ORDER",
+      "minor": "ORDER_CHANGE_ADD"
+    },
+    {
+      "room": "영업방팀 발주 및 추가 재고확인",
+      "content": "주광 추가출고 요청분",
+      "major": "ORDER",
+      "minor": "ORDER_CHANGE_ADD"
+    },
+    {
+      "room": "영업방팀 발주 및 추가 재고확인",
+      "content": "주광 추가출고 요청분 정리",
+      "major": "ORDER",
+      "minor": "ORDER_CHANGE_ADD"
+    },
+    {
+      "room": "영업방팀 발주 및 추가 재고확인",
+      "content": "43차 호주 추가 요청",
+      "major": "ORDER",
+      "minor": "ORDER_CHANGE_ADD"
+    },
+    {
+      "room": "영업방팀 발주 및 추가 재고확인",
+      "content": "추가 부탁드립니다",
+      "major": "ORDER",
+      "minor": "ORDER_CHANGE_ADD"
+    },
+    {
+      "room": "영업방팀 발주 및 추가 재고확인",
+      "content": "43차 중국 추가 요청 건",
+      "major": "ORDER",
+      "minor": "ORDER_CHANGE_ADD"
+    },
+    {
+      "room": "영업방팀 발주 및 추가 재고확인",
+      "content": "고정발주는 최소주문수량이라서",
+      "major": "ORDER",
+      "minor": "ORDER_NEW"
+    }
+  ],
+  "product_context_samples": {
+    "카네이션": [
+      {
+        "raw": "43-1 콜 카네이션 발주",
+        "variety": "",
+        "supplier": "",
+        "seq": "43-1",
+        "room": "영업방팀 발주 및 추가 재고확인"
+      },
+      {
+        "raw": "43-1차 카네이션 발주 추가",
+        "variety": "",
+        "supplier": "",
+        "seq": "43-1",
+        "room": "영업방팀 발주 및 추가 재고확인"
+      },
+      {
+        "raw": "41차 카네이션 변경사항",
+        "variety": "",
+        "supplier": "",
+        "seq": "41",
+        "room": "영업방팀 발주 및 추가 재고확인"
+      },
+      {
+        "raw": "42-1 콜 카네이션 선출고건",
+        "variety": "",
+        "supplier": "",
+        "seq": "42-1",
+        "room": "영업방팀 발주 및 추가 재고확인"
+      },
+      {
+        "raw": "42-1차 카네이션 재고 문의",
+        "variety": "",
+        "supplier": "",
+        "seq": "42-1",
+        "room": "영업방팀 발주 및 추가 재고확인"
+      }
+    ],
+    "루스커스": [
+      {
+        "raw": "41-2 루스커스 출고요청건",
+        "variety": "",
+        "supplier": "",
+        "seq": "41-2",
+        "room": "영업방팀 발주 및 추가 재고확인"
+      },
+      {
+        "raw": "42-1 차 루스커스 추가 요청 건",
+        "variety": "",
+        "supplier": "",
+        "seq": "42-1",
+        "room": "영업방팀 발주 및 추가 재고확인"
+      },
+      {
+        "raw": "42-1차 루스커스 추가 사항",
+        "variety": "",
+        "supplier": "",
+        "seq": "42-1",
+        "room": "영업방팀 발주 및 추가 재고확인"
+      },
+      {
+        "raw": "42-1 루스커스 변동사항",
+        "variety": "",
+        "supplier": "",
+        "seq": "42-1",
+        "room": "영업방팀 발주 및 추가 재고확인"
+      },
+      {
+        "raw": "42-1 루스커스 추가",
+        "variety": "",
+        "supplier": "",
+        "seq": "42-1",
+        "room": "영업방팀 발주 및 추가 재고확인"
+      }
+    ],
+    "수국": [
+      {
+        "raw": "41-2 콜 수국 출고요청건",
+        "variety": "",
+        "supplier": "",
+        "seq": "41-2",
+        "room": "영업방팀 발주 및 추가 재고확인"
+      },
+      {
+        "raw": "41-2 콜 수국 출고요청건",
+        "variety": "",
+        "supplier": "",
+        "seq": "41-2",
+        "room": "영업방팀 발주 및 추가 재고확인"
+      },
+      {
+        "raw": "42-1 콜 수국 선출고 요청건",
+        "variety": "",
+        "supplier": "",
+        "seq": "42-1",
+        "room": "영업방팀 발주 및 추가 재고확인"
+      },
+      {
+        "raw": "42차 수국 변경사항",
+        "variety": "",
+        "supplier": "",
+        "seq": "42",
+        "room": "영업방팀 발주 및 추가 재고확인"
+      },
+      {
+        "raw": "42-1 콜 수국 선출고 요청건",
+        "variety": "",
+        "supplier": "",
+        "seq": "42-1",
+        "room": "영업방팀 발주 및 추가 재고확인"
+      }
+    ],
+    "장미": [
+      {
+        "raw": "42-1 콜 장미 선출고 요청건",
+        "variety": "",
+        "supplier": "",
+        "seq": "42-1",
+        "room": "영업방팀 발주 및 추가 재고확인"
+      },
+      {
+        "raw": "42-2차 콜롬비아장미 추가요청건(알렉산드라농장)",
+        "variety": "",
+        "supplier": "",
+        "seq": "42-2",
+        "room": "영업방팀 발주 및 추가 재고확인"
+      },
+      {
+        "raw": "43-1 콜장미 발주",
+        "variety": "",
+        "supplier": "",
+        "seq": "43-1",
+        "room": "영업방팀 발주 및 추가 재고확인"
+      },
+      {
+        "raw": "42차 콜 장미 추가",
+        "variety": "",
+        "supplier": "",
+        "seq": "42",
+        "room": "영업방팀 발주 및 추가 재고확인"
+      },
+      {
+        "raw": "42-1 콜롬비아 장미 재고",
+        "variety": "",
+        "supplier": "",
+        "seq": "42-1",
+        "room": "영업방팀 발주 및 추가 재고확인"
+      }
+    ],
+    "모카라": [
+      {
+        "raw": "해당 건, 발주 진행했는데, 지난번에도 공지했듯이 현재, 전체 모카라 품목의 경우, 우기로 인하여 XL 사이즈를 구하기가 불가능하다고 합니다.\n지난 태국 관련 공지 사항을 다시 올",
+        "variety": "",
+        "supplier": "",
+        "seq": "",
+        "room": "영업방팀 발주 및 추가 재고확인"
+      },
+      {
+        "raw": "모카라 오렌지 및 살라야 레드의 경우,",
+        "variety": "",
+        "supplier": "",
+        "seq": "",
+        "room": "영업방팀 발주 및 추가 재고확인"
+      },
+      {
+        "raw": "레드모카라는 XL는 루비 레드로 진행하겠습니다",
+        "variety": "",
+        "supplier": "",
+        "seq": "",
+        "room": "영업방팀 발주 및 추가 재고확인"
+      },
+      {
+        "raw": "모카라 레드",
+        "variety": "",
+        "supplier": "",
+        "seq": "",
+        "room": "수입방"
+      },
+      {
+        "raw": "모카라 와 덴팔레 MoQ 1박스",
+        "variety": "",
+        "supplier": "",
+        "seq": "",
+        "room": "수입방"
+      }
+    ],
+    "레몬잎": [
+      {
+        "raw": "42차 레몬잎 추가",
+        "variety": "",
+        "supplier": "",
+        "seq": "42",
+        "room": "영업방팀 발주 및 추가 재고확인"
+      },
+      {
+        "raw": "42차 레몬잎 변경사항",
+        "variety": "",
+        "supplier": "",
+        "seq": "42",
+        "room": "영업방팀 발주 및 추가 재고확인"
+      },
+      {
+        "raw": "42-1 레몬잎 변경사항",
+        "variety": "",
+        "supplier": "",
+        "seq": "42-1",
+        "room": "영업방팀 발주 및 추가 재고확인"
+      },
+      {
+        "raw": "42차 레몬잎 출고요청",
+        "variety": "",
+        "supplier": "",
+        "seq": "42",
+        "room": "영업방팀 발주 및 추가 재고확인"
+      },
+      {
+        "raw": "42차 레몬잎 추가",
+        "variety": "",
+        "supplier": "",
+        "seq": "42",
+        "room": "영업방팀 발주 및 추가 재고확인"
+      }
+    ],
+    "알스트로": [
+      {
+        "raw": "43-2차 알스트로 발주\n중앙 사장님과 소통 후 다시 말씀 드리겠습니다",
+        "variety": "",
+        "supplier": "",
+        "seq": "43-2",
+        "room": "영업방팀 발주 및 추가 재고확인"
+      },
+      {
+        "raw": "43-1 알스트로 발주",
+        "variety": "",
+        "supplier": "",
+        "seq": "43-1",
+        "room": "영업방팀 발주 및 추가 재고확인"
+      },
+      {
+        "raw": "* 42-1A차 알스트로 잔량",
+        "variety": "",
+        "supplier": "",
+        "seq": "42-1",
+        "room": "영업방팀 발주 및 추가 재고확인"
+      },
+      {
+        "raw": "42-1차 알스트로 추가",
+        "variety": "",
+        "supplier": "",
+        "seq": "42-1",
+        "room": "영업방팀 발주 및 추가 재고확인"
+      },
+      {
+        "raw": "42차 알스트로 추가 요청 (잔량)",
+        "variety": "",
+        "supplier": "",
+        "seq": "42",
+        "room": "영업방팀 발주 및 추가 재고확인"
+      }
+    ],
+    "리시안셔스": [
+      {
+        "raw": "41-1차 중국 리시안셔스 관련 요청사항",
+        "variety": "",
+        "supplier": "",
+        "seq": "41-1",
+        "room": "영업방팀 발주 및 추가 재고확인"
+      },
+      {
+        "raw": "중국 리시안셔스 핑크",
+        "variety": "",
+        "supplier": "",
+        "seq": "",
+        "room": "영업방팀 발주 및 추가 재고확인"
+      },
+      {
+        "raw": "41-1차 중국 리시안셔스 관련 요청사항",
+        "variety": "",
+        "supplier": "",
+        "seq": "41-1",
+        "room": "수입방"
+      },
+      {
+        "raw": "리시안셔스 크로마화이트 20cny/buch    8350원.",
+        "variety": "",
+        "supplier": "",
+        "seq": "",
+        "room": "수입방"
+      },
+      {
+        "raw": "리시안셔스 크로마 화이트 다음주 46-2차로 진행 할수 있도록 정확하게 준비 해달라고 해주세요. 부탁드립니다.",
+        "variety": "",
+        "supplier": "",
+        "seq": "46-2",
+        "room": "수입방"
+      }
+    ],
+    "튤립": [
+      {
+        "raw": "튤립 화이트 54단 아닌가요?",
+        "variety": "",
+        "supplier": "",
+        "seq": "",
+        "room": "영업방팀 발주 및 추가 재고확인"
+      },
+      {
+        "raw": "튤립 가격 어떻게될까요 ?",
+        "variety": "",
+        "supplier": "",
+        "seq": "",
+        "room": "영업방팀 발주 및 추가 재고확인"
+      },
+      {
+        "raw": "튤립 살몬 옵션요청드립니다.",
+        "variety": "",
+        "supplier": "",
+        "seq": "",
+        "room": "수입방"
+      },
+      {
+        "raw": "튤립 / 히야신스 / 스키미아 단으로 부탁드려요",
+        "variety": "",
+        "supplier": "",
+        "seq": "",
+        "room": "수입방"
+      },
+      {
+        "raw": "이번차수 튤립 살몬 가격이 두배 올랐는데 이유를 알 수 있을까요?",
+        "variety": "",
+        "supplier": "",
+        "seq": "",
+        "room": "수입방"
+      }
+    ],
+    "아마릴리스": [
+      {
+        "raw": "*네덜란드 아마릴리스 잔량",
+        "variety": "",
+        "supplier": "",
+        "seq": "",
+        "room": "영업방팀 발주 및 추가 재고확인"
+      },
+      {
+        "raw": "* 10차 호주 재고\n아마릴리스 릴로나 12스팀 판매부탁드립니다.",
+        "variety": "",
+        "supplier": "",
+        "seq": "10",
+        "room": "영업방팀 발주 및 추가 재고확인"
+      },
+      {
+        "raw": "아마릴리스 릴로나",
+        "variety": "",
+        "supplier": "",
+        "seq": "",
+        "room": "영업방팀 발주 및 추가 재고확인"
+      },
+      {
+        "raw": "아마릴리스 시즌이 시작되었는데 현재 발주가능한 색상 공유부탁드립니다. @아드리아나",
+        "variety": "",
+        "supplier": "",
+        "seq": "",
+        "room": "수입방"
+      },
+      {
+        "raw": "아마릴리스 night fever 12스팀도 가능한가요?",
+        "variety": "",
+        "supplier": "",
+        "seq": "",
+        "room": "수입방"
+      }
+    ]
+  }
+}

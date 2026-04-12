@@ -1,0 +1,3459 @@
+{
+  "_meta": {
+    "description": "카카오톡 자연어 품명 <-> nenovaweb DB 매칭 테이블 v2",
+    "generated": "2026-04-11",
+    "engine_version": "2.0",
+    "db_products_total": 2941,
+    "db_products_active": 2941,
+    "db_customers_total": 663,
+    "db_customers_active": 663,
+    "flower_types": 101,
+    "search_index_tokens": 7402
+  },
+  "matching_rates": {
+    "products_major": {
+      "total": 13,
+      "matched": 12,
+      "high_confidence": 11,
+      "low_confidence": 1,
+      "unmatched": 1,
+      "match_rate_pct": 92.3,
+      "high_confidence_pct": 84.6
+    },
+    "varieties_detail": {
+      "total": 22,
+      "matched": 22,
+      "high_confidence": 17,
+      "low_confidence": 5,
+      "unmatched": 0,
+      "match_rate_pct": 100.0,
+      "high_confidence_pct": 77.3
+    },
+    "suppliers": {
+      "total": 28,
+      "matched": 27,
+      "high_confidence": 21,
+      "low_confidence": 6,
+      "unmatched": 1,
+      "match_rate_pct": 96.4,
+      "high_confidence_pct": 75.0
+    }
+  },
+  "flower_db_summary": {
+    "장미": {
+      "total_count": 738,
+      "active_count": 738,
+      "countries": [
+        "중국",
+        "에티오피아",
+        "국내",
+        "콜롬비아",
+        "네덜란드",
+        "에콰도르"
+      ],
+      "sample_varieties": [
+        "SPRAY ROSE / Ice Wing",
+        "Garden Rosa O hara Pink 50cm",
+        "Garden Rosa O hara White 50cm",
+        "Garden Rosa White Cloud",
+        "Rosa David Austin Beatrice 45cm",
+        "Rosa David Austin Dancey",
+        "Rosa David Austin Prinsess Kiahi",
+        "Rosa Dolce Summerhouse",
+        "Rosa Mashad",
+        "Rosa Shiraz",
+        "Rosa Spray Mirabel",
+        "Rosa Spray Odilia",
+        "Rosa Spray Yellow Babe",
+        "ROSE / CAPPUCCINO",
+        "ROSE Dark Expression"
+      ]
+    },
+    "카네이션": {
+      "total_count": 367,
+      "active_count": 367,
+      "countries": [
+        "중국",
+        "콜롬비아"
+      ],
+      "sample_varieties": [
+        "[MEL] Carnation CHINA / 마스터 레드 (Master Red)",
+        "[MEL] Spray Carnation CHINA / 노랑 (Yellow)",
+        "[MEL] Spray Carnation CHINA / 노랑 (Yellow-multiheads)",
+        "[MEL] Spray Carnation CHINA / 래드 (Barbra Red-multi)",
+        "[MEL] Spray Carnation CHINA / 롤리팝 퍼플 (Lollipop)",
+        "[MEL] Spray Carnation CHINA / 보라 화이트 (Purple prince) ",
+        "[MEL] Spray Carnation CHINA / 솔로미오 Solomio Cliff (Apple red)",
+        "[MEL] Spray Carnation CHINA / 솔로미오 Solomio Down (Cream)",
+        "[MEL] Spray Carnation CHINA / 솔로미오 Solomio Ed (White)",
+        "[MEL] Spray Carnation CHINA / 솔로미오 Solomio Fire Feather (Yellow)",
+        "[MEL] Spray Carnation CHINA / 솔로미오 Solomio Hoh Xil (Peach)",
+        "[MEL] Spray Carnation CHINA / 솔로미오 Solomio Little Strawberry (Bi Pink,Red)",
+        "[MEL] Spray Carnation CHINA / 솔로미오 Solomio Peach (White, pink lines)",
+        "[MEL] Spray Carnation CHINA / 솔로미오 Solomio Pink Butterfly (Pink)",
+        "[MEL] Spray Carnation CHINA / 솔로미오 Solomio Sakura (PastelPink)"
+      ]
+    },
+    "튤립": {
+      "total_count": 299,
+      "active_count": 299,
+      "countries": [
+        "네덜란드"
+      ],
+      "sample_varieties": [
+        "[EZ] Tulip / Single Antarctica",
+        "[EZ] Tulip / Single Dynasty L/Pink",
+        "[EZ] Tulip / Single Katinka",
+        "[EZ] Tulip / Single Royal Virgen White",
+        "[EZ] Tulip / Single Strong Gold Yellow",
+        "[EZ] Tulip / Single Thijs Boots",
+        "Double Double price",
+        "Double wise",
+        "Tuliip / Double Strong Carlo",
+        "Tuliip / Single Dyed Frost Brown",
+        "TULIP",
+        "Tulip / AD rem Beauty (Marict)",
+        "Tulip / Albatros",
+        "Tulip / apricot parrot",
+        "Tulip / Black Bean"
+      ]
+    },
+    "기타": {
+      "total_count": 162,
+      "active_count": 162,
+      "countries": [
+        "중국",
+        "국내",
+        "호주"
+      ],
+      "sample_varieties": [
+        "시베리아",
+        "[MEL] Amaranthus CHINA DRY WHITE/ 줄맨드라미 프리저브드 화이트",
+        "[MEL] Amaranthus CHINA Fresh GREEN / 줄맨드라미 생화 그린",
+        "[MEL] Amaranthus CHINA Fresh RED / 줄맨드라미 생화 레드",
+        "[MEL] CHINA / 라스라지 연보라 (Gladiolus Taro purple)",
+        "[MEL] CHINA / 라스라지 화이트 (Gladiolus White)",
+        "[MEL] CHINA / 리모늄 미스티 블루 (Limonium blue) 500g",
+        "[MEL] CHINA / 리모늄 시네신스 화이트 (Sinensis white) 500g",
+        "[MEL] CHINA / 솔리다고 (Solidago)",
+        "[MEL] CHINA / 안개꽃 1Kg (Gypsophila white type 2, big buds)",
+        "[MEL] CHINA / 안개꽃 1Kg (Gypsophila white)",
+        "[MEL] CHINA Eucalyptus / 블랙잭 (베이비 블루) (대) 1Kg",
+        "[MEL] CHINA GoldenWatree / 골든와트리 ",
+        "[MEL] Eucalyptus CHINA / 포퓰러스 시드, 다이브 (Eucalyptus with fruit)",
+        "[MEL] Lisianthus CHINA / 믹스  (Mix) 800g"
+      ]
+    },
+    "수국": {
+      "total_count": 160,
+      "active_count": 160,
+      "countries": [
+        "콜롬비아",
+        "네덜란드",
+        "뉴질랜드"
+      ],
+      "sample_varieties": [
+        "[EZ] Hydrangea / Glowing Alps Pink",
+        "[EZ] Hydrangea / Rodeo Purple",
+        "Hydrangea / Amazing Force L/Pink",
+        "Hydrangea / Aphrodite Light Blue",
+        "Hydrangea / Beau Luxor",
+        "Hydrangea / Bela Classic 60cm",
+        "Hydrangea / Bodensee Classic Green",
+        "Hydrangea / Candy Floss Milka 60cm",
+        "Hydrangea / Candy Moment Calssic",
+        "Hydrangea / Casanova",
+        "Hydrangea / Cinderella Lavender",
+        "Hydrangea / Classic Adora Green-Purple",
+        "Hydrangea / Classic Elbtal",
+        "Hydrangea / Classic Magical Charlotte Red/Green",
+        "Hydrangea / Classic Magical Ruby Pink"
+      ]
+    },
+    "안시리움": {
+      "total_count": 99,
+      "active_count": 99,
+      "countries": [
+        "네덜란드",
+        "태국"
+      ],
+      "sample_varieties": [
+        "[EZ] Anthurium Caldonia 13cm",
+        "[EZ] Anthurium Elizabeth 13cm",
+        "[EZ] Anthurium Graciosa 11cm",
+        "[EZ] Anthurium Graciosa 13cm",
+        "[EZ] Anthurium Graciosa 15cm",
+        "[EZ] Anthurium Lovely Black Love 11cm",
+        "[EZ] Anthurium Lunette 13cm",
+        "[EZ] Anthurium Nero 13cm",
+        "[EZ] Anthurium Nunzia 13cm",
+        "[EZ] Anthurium Prestige 13cm",
+        "[EZ] Anthurium Princess Alexia Bordeaux 11cm",
+        "[EZ] Anthurium Princess Alexia Bordeaux 9cm",
+        "[EZ] Anthurium Safari 13cm",
+        "[EZ] Anthurium Safari 15cm",
+        "[EZ] Anthurium Tequila 13cm"
+      ]
+    },
+    "카라": {
+      "total_count": 90,
+      "active_count": 90,
+      "countries": [
+        "네덜란드"
+      ],
+      "sample_varieties": [
+        "Calla / Aspen White 60",
+        "Calla / Auckland 70cm L/pink",
+        "Calla / Auckland 80cm L/pink",
+        "Calla / Black Diamond",
+        "Calla / Callister",
+        "Calla / Candy Dream Pink",
+        "Calla / Cantor Black",
+        "Calla / Capt Violet L/Lavender 60cm",
+        "Calla / Captain Maestro",
+        "Calla / Captain Mario Pink",
+        "Calla / Captain Marrero L/Pink",
+        "Calla / Captain Melrose W/Pinksh",
+        "Calla / Captain Odeon Orange 60cm",
+        "Calla / Captain Odeon Orange 80cm",
+        "Calla / Captain Promise Wine"
+      ]
+    },
+    "알스트로": {
+      "total_count": 84,
+      "active_count": 84,
+      "countries": [
+        "콜롬비아",
+        "네덜란드"
+      ],
+      "sample_varieties": [
+        "Alstromeria / Nalani Yellow",
+        "Alstromeria / Pink",
+        "ALSTROMERIA Arrone",
+        "ALSTROMERIA Astronova",
+        "ALSTROMERIA Bali",
+        "ALSTROMERIA Bella Star",
+        "ALSTROMERIA Canyon",
+        "ALSTROMERIA Cheescake",
+        "ALSTROMERIA Costa",
+        "ALSTROMERIA Cream",
+        "ALSTROMERIA Dubai",
+        "ALSTROMERIA Dubai Butterplus",
+        "ALSTROMERIA Dubai Perfection",
+        "ALSTROMERIA Fifi",
+        "ALSTROMERIA Fifi Butterplus"
+      ]
+    },
+    "스위트피": {
+      "total_count": 79,
+      "active_count": 79,
+      "countries": [
+        "일본",
+        "네덜란드"
+      ],
+      "sample_varieties": [
+        "Sweet Pea / Lathyrus Blue",
+        "Sweet Pea / Lathyrus Champagne",
+        "Sweet Pea / Lathyrus Creem",
+        "Sweet Pea / Lathyrus Dyed Pumpkin Magic",
+        "Sweet Pea / Lathyrus Dyed Sunrise",
+        "Sweet Pea / Lathyrus Lavender",
+        "Sweet Pea / Lathyrus Lila",
+        "Sweet Pea / Lathyrus Mauve",
+        "Sweet Pea / Lathyrus Pale Pink",
+        "Sweet Pea / Lathyrus Parfum Orange",
+        "Sweet Pea / Lathyrus Pink",
+        "Sweet Pea / Lathyrus Purple",
+        "Sweet Pea / Lathyrus Salmon",
+        "Sweet Pea / Lathyrus Sunshine Pink",
+        "Sweet Pea / Lathyrus Sunshine Rose"
+      ]
+    },
+    "거베라": {
+      "total_count": 59,
+      "active_count": 59,
+      "countries": [
+        "네덜란드"
+      ],
+      "sample_varieties": [
+        "Gerbera Burgundy",
+        "Gerbera Germini spider fairytale",
+        "Gerbera Gerpasta Carbonara",
+        "Gerbera Gerpasta flash",
+        "Gerbera Gerpasta Rosata ",
+        "Gerbera GerPasta scott",
+        "Gerbera Gerspider Fantasia",
+        "Gerbera Gerspider Premier",
+        "Gerbera Kiara",
+        "Gerbera Mango",
+        "Gerbera Mini Albino",
+        "Gerbera Mini Bizar",
+        "Gerbera Mini Cafe",
+        "Gerbera Mini Cookie and Cream",
+        "Gerbera Mini Coolio"
+      ]
+    },
+    "작약": {
+      "total_count": 58,
+      "active_count": 58,
+      "countries": [
+        "네덜란드",
+        "뉴질랜드"
+      ],
+      "sample_varieties": [
+        "Peony / Amazing force",
+        "Peony / Angels cheeks",
+        "Peony / Best Man 60cm",
+        "Peony / Bowl of  Cream 볼오브크림 ",
+        "Peony / Bowl of Cream Double White 55cm",
+        "Peony / Bridal Shower (브라이덜샤워)",
+        "Peony / Charm Dark Red 50cm",
+        "Peony / Chiff Parfait Double Cream 60cm",
+        "Peony / Claude Tain White",
+        "Peony / Coral Cham Pink 60cm",
+        "Peony / Dr.A Flamingo Pink",
+        "Peony / Duchesse Nemours White 60cm",
+        "Peony / Felix Crousse H/Pink 60cm",
+        "Peony / Festriva Maxima L/Pink 60cm",
+        "Peony / Festriva Maxima White 60cm"
+      ]
+    },
+    "왁스": {
+      "total_count": 55,
+      "active_count": 55,
+      "countries": [
+        "국내",
+        "호주"
+      ],
+      "sample_varieties": [
+        "네덜란드 운송료",
+        "단가차감/송이",
+        "더글라스 운송료",
+        "덴파레 운송료",
+        "레몬잎 운송료",
+        "루스커스 운송료",
+        "샘플/단",
+        "샘플/송이",
+        "수국 운송료",
+        "알스트로 운송료",
+        "운송료",
+        "이탈리아 운송료",
+        "일본 운송료",
+        "장미 운송료",
+        "중국 운송료"
+      ]
+    },
+    "히아신스": {
+      "total_count": 41,
+      "active_count": 41,
+      "countries": [
+        "네덜란드"
+      ],
+      "sample_varieties": [
+        "[EZ] Hyacinthus / Blue Future",
+        "[EZ] Hyacinthus / Deft Blue",
+        "[EZ] Hyacinthus / Fondant",
+        "[EZ] Hyacinthus/  Antarctica",
+        "[EZ] Hyacinthus/ Polar Giant",
+        "[EZ]Hyacinthus/ China white",
+        "Hyacinthus / Anna Liza",
+        "Hyacinthus / Anna Marie",
+        "Hyacinthus / Atlantic",
+        "Hyacinthus / Blue Future",
+        "Hyacinthus / Blue Jeans",
+        "Hyacinthus / Blue Star",
+        "Hyacinthus / China Pink",
+        "Hyacinthus / City of Bradford",
+        "Hyacinthus / Dark Dimension"
+      ]
+    },
+    "덴드륨": {
+      "total_count": 37,
+      "active_count": 37,
+      "countries": [
+        "태국"
+      ],
+      "sample_varieties": [
+        "덴파레 샘플",
+        "Den Siam Blue( SIB ) XL",
+        "Den. Banda Blue",
+        "Den. Banda Dark Pink M",
+        "Den. Banda Pachara Blue L",
+        "Den. Banda Yellow M",
+        "Den. Big White Form Dyed Red L",
+        "Den. jinda sweet loose blooms",
+        "Den. JK LIGHT PINK (연핑크) L",
+        "Den. JK LIGHT PINK (연핑크) M",
+        "Den. JK LIGHT PINK (연핑크) XL",
+        "Den. JK pink loose blooms ",
+        "Den. Juree Red(쥬리 레드)보라 XL",
+        "Den. lovely pink loose blooms",
+        "Den. Lucky White"
+      ]
+    },
+    "아마릴리스": {
+      "total_count": 33,
+      "active_count": 33,
+      "countries": [
+        "네덜란드"
+      ],
+      "sample_varieties": [
+        "Amaryliis / Amblance 12st",
+        "Amaryliis / Amblance 15st",
+        "Amaryllis / Apple Blosom 12st",
+        "Amaryllis / Boquet 12st",
+        "Amaryllis / Bouquet 15st",
+        "Amaryllis / Britney",
+        "Amaryllis / Casa Blanc 15st White",
+        "Amaryllis / Casablanca 12st White1",
+        "Amaryllis / Casablanca 15st White2",
+        "Amaryllis / Darling",
+        "Amaryllis / Desire",
+        "Amaryllis / Ferrari",
+        "Amaryllis / Gold Medal",
+        "Amaryllis / Hercules",
+        "Amaryllis / Loyalty"
+      ]
+    },
+    "모카라": {
+      "total_count": 33,
+      "active_count": 33,
+      "countries": [
+        "태국"
+      ],
+      "sample_varieties": [
+        "모카라 샘플 ",
+        "MOK Boonglong L",
+        "MOK Boonglong XL",
+        "MOK Calipso Pink L",
+        "MOK Calipso Pink XL",
+        "MOK Isabell Peach L",
+        "MOK Jairak Blue (보라) L",
+        "MOK Jairak Blue (보라) M",
+        "MOK Jairak Blue (보라) XL",
+        "MOK Jitti",
+        "MOK Jitti L",
+        "MOK Jitti XL",
+        "MOK Jubkuan Pink XL",
+        "MOK Kittilo Red L",
+        "MOK Kittilo Red M"
+      ]
+    },
+    "아스파라거스": {
+      "total_count": 29,
+      "active_count": 29,
+      "countries": [
+        "네덜란드"
+      ],
+      "sample_varieties": [
+        "Asparagus / Dyed",
+        "Asparagus / Dyed Antiquie",
+        "Asparagus / Dyed Apricot",
+        "Asparagus / Dyed Aubergine",
+        "Asparagus / Dyed Black",
+        "Asparagus / Dyed Blue Ice",
+        "Asparagus / Dyed Bordeaus",
+        "Asparagus / Dyed Cerise",
+        "Asparagus / Dyed Cream",
+        "Asparagus / Dyed Dark Blue",
+        "Asparagus / Dyed Dark Violet",
+        "Asparagus / Dyed Grey",
+        "Asparagus / Dyed Light Blue",
+        "Asparagus / Dyed Light Pink",
+        "Asparagus / Dyed Lilac Dark"
+      ]
+    },
+    "델피늄": {
+      "total_count": 26,
+      "active_count": 26,
+      "countries": [
+        "네덜란드"
+      ],
+      "sample_varieties": [
+        "Delphinium / Anastasia",
+        "Delphinium / Belladonna Ballkleid",
+        "Delphinium / Belladonna Donna",
+        "Delphinium / Blue star",
+        "Delphinium / Boy",
+        "Delphinium / Centrion Sky Blue",
+        "Delphinium / Centurion White",
+        "Delphinium / Delphis Blue Power",
+        "Delphinium / Delphis Emerald",
+        "Delphinium / Dewi Boy",
+        "Delphinium / Dewi Pink Floyd",
+        "Delphinium / Dewi Spijker",
+        "Delphinium / Double Dev Mojo Magenta",
+        "Delphinium / Double Dewi White Smile",
+        "Delphinium / EN L/Blue"
+      ]
+    },
+    "글라디오루스": {
+      "total_count": 25,
+      "active_count": 25,
+      "countries": [
+        "네덜란드"
+      ],
+      "sample_varieties": [
+        "Gladiolus / Adrenalin",
+        "Gladiolus / Alba White",
+        "Gladiolus / Careless",
+        "Gladiolus / Carine",
+        "Gladiolus / Charming Beauty",
+        "Gladiolus / Charming Lady",
+        "Gladiolus / Elvira",
+        "Gladiolus / Fat Boy",
+        "Gladiolus / Karma",
+        "Gladiolus / Kio",
+        "Gladiolus / Lady",
+        "Gladiolus / Large Karma",
+        "Gladiolus / Large White",
+        "Gladiolus / Milka",
+        "Gladiolus / Nova Zembla 110cm"
+      ]
+    },
+    "유칼립투스": {
+      "total_count": 24,
+      "active_count": 24,
+      "countries": [
+        "네덜란드",
+        "이스라엘"
+      ],
+      "sample_varieties": [
+        "Eucalyptus / Cinerea",
+        "Eucalyptus / Cinerea Copper",
+        "Eucalyptus / Cinerea Gold",
+        "Eucalyptus / Cinerea Silver",
+        "Eucalyptus / Domenichina",
+        "Eucalyptus / Gompho",
+        "Eucalyptus / Grevillea",
+        "Eucalyptus / Lancet stem",
+        "Eucalyptus / Nicholii",
+        "Eucalyptus / Parvifolia",
+        "Eucalyptus / Pistacia",
+        "Eucalyptus / Populus Berry Gold",
+        "Eucalyptus / Populus Berry Green 300g",
+        "Eucalyptus / Populus Berry Green 400gr",
+        "Eucalyptus / Populus Berry Red"
+      ]
+    },
+    "나르시스": {
+      "total_count": 21,
+      "active_count": 21,
+      "countries": [
+        "네덜란드"
+      ],
+      "sample_varieties": [
+        "Narcissus (Daffodil) Bell soung",
+        "Narcissus (Daffodil) Bridal Crown",
+        "Narcissus (Daffodil) Carlton",
+        "Narcissus (Daffodil) Cragford",
+        "Narcissus (Daffodil) Dutch Master",
+        "Narcissus (Daffodil) Grand Soleil D-or",
+        "Narcissus (Daffodil) Johan Strauss",
+        "Narcissus (Daffodil) Overing Pink Perfect",
+        "Narcissus (Daffodil) Paper White",
+        "Narcissus (Daffodil) Pinza",
+        "Narcissus (Daffodil) Romantic Paradais",
+        "Narcissus (Daffodil) Royal Dutch",
+        "Narcissus (Daffodil) Standard Value",
+        "Narcissus (Daffodil) wedding bell",
+        "Narcissus (Daffodil) ziva paper white"
+      ]
+    },
+    "알륨": {
+      "total_count": 19,
+      "active_count": 19,
+      "countries": [
+        "네덜란드"
+      ],
+      "sample_varieties": [
+        "Allium / Ambassador",
+        "Allium / Autumn Bee Attraction",
+        "Allium / Bullit",
+        "Allium / Giganteum",
+        "Allium / Gladiator",
+        "Allium / Miami",
+        "Allium / Molly Yellow",
+        "Allium / Mount Everest Pink",
+        "Allium / Mount Everest White",
+        "Allium / Neapolitanum Spray White",
+        "Allium / Nectaroscordum Rosy Bells",
+        "Allium / Pink Jewel",
+        "Allium / Pink Lady",
+        "Allium / Schubertii",
+        "Allium / Siculum Bulgar"
+      ]
+    },
+    "아카시아": {
+      "total_count": 18,
+      "active_count": 18,
+      "countries": [
+        "네덜란드"
+      ],
+      "sample_varieties": [
+        "Acasia / Chiara de Luna",
+        "Acasia / Denis Boden",
+        "Acasia / Hamburyana",
+        "Acasia / Luna Arg",
+        "Acasia / Mimosa Baileyana 500g",
+        "Acasia / Mimosa Floribunda 150g",
+        "Acasia / Mimosa Floribunda 400g",
+        "Acasia / Mimosa Mirandol 200g",
+        "Acasia / Mimosa Retinodes",
+        "Acasia / Mimosa Rups 200g",
+        "Acasia / Mimosa Rups 400g",
+        "Acasia / Mimosa Turner Green 250g",
+        "Acasia / Mimosa Turner Green 400g",
+        "Acasia / Mimosa Turner Red 250g",
+        "Acasia / Mixd"
+      ]
+    },
+    "미니카네이션": {
+      "total_count": 18,
+      "active_count": 18,
+      "countries": [
+        "콜롬비아"
+      ],
+      "sample_varieties": [
+        "Minicarnation Anni",
+        "Minicarnation Bamboo",
+        "Minicarnation Canela",
+        "Minicarnation Celeste",
+        "Minicarnation Gianna",
+        "Minicarnation Hot Pink",
+        "Minicarnation Kaisa",
+        "Minicarnation Minion",
+        "Minicarnation Mirafiori",
+        "Minicarnation Morena",
+        "Minicarnation Omeya/Remoto",
+        "Minicarnation Sirasi",
+        "Minicarnation Stratus",
+        "Minicarnation Uchuva",
+        "Minicarnation Umbra"
+      ]
+    },
+    "헬레보루스": {
+      "total_count": 16,
+      "active_count": 16,
+      "countries": [
+        "네덜란드",
+        "뉴질랜드"
+      ],
+      "sample_varieties": [
+        "Helleborus / Argutifolius Green 75cm",
+        "Helleborus / Christmas Glory D/White",
+        "Helleborus / Double Ellen Pink D/pink",
+        "Helleborus / Double Ellen Red D/Red",
+        "Helleborus / Double Ellen White",
+        "Helleborus / Magnificent Bell",
+        "Helleborus / Niger White",
+        "Helleborus / Qeens Picote Pink 35cm",
+        "Helleborus / Queens Red",
+        "Helleborus / Queens White",
+        "Helleborus / White Lady Spotted 50cm",
+        "Helleborus / Winter Fashion White",
+        "Helloeborus / Molly White Green",
+        "Helloeborus / Winter bells",
+        "Hellebore / New Zealand. Green Double (30-40cm)"
+      ]
+    },
+    "에린지움": {
+      "total_count": 15,
+      "active_count": 15,
+      "countries": [
+        "네덜란드"
+      ],
+      "sample_varieties": [
+        "Eryngium Alpinum",
+        "Eryngium Aquarius Questar",
+        "Eryngium Blue Dynamite",
+        "Eryngium Magnetar Questar",
+        "Eryngium Orion Blue 40cm",
+        "Eryngium Orion Blue 50cm",
+        "Eryngium Orion Blue 60cm",
+        "Eryngium Orion Blue 70cm",
+        "Eryngium Orion Blue 80cm",
+        "Eryngium Planum Gemini Questar ",
+        "Eryngium Sirius Questar White",
+        "Eryngium Sirius Questar White 50cm ",
+        "Eryngium Sirius Questar White 60cm ",
+        "Eryngium Sirius Questar White 70cm ",
+        "Eryngium Supernova Blue"
+      ]
+    },
+    "아가판서스": {
+      "total_count": 14,
+      "active_count": 14,
+      "countries": [
+        "네덜란드"
+      ],
+      "sample_varieties": [
+        "[EZ] Agapanthus / Eyfori light blue",
+        "Agapanthus / Atlantic Ocean Blue 70cm",
+        "Agapanthus / Bianca Perla White 70cm",
+        "Agapanthus / Eyfori Blue 70cm",
+        "Agapanthus / Eyfori light blue",
+        "Agapanthus / Eyfori White 70cm",
+        "Agapanthus / Eyfori White 90cm",
+        "Agapanthus / Gletsjer",
+        "Agapanthus / Queen of the ocean 80cm",
+        "Agapanthus / Susan 85cm",
+        "Agapanthus / Swedish Blue",
+        "Agapanthus / Uri",
+        "Agapanthus / White Barcelona 75cm",
+        "Agapanthus / White Grace 80cm"
+      ]
+    },
+    "클레마티스": {
+      "total_count": 14,
+      "active_count": 14,
+      "countries": [
+        "네덜란드"
+      ],
+      "sample_varieties": [
+        "Clematis Amazing Havana",
+        "Clematis Amazing Kansas",
+        "Clematis Amazing Kibo",
+        "Clematis Amazing Kyiv 60cm",
+        "Clematis Amazing Kyiv 70cm",
+        "Clematis Amazing London",
+        "Clematis Amazing Maiami",
+        "Clematis Amazing Rome",
+        "Clematis Amazing Sofia 70cm",
+        "Clematis Blue Pirouette",
+        "Clematis Inspiration",
+        "Clematis Oslo",
+        "Clematis Star River 50cm",
+        "Clematis Star River 60cm"
+      ]
+    },
+    "핀쿠션": {
+      "total_count": 13,
+      "active_count": 13,
+      "countries": [
+        "네덜란드"
+      ],
+      "sample_varieties": [
+        "Leucadendron Argenteum Silver leaf",
+        "Leucospermum / Ayoba Red",
+        "Leucospermum / Dyed Tango",
+        "Leucospermum / High Gold Yellow",
+        "Leucospermum / Nutan Nikki Umali",
+        "Leucospermum / Soleil Orange",
+        "Leucospermum / Succession Orange",
+        "Nutan / Ayoba Orange 40cm",
+        "Nutan / Ayoba Yellow 40cm",
+        "Nutan / Ayoba Yellow 50cm",
+        "Nutan / Goldie",
+        "Nutan / High Gold",
+        "Nutan / Succession"
+      ]
+    },
+    "프리티라리아": {
+      "total_count": 12,
+      "active_count": 12,
+      "countries": [
+        "네덜란드"
+      ],
+      "sample_varieties": [
+        "Fritillaria / Black",
+        "Fritillaria / Check Purple",
+        "Fritillaria / Elwesii Black",
+        "Fritillaria / Hermo Ssp 35cm",
+        "Fritillaria / Ivory 60cm",
+        "Fritillaria / Lutea Yellow 60cm",
+        "Fritillaria / Meleagris Alba White 27cm",
+        "Fritillaria / Meleagris Lavender 27cm",
+        "Fritillaria / Orange Beauty 70cm",
+        "Fritillaria / Paulida Green",
+        "Fritillaria / Persica 75cm",
+        "Fritillaria / Uva-vulpis Lavender 50cm"
+      ]
+    },
+    "베로니카": {
+      "total_count": 11,
+      "active_count": 11,
+      "countries": [
+        "네덜란드"
+      ],
+      "sample_varieties": [
+        "Veronica Caya",
+        "Veronica Clea Diana",
+        "Veronica Smart Enjoy",
+        "Veronica Spray Anna",
+        "Veronica Spray Caya 60cm",
+        "Veronica Spray clea Diana Purple",
+        "Veronica Spray Pink 60cm",
+        "Veronica Spray Purple 60cm",
+        "Veronica Spray Smart Enjoy",
+        "Veronica Spray Smart Iselle Pink",
+        "Veronica Spray White 60cm"
+      ]
+    },
+    "유포르비아": {
+      "total_count": 11,
+      "active_count": 11,
+      "countries": [
+        "네덜란드"
+      ],
+      "sample_varieties": [
+        "Euphorbia / Fulgens Spray Pink Baron",
+        "Eyphorbia / Fulgens Orange",
+        "Eyphorbia / Fulgens Salmon",
+        "Eyphorbia / Fulgens White",
+        "Eyphorbia / Fulgens Yellow",
+        "Eyphorbia / Marinii Green 65cm",
+        "Eyphorbia / Spray Orange",
+        "Eyphorbia / Spray Queen Of Orange",
+        "Eyphorbia / Spray Quicksilver",
+        "Eyphorbia / Spray Red Surprise",
+        "Eyphorbia / Spray Sunstream"
+      ]
+    },
+    "스키미아": {
+      "total_count": 10,
+      "active_count": 10,
+      "countries": [
+        "네덜란드"
+      ],
+      "sample_varieties": [
+        "Skimmia / Champagne",
+        "Skimmia / Conf Kew Ger Green",
+        "Skimmia / Copper",
+        "Skimmia / Finchy Snow",
+        "Skimmia / Gold",
+        "Skimmia / Jap Rubella Frost",
+        "Skimmia / Jap Rubella Red",
+        "Skimmia / Platinum",
+        "Skimmia / Rose Gold",
+        "Skimmia / Silver"
+      ]
+    },
+    "아스트란시아": {
+      "total_count": 10,
+      "active_count": 10,
+      "countries": [
+        "네덜란드"
+      ],
+      "sample_varieties": [
+        "Astrantia / Billion Star 60cm",
+        "Astrantia / Claret 60cm",
+        "Astrantia / Million star",
+        "Astrantia / Millionstar White 60cm",
+        "Astrantia / Roma Pink 75cm",
+        "Astrantia / Rosita Pink 60cm",
+        "Astrantia / Shaggy White 75cm",
+        "Astrantia / Star of Africa",
+        "Astrantia / Star of Fire Wine 60cm",
+        "Astrantia / Star of Love"
+      ]
+    },
+    "아스틸베": {
+      "total_count": 10,
+      "active_count": 10,
+      "countries": [
+        "네덜란드"
+      ],
+      "sample_varieties": [
+        "[EZ] Astilbe / Erika",
+        "[EZ] Astilbe / Europa L/Pink",
+        "[EZ] Astilbe / Washington White",
+        "Astilbe / Anita Pfeifer",
+        "Astilbe / Arendsii Paul Gaarder",
+        "Astilbe / Else Schluck H/Pink",
+        "Astilbe / Erika",
+        "Astilbe / Europa L/Pink",
+        "Astilbe / Washington White",
+        "Astillbe / Romanze L/Pink"
+      ]
+    },
+    "심비디움": {
+      "total_count": 9,
+      "active_count": 9,
+      "countries": [
+        "네덜란드"
+      ],
+      "sample_varieties": [
+        "Cymbidium / Alice Anderson 80cm",
+        "Cymbidium / Bear Time",
+        "Cymbidium / Charly Brown 60cm",
+        "Cymbidium / Cooksbridge (Grower Pack) 70cm",
+        "Cymbidium / Green 60cm",
+        "Cymbidium / Noha",
+        "Cymbidium / Pink 60cm",
+        "Cymbidium / Tamara Green",
+        "Cymbidium / White 60cm"
+      ]
+    },
+    "리모니움": {
+      "total_count": 9,
+      "active_count": 9,
+      "countries": [
+        "콜롬비아"
+      ],
+      "sample_varieties": [
+        "LIMONIUM Coral",
+        "LIMONIUM Lavander",
+        "LIMONIUM Pink",
+        "LIMONIUM White",
+        "LIMONIUM Yellow",
+        "STATICE Lavander",
+        "STATICE Pink",
+        "STATICE Purple",
+        "STATICE White"
+      ]
+    },
+    "그레비": {
+      "total_count": 8,
+      "active_count": 8,
+      "countries": [
+        "네덜란드",
+        "이스라엘"
+      ],
+      "sample_varieties": [
+        "[EZ] Grevillea baileyana Gold ",
+        "Cortaderia Dried Per Bunch Burgundy",
+        "Cortaderia Dried Per Bunch Red",
+        "Cortaderia Dried Per Bunch Silvy Red ",
+        "Grevillea",
+        "Grevillea / Ivanhoe",
+        "Grevillea baileyana Gold ",
+        "ISRAEL 그레빌레아. Grevillea Billiana Gold  70cm "
+      ]
+    },
+    "네리네": {
+      "total_count": 8,
+      "active_count": 8,
+      "countries": [
+        "네덜란드"
+      ],
+      "sample_varieties": [
+        "Nerine Bowdenii Biancaneve",
+        "Nerine Bowdenii Biancaperla",
+        "Nerine Favoriet",
+        "Nerine Like a Virgin",
+        "Nerine Lydia Red",
+        "Nerine Ras Van Roon",
+        "Nerine Sofie L/Pink",
+        "Nerine Vestak L/Pink"
+      ]
+    },
+    "파니쿰": {
+      "total_count": 8,
+      "active_count": 8,
+      "countries": [
+        "네덜란드"
+      ],
+      "sample_varieties": [
+        "Panicum Fountain",
+        "Panicum Painted Burgundy",
+        "Panicum Painted Champagne",
+        "Panicum Painted Cooper",
+        "Panicum Painted Gold",
+        "Panicum Painted Lilac",
+        "Panicum Painted Platinum",
+        "Panicum Painted Rose Gold"
+      ]
+    },
+    "백합": {
+      "total_count": 7,
+      "active_count": 7,
+      "countries": [
+        "네덜란드"
+      ],
+      "sample_varieties": [
+        "Lily la Ducati",
+        "Lily la tintoretto",
+        "Lily Lasting Love",
+        "Lily Longiflorum Watch Up 1 HD",
+        "Lily Longiflorum Watch Up 2+",
+        "Lily Longiflorum Watch Up 3+",
+        "Lily Pink Cocotte"
+      ]
+    },
+    "부바르디아": {
+      "total_count": 7,
+      "active_count": 7,
+      "countries": [
+        "네덜란드"
+      ],
+      "sample_varieties": [
+        "Bouvardia Diamond Prince",
+        "Bouvardia Double Diamond Sparkles",
+        "Bouvardia Double Salmon",
+        "Bouvardia Single Royal Naomi Lavender",
+        "Bouvardia Single Royal Twotone Pink",
+        "Bouvardia Single Royal Verde White",
+        "Bouvardia Single Sweet Roza L/Pink"
+      ]
+    },
+    "퐁퐁 Pong Pong": {
+      "total_count": 7,
+      "active_count": 7,
+      "countries": [
+        "베트남"
+      ],
+      "sample_varieties": [
+        "PEONY VIETNAM / 피어니 화이트 (White) ",
+        "POMPON VIETNAM / 퐁퐁 골든 (Golden) ",
+        "POMPON VIETNAM / 퐁퐁 그린 (Green) ",
+        "POMPON VIETNAM / 퐁퐁 노란 (Borg) ",
+        "POMPON VIETNAM / 퐁퐁 연핑크 (Momoko) ",
+        "POMPON VIETNAM / 퐁퐁 진핑크 (Zariah) ",
+        "POMPON VIETNAM / 퐁퐁 화이트 (White) "
+      ]
+    },
+    "쓰립톱": {
+      "total_count": 7,
+      "active_count": 7,
+      "countries": [
+        "호주"
+      ],
+      "sample_varieties": [
+        "Thryptomene Calycina Blue",
+        "Thryptomene Calycina Dyed Pink",
+        "Thryptomene Calycina Green",
+        "Thryptomene Calycina Natural Pink",
+        "Thryptomene Calycina Natural White",
+        "Thryptomene Calycina Orange",
+        "Thryptomene Calycina Purple"
+      ]
+    },
+    "목화": {
+      "total_count": 6,
+      "active_count": 6,
+      "countries": [
+        "네덜란드",
+        "이스라엘"
+      ],
+      "sample_varieties": [
+        "Cotton / 6Bloom 75cm",
+        "Cotton / 7Bloom 75cm",
+        "Cotton / 8Bloom 75cm",
+        "GOS HIRSUTUM",
+        "ISRAEL 목화. Gossipium COT. Hirsutum White (10F)",
+        "ISRAEL 목화. Gossipium COT. Hirsutum White (8F)"
+      ]
+    },
+    "사포나리아": {
+      "total_count": 6,
+      "active_count": 6,
+      "countries": [
+        "네덜란드"
+      ],
+      "sample_varieties": [
+        "Saponaria D/Purple",
+        "Saponaria L/Purple",
+        "Saponaria Lavender",
+        "Saponaria Pink",
+        "Saponaria Stellata",
+        "Saponaria White"
+      ]
+    },
+    "아나나스": {
+      "total_count": 6,
+      "active_count": 6,
+      "countries": [
+        "콜롬비아",
+        "네덜란드"
+      ],
+      "sample_varieties": [
+        "Ananas L Size",
+        "Ananas Mini Extra",
+        "Ananas Perfecto Brasil 50cm",
+        "Ananas Small Extra",
+        "Ananas XL Size",
+        "Ananas"
+      ]
+    },
+    "프리져브드": {
+      "total_count": 6,
+      "active_count": 6,
+      "countries": [
+        "네덜란드"
+      ],
+      "sample_varieties": [
+        "Preserved Fagus",
+        "Preserved Fagus 70cm 200g",
+        "Preserved Fagus Orange",
+        "Preserved Fagus Red",
+        "Preserved Fagus Yellow",
+        "Preserved Stuartiana Autunno 200g"
+      ]
+    },
+    "아란": {
+      "total_count": 6,
+      "active_count": 6,
+      "countries": [
+        "태국"
+      ],
+      "sample_varieties": [
+        "아란 샘플",
+        "ARAN Anny Back",
+        "ARAN Azima",
+        "ARAN REENA Red",
+        "ARAN.Juling Red B",
+        "ARAN.Juling Red XL"
+      ]
+    },
+    "부쉬": {
+      "total_count": 6,
+      "active_count": 6,
+      "countries": [
+        "호주"
+      ],
+      "sample_varieties": [
+        "Banker Bush",
+        "Sapphire Bush",
+        "Smoke Bush",
+        "Wolly Bush",
+        "Wolly Bush Green Tip ",
+        "Wolly Bush Red Tip"
+      ]
+    },
+    "펀": {
+      "total_count": 6,
+      "active_count": 6,
+      "countries": [
+        "호주"
+      ],
+      "sample_varieties": [
+        "Dingo Fern",
+        "Fern Rainbow",
+        "Fern Sea Star",
+        "Fern Umbrella",
+        "Koala Fern",
+        "Star Fern"
+      ]
+    },
+    "라넌큘러스": {
+      "total_count": 5,
+      "active_count": 5,
+      "countries": [
+        "네덜란드"
+      ],
+      "sample_varieties": [
+        "Cloni Firenze",
+        "Cloni White EX",
+        "Elegance White",
+        "Elegance White EX",
+        "Ranaunclus Niveus"
+      ]
+    },
+    "아이리스": {
+      "total_count": 5,
+      "active_count": 5,
+      "countries": [
+        "네덜란드"
+      ],
+      "sample_varieties": [
+        "Iris Apollo",
+        "Iris Casa Blanca",
+        "Iris Hong Kong",
+        "Iris Shanghai",
+        "Iris White Magic"
+      ]
+    },
+    "유스토마": {
+      "total_count": 5,
+      "active_count": 5,
+      "countries": [
+        "네덜란드"
+      ],
+      "sample_varieties": [
+        "Eustoma / Botanic Blue",
+        "Eustoma / Botanic Pink",
+        "Eustoma / Botanic White",
+        "Eustoma / Dyed Double Heavenly Peach",
+        "Eustoma / Dyed Double Lovely Red"
+      ]
+    },
+    "호접난 Orchid": {
+      "total_count": 5,
+      "active_count": 5,
+      "countries": [
+        "베트남"
+      ],
+      "sample_varieties": [
+        "ORCHID VIETNAM / 호접란  연핑크 7 (Party grade Single Sprayed 7F, Soft Pink) ",
+        "ORCHID VIETNAM / 호접란  핑크 7 (Party grade Single Sprayed 7F, Perfect Pink) ",
+        "ORCHID VIETNAM / 호접란  화이트 7 (Party grade White 7) ",
+        "ORCHID VIETNAM / 호접란  화이트 7-8 (Party grade White 7-8) ",
+        "ORCHID VIETNAM / 호접란  화이트 8 (Party grade White 8) "
+      ]
+    },
+    "레우코취": {
+      "total_count": 4,
+      "active_count": 4,
+      "countries": [
+        "네덜란드"
+      ],
+      "sample_varieties": [
+        "Leucothoe Absorbed red",
+        "Leucothoe Rainbow",
+        "Leucothoe Tinted Red",
+        "Leucothoe Walteri Red"
+      ]
+    },
+    "샌더소니아": {
+      "total_count": 4,
+      "active_count": 4,
+      "countries": [
+        "일본",
+        "네덜란드"
+      ],
+      "sample_varieties": [
+        "Sandersonia",
+        "Sandersonia Japan / Sadersonia Orange 50cm",
+        "Sandersonia Japan / Sadersonia Orange 60cm",
+        "Sandersonia Japan / Sadersonia Orange 70cm"
+      ]
+    },
+    "자스민": {
+      "total_count": 4,
+      "active_count": 4,
+      "countries": [
+        "네덜란드"
+      ],
+      "sample_varieties": [
+        "Jasmine / Rank Wit Per Tak White",
+        "Jasmine / White",
+        "Jasmine Snowbelle White",
+        "Jasminum Per Bunch Pink/White"
+      ]
+    },
+    "젠티아나": {
+      "total_count": 4,
+      "active_count": 4,
+      "countries": [
+        "네덜란드"
+      ],
+      "sample_varieties": [
+        "Gentiana Blue Sky",
+        "Gentiana Lavender Sky",
+        "Gentiana Pink Sky",
+        "Gentiana White Sky 80cm"
+      ]
+    },
+    "트리트나리아": {
+      "total_count": 4,
+      "active_count": 4,
+      "countries": [
+        "네덜란드"
+      ],
+      "sample_varieties": [
+        "Triteleia Blue 70cm",
+        "Triteleia L/Lavender 70cm",
+        "Triteleia Pink 70cm",
+        "Triteleia White 70cm"
+      ]
+    },
+    "파우": {
+      "total_count": 4,
+      "active_count": 4,
+      "countries": [
+        "네덜란드",
+        "호주"
+      ],
+      "sample_varieties": [
+        "[EZ] Kangaroo / Paws Early Spring ",
+        "Kangaroo / Paws Early Spring ",
+        "Kangaroo / paws green",
+        "Kangaroo Paw"
+      ]
+    },
+    "피토스": {
+      "total_count": 4,
+      "active_count": 4,
+      "countries": [
+        "네덜란드",
+        "뉴질랜드"
+      ],
+      "sample_varieties": [
+        "Pittosporum Green",
+        "Pittosporum Nevato",
+        "Pittosporum Ralphi",
+        "Pittosporum / Mountain Green"
+      ]
+    },
+    "루스커스": {
+      "total_count": 4,
+      "active_count": 4,
+      "countries": [
+        "콜롬비아",
+        "이스라엘"
+      ],
+      "sample_varieties": [
+        "ISRAEL 루스쿠스. Sample Ruscus",
+        "Ruscus Green",
+        "Ruscus Green 50cm ",
+        "Ruscus Green 70cm "
+      ]
+    },
+    "온시디움": {
+      "total_count": 4,
+      "active_count": 4,
+      "countries": [
+        "태국"
+      ],
+      "sample_varieties": [
+        "온시디움 샘플",
+        "Oncidium",
+        "Oncidium Golden Shower",
+        "Oncidium Grower Ramsey XL"
+      ]
+    },
+    "화이트붐": {
+      "total_count": 4,
+      "active_count": 4,
+      "countries": [
+        "태국"
+      ],
+      "sample_varieties": [
+        "Den. White Bom (화이트) L",
+        "Den. White Bom (화이트) M",
+        "Den. White Bom (화이트) XL",
+        "White Necklace (120cm - 70ea)"
+      ]
+    },
+    "글로리오사": {
+      "total_count": 3,
+      "active_count": 3,
+      "countries": [
+        "네덜란드"
+      ],
+      "sample_varieties": [
+        "Gloriosa / Orange 85cm",
+        "Gloriosa / Orange long",
+        "Gloriosa / Red long"
+      ]
+    },
+    "깜바눌라": {
+      "total_count": 3,
+      "active_count": 3,
+      "countries": [
+        "네덜란드"
+      ],
+      "sample_varieties": [
+        "Campanula / Campana Pearl Pink",
+        "Campanula / Medium Champion White",
+        "Campanula / Medium Lavender"
+      ]
+    },
+    "제니스터": {
+      "total_count": 3,
+      "active_count": 3,
+      "countries": [
+        "네덜란드"
+      ],
+      "sample_varieties": [
+        "Genista / Painted Pink",
+        "Genista / Painted White",
+        "Genista / Painted Yellow"
+      ]
+    },
+    "빅화이트": {
+      "total_count": 3,
+      "active_count": 3,
+      "countries": [
+        "태국"
+      ],
+      "sample_varieties": [
+        "Den. Big White (화이트) L",
+        "Den. Big White (화이트) M",
+        "Den. Big White (화이트) XL"
+      ]
+    },
+    "진다스윗트": {
+      "total_count": 3,
+      "active_count": 3,
+      "countries": [
+        "태국"
+      ],
+      "sample_varieties": [
+        "Den. Jinda Sweet (피치) L",
+        "Den. Jinda Sweet (피치) M",
+        "Den. Jinda Sweet (피치) XL"
+      ]
+    },
+    "햇사야": {
+      "total_count": 3,
+      "active_count": 3,
+      "countries": [
+        "태국"
+      ],
+      "sample_varieties": [
+        "Den. Hatsaya pink [L]",
+        "Den. Hatsaya pink [M]",
+        "Den. Hatsaya pink [XL]"
+      ]
+    },
+    "리시안서스": {
+      "total_count": 2,
+      "active_count": 2,
+      "countries": [
+        "네덜란드"
+      ],
+      "sample_varieties": [
+        "Lisianthus Botanic Pink",
+        "Lisianthus Botanic White"
+      ]
+    },
+    "릴리": {
+      "total_count": 2,
+      "active_count": 2,
+      "countries": [
+        "네덜란드"
+      ],
+      "sample_varieties": [
+        "Lilium / Double Roselily Anouska",
+        "Lilium / Roselily Isabell"
+      ]
+    },
+    "마트리카리아": {
+      "total_count": 2,
+      "active_count": 2,
+      "countries": [
+        "네덜란드"
+      ],
+      "sample_varieties": [
+        "Matricaria Cameron White 55cm",
+        "Matricaria Cameron White 60cm"
+      ]
+    },
+    "오니소겔륨": {
+      "total_count": 2,
+      "active_count": 2,
+      "countries": [
+        "네덜란드"
+      ],
+      "sample_varieties": [
+        "Onisogallium / Arabicum Saundersiae",
+        "Onisogallium / White"
+      ]
+    },
+    "오이초": {
+      "total_count": 2,
+      "active_count": 2,
+      "countries": [
+        "네덜란드"
+      ],
+      "sample_varieties": [
+        "Sanguisorba Officinalis Red Dream 80cm",
+        "Sanguisorba Pink Tann"
+      ]
+    },
+    "코치아": {
+      "total_count": 2,
+      "active_count": 2,
+      "countries": [
+        "네덜란드"
+      ],
+      "sample_varieties": [
+        "Kochia 50cm",
+        "Kochia Scoparia"
+      ]
+    },
+    "프로테아": {
+      "total_count": 2,
+      "active_count": 2,
+      "countries": [
+        "네덜란드"
+      ],
+      "sample_varieties": [
+        "Protea Cynaroides 40cm",
+        "Protea Cynaroides 80cm"
+      ]
+    },
+    "더글라스": {
+      "total_count": 2,
+      "active_count": 2,
+      "countries": [
+        "미국"
+      ],
+      "sample_varieties": [
+        "Beargrass",
+        "Douglas Fir"
+      ]
+    },
+    "그라스": {
+      "total_count": 2,
+      "active_count": 2,
+      "countries": [
+        "호주"
+      ],
+      "sample_varieties": [
+        "Emu Grass",
+        "Steel Grass"
+      ]
+    },
+    "세루리아": {
+      "total_count": 2,
+      "active_count": 2,
+      "countries": [
+        "호주"
+      ],
+      "sample_varieties": [
+        "Serruria Florida (50cm) Pink",
+        "Serruria Florida (50cm) White"
+      ]
+    },
+    "파인": {
+      "total_count": 2,
+      "active_count": 2,
+      "countries": [
+        "호주"
+      ],
+      "sample_varieties": [
+        "Aussie Pine Tails",
+        "Bribie Pine"
+      ]
+    },
+    "갈락시": {
+      "total_count": 1,
+      "active_count": 1,
+      "countries": [
+        "네덜란드"
+      ],
+      "sample_varieties": [
+        "Galaxi"
+      ]
+    },
+    "니포피아": {
+      "total_count": 1,
+      "active_count": 1,
+      "countries": [
+        "네덜란드"
+      ],
+      "sample_varieties": [
+        "Kniphofia/ Alcazar"
+      ]
+    },
+    "무스카리": {
+      "total_count": 1,
+      "active_count": 1,
+      "countries": [
+        "네덜란드"
+      ],
+      "sample_varieties": [
+        "Muscari blue"
+      ]
+    },
+    "블루아이스": {
+      "total_count": 1,
+      "active_count": 1,
+      "countries": [
+        "네덜란드"
+      ],
+      "sample_varieties": [
+        "Cupres AR Glauca Blue Ice 50cm"
+      ]
+    },
+    "스티파": {
+      "total_count": 1,
+      "active_count": 1,
+      "countries": [
+        "네덜란드"
+      ],
+      "sample_varieties": [
+        "Stipa / Penatta"
+      ]
+    },
+    "아네모네": {
+      "total_count": 1,
+      "active_count": 1,
+      "countries": [
+        "네덜란드"
+      ],
+      "sample_varieties": [
+        "Anemone Marianne Panda"
+      ]
+    },
+    "은방울꽃": {
+      "total_count": 1,
+      "active_count": 1,
+      "countries": [
+        "네덜란드"
+      ],
+      "sample_varieties": [
+        "Convallaria White"
+      ]
+    },
+    "콘티누스": {
+      "total_count": 1,
+      "active_count": 1,
+      "countries": [
+        "네덜란드"
+      ],
+      "sample_varieties": [
+        "Continus Royal Purple"
+      ]
+    },
+    "팜파스": {
+      "total_count": 1,
+      "active_count": 1,
+      "countries": [
+        "네덜란드"
+      ],
+      "sample_varieties": [
+        "Cartadria Evita"
+      ]
+    },
+    "레몬잎": {
+      "total_count": 1,
+      "active_count": 1,
+      "countries": [
+        "미국"
+      ],
+      "sample_varieties": [
+        "SALAL TIPS"
+      ]
+    },
+    "코쿨루스": {
+      "total_count": 1,
+      "active_count": 1,
+      "countries": [
+        "콜롬비아"
+      ],
+      "sample_varieties": [
+        "COCCULUS"
+      ]
+    },
+    "레드불": {
+      "total_count": 1,
+      "active_count": 1,
+      "countries": [
+        "태국"
+      ],
+      "sample_varieties": [
+        "Den. Red Bull(레드불)"
+      ]
+    },
+    "미스오키드": {
+      "total_count": 1,
+      "active_count": 1,
+      "countries": [
+        "태국"
+      ],
+      "sample_varieties": [
+        "Den. Miss Orchid"
+      ]
+    },
+    "바이올렛": {
+      "total_count": 1,
+      "active_count": 1,
+      "countries": [
+        "태국"
+      ],
+      "sample_varieties": [
+        "Den. Violet"
+      ]
+    },
+    "부라나제이드": {
+      "total_count": 1,
+      "active_count": 1,
+      "countries": [
+        "태국"
+      ],
+      "sample_varieties": [
+        "Den. Burana Jade (그린) XL"
+      ]
+    },
+    "아리둥그린": {
+      "total_count": 1,
+      "active_count": 1,
+      "countries": [
+        "태국"
+      ],
+      "sample_varieties": [
+        "Den. Areedung Green"
+      ]
+    },
+    "스테노": {
+      "total_count": 1,
+      "active_count": 1,
+      "countries": [
+        "호주"
+      ],
+      "sample_varieties": [
+        "Stenocarpus"
+      ]
+    },
+    "클라우": {
+      "total_count": 1,
+      "active_count": 1,
+      "countries": [
+        "호주"
+      ],
+      "sample_varieties": [
+        "Goanna Claw"
+      ]
+    },
+    "페더": {
+      "total_count": 1,
+      "active_count": 1,
+      "countries": [
+        "호주"
+      ],
+      "sample_varieties": [
+        "Emu Feather"
+      ]
+    }
+  },
+  "product_matches": {
+    "카네이션": {
+      "kakao_count": 1868,
+      "match_type": "EXACT",
+      "db_flower_name": "카네이션",
+      "db_variety_count": 367
+    },
+    "장미": {
+      "kakao_count": 1373,
+      "match_type": "EXACT",
+      "db_flower_name": "장미",
+      "db_variety_count": 738
+    },
+    "수국": {
+      "kakao_count": 1202,
+      "match_type": "EXACT",
+      "db_flower_name": "수국",
+      "db_variety_count": 160
+    },
+    "알스트로": {
+      "kakao_count": 262,
+      "match_type": "EXACT",
+      "db_flower_name": "알스트로",
+      "db_variety_count": 84
+    },
+    "레몬잎": {
+      "kakao_count": 243,
+      "match_type": "EXACT",
+      "db_flower_name": "레몬잎",
+      "db_variety_count": 1
+    },
+    "루스커스": {
+      "kakao_count": 208,
+      "match_type": "EXACT",
+      "db_flower_name": "루스커스",
+      "db_variety_count": 4
+    },
+    "튤립": {
+      "kakao_count": 31,
+      "match_type": "EXACT",
+      "db_flower_name": "튤립",
+      "db_variety_count": 299
+    },
+    "모카라": {
+      "kakao_count": 29,
+      "match_type": "EXACT",
+      "db_flower_name": "모카라",
+      "db_variety_count": 33
+    },
+    "아마릴리스": {
+      "kakao_count": 13,
+      "match_type": "EXACT",
+      "db_flower_name": "아마릴리스",
+      "db_variety_count": 33
+    },
+    "리시안셔스": {
+      "kakao_count": 9,
+      "match_type": "FUZZY",
+      "db_flower_name": "리시안서스",
+      "db_variety_count": 2
+    },
+    "알륨": {
+      "kakao_count": 9,
+      "match_type": "EXACT",
+      "db_flower_name": "알륨",
+      "db_variety_count": 19
+    },
+    "은방울꽃": {
+      "kakao_count": 3,
+      "match_type": "EXACT",
+      "db_flower_name": "은방울꽃",
+      "db_variety_count": 1
+    },
+    "살릭스": {
+      "kakao_count": 1,
+      "match_type": "NONE",
+      "db_flower_name": null,
+      "db_variety_count": 0
+    }
+  },
+  "variety_matches": {
+    "수국/화이트": {
+      "kakao_count": 31,
+      "variety_name": "화이트",
+      "flower_hint": "수국",
+      "match_type": "EXACT",
+      "best_match": {
+        "ProdKey": 965,
+        "ProdName": "Hydrangea / Snow Ball White",
+        "FlowerName": "수국",
+        "CounName": "네덜란드",
+        "score": 1.0
+      },
+      "all_matches_count": 6,
+      "top3_matches": [
+        {
+          "ProdKey": 965,
+          "ProdName": "Hydrangea / Snow Ball White",
+          "FlowerName": "수국",
+          "score": 1.0
+        },
+        {
+          "ProdKey": 987,
+          "ProdName": "Hydrangea / Verena White",
+          "FlowerName": "수국",
+          "score": 1.0
+        },
+        {
+          "ProdKey": 895,
+          "ProdName": "Hydrangea Jumbo White",
+          "FlowerName": "수국",
+          "score": 1.0
+        }
+      ]
+    },
+    "수국/블루": {
+      "kakao_count": 11,
+      "variety_name": "블루",
+      "flower_hint": "수국",
+      "match_type": "EXACT",
+      "best_match": {
+        "ProdKey": 899,
+        "ProdName": "Hydrangea / Aphrodite Light Blue",
+        "FlowerName": "수국",
+        "CounName": "네덜란드",
+        "score": 1.0
+      },
+      "all_matches_count": 10,
+      "top3_matches": [
+        {
+          "ProdKey": 899,
+          "ProdName": "Hydrangea / Aphrodite Light Blue",
+          "FlowerName": "수국",
+          "score": 1.0
+        },
+        {
+          "ProdKey": 933,
+          "ProdName": "Hydrangea / Classic Pimpurnel Blue",
+          "FlowerName": "수국",
+          "score": 1.0
+        },
+        {
+          "ProdKey": 910,
+          "ProdName": "Hydrangea / Elbtal Blue",
+          "FlowerName": "수국",
+          "score": 1.0
+        }
+      ]
+    },
+    "카네이션/문라이트": {
+      "kakao_count": 6,
+      "variety_name": "문라이트",
+      "flower_hint": "카네이션",
+      "match_type": "EXACT",
+      "best_match": {
+        "ProdKey": 2308,
+        "ProdName": "Carnation CHINA / 문라이트 (Moonlight)",
+        "FlowerName": "카네이션",
+        "CounName": "중국",
+        "score": 1.0
+      },
+      "all_matches_count": 2,
+      "top3_matches": [
+        {
+          "ProdKey": 2308,
+          "ProdName": "Carnation CHINA / 문라이트 (Moonlight)",
+          "FlowerName": "카네이션",
+          "score": 1.0
+        },
+        {
+          "ProdKey": 2515,
+          "ProdName": "CARNATION MIx Box A (Doncel. Novia, Moonlight)",
+          "FlowerName": "카네이션",
+          "score": 1.0
+        }
+      ]
+    },
+    "수국/그린": {
+      "kakao_count": 6,
+      "variety_name": "그린",
+      "flower_hint": "수국",
+      "match_type": "EXACT",
+      "best_match": {
+        "ProdKey": 902,
+        "ProdName": "Hydrangea / Bodensee Classic Green",
+        "FlowerName": "수국",
+        "CounName": "네덜란드",
+        "score": 1.0
+      },
+      "all_matches_count": 10,
+      "top3_matches": [
+        {
+          "ProdKey": 902,
+          "ProdName": "Hydrangea / Bodensee Classic Green",
+          "FlowerName": "수국",
+          "score": 1.0
+        },
+        {
+          "ProdKey": 997,
+          "ProdName": "Hydrangea / Classic Adora Green-Purple",
+          "FlowerName": "수국",
+          "score": 1.0
+        },
+        {
+          "ProdKey": 2444,
+          "ProdName": "Hydrangea / Classic Magical Charlotte Red/Green",
+          "FlowerName": "수국",
+          "score": 1.0
+        }
+      ]
+    },
+    "수국/핑크": {
+      "kakao_count": 6,
+      "variety_name": "핑크",
+      "flower_hint": "수국",
+      "match_type": "EXACT",
+      "best_match": {
+        "ProdKey": 973,
+        "ProdName": "[EZ] Hydrangea / Glowing Alps Pink",
+        "FlowerName": "수국",
+        "CounName": "네덜란드",
+        "score": 1.0
+      },
+      "all_matches_count": 10,
+      "top3_matches": [
+        {
+          "ProdKey": 973,
+          "ProdName": "[EZ] Hydrangea / Glowing Alps Pink",
+          "FlowerName": "수국",
+          "score": 1.0
+        },
+        {
+          "ProdKey": 898,
+          "ProdName": "Hydrangea / Amazing Force L/Pink",
+          "FlowerName": "수국",
+          "score": 1.0
+        },
+        {
+          "ProdKey": 994,
+          "ProdName": "Hydrangea / Classic Magical Ruby Pink",
+          "FlowerName": "수국",
+          "score": 1.0
+        }
+      ]
+    },
+    "수국/연핑크": {
+      "kakao_count": 6,
+      "variety_name": "연핑크",
+      "flower_hint": "수국",
+      "match_type": "EXACT",
+      "best_match": {
+        "ProdKey": 878,
+        "ProdName": "Hydrangea P.PK (BA) (연핑크)",
+        "FlowerName": "수국",
+        "CounName": "콜롬비아",
+        "score": 1.0
+      },
+      "all_matches_count": 10,
+      "top3_matches": [
+        {
+          "ProdKey": 878,
+          "ProdName": "Hydrangea P.PK (BA) (연핑크)",
+          "FlowerName": "수국",
+          "score": 1.0
+        },
+        {
+          "ProdKey": 876,
+          "ProdName": "Hydrangea Paint LIGHT PINK (AMERICAN)",
+          "FlowerName": "수국",
+          "score": 1.0
+        },
+        {
+          "ProdKey": 877,
+          "ProdName": "Hydrangea Paint LIGHT PINK (FLORENTINA)",
+          "FlowerName": "수국",
+          "score": 1.0
+        }
+      ]
+    },
+    "장미/캔들라이트": {
+      "kakao_count": 3,
+      "variety_name": "캔들라이트",
+      "flower_hint": "장미",
+      "match_type": "EXACT",
+      "best_match": {
+        "ProdKey": 1636,
+        "ProdName": "Rose Candlelight 50cm",
+        "FlowerName": "장미",
+        "CounName": "에티오피아",
+        "score": 1.0
+      },
+      "all_matches_count": 6,
+      "top3_matches": [
+        {
+          "ProdKey": 1636,
+          "ProdName": "Rose Candlelight 50cm",
+          "FlowerName": "장미",
+          "score": 1.0
+        },
+        {
+          "ProdKey": 1560,
+          "ProdName": "Rose Candlelight 60cm",
+          "FlowerName": "장미",
+          "score": 1.0
+        },
+        {
+          "ProdKey": 1378,
+          "ProdName": "ROSE / Candlelight 40cm",
+          "FlowerName": "장미",
+          "score": 1.0
+        }
+      ]
+    },
+    "카네이션/노비아": {
+      "kakao_count": 3,
+      "variety_name": "노비아",
+      "flower_hint": "카네이션",
+      "match_type": "EXACT",
+      "best_match": {
+        "ProdKey": 456,
+        "ProdName": "CARNATION Novia",
+        "FlowerName": "카네이션",
+        "CounName": "콜롬비아",
+        "score": 1.0
+      },
+      "all_matches_count": 2,
+      "top3_matches": [
+        {
+          "ProdKey": 456,
+          "ProdName": "CARNATION Novia",
+          "FlowerName": "카네이션",
+          "score": 1.0
+        },
+        {
+          "ProdKey": 2515,
+          "ProdName": "CARNATION MIx Box A (Doncel. Novia, Moonlight)",
+          "FlowerName": "카네이션",
+          "score": 1.0
+        }
+      ]
+    },
+    "카네이션/폴림니아": {
+      "kakao_count": 3,
+      "variety_name": "폴림니아",
+      "flower_hint": "카네이션",
+      "match_type": "FUZZY",
+      "best_match": {
+        "ProdKey": 2199,
+        "ProdName": "PAEONIA",
+        "FlowerName": "왁스",
+        "CounName": "국내",
+        "score": 0.667
+      },
+      "all_matches_count": 1,
+      "top3_matches": [
+        {
+          "ProdKey": 2199,
+          "ProdName": "PAEONIA",
+          "FlowerName": "왁스",
+          "score": 0.667
+        }
+      ]
+    },
+    "장미/로라": {
+      "kakao_count": 2,
+      "variety_name": "로라",
+      "flower_hint": "장미",
+      "match_type": "PARTIAL",
+      "best_match": {
+        "ProdKey": 2653,
+        "ProdName": "ROSE CHINA / 칼로라(CAROLA) ",
+        "FlowerName": "장미",
+        "CounName": "중국",
+        "score": 0.667
+      },
+      "all_matches_count": 1,
+      "top3_matches": [
+        {
+          "ProdKey": 2653,
+          "ProdName": "ROSE CHINA / 칼로라(CAROLA) ",
+          "FlowerName": "장미",
+          "score": 0.667
+        }
+      ]
+    },
+    "카네이션/헤르메스": {
+      "kakao_count": 2,
+      "variety_name": "헤르메스",
+      "flower_hint": "카네이션",
+      "match_type": "EXACT",
+      "best_match": {
+        "ProdKey": 408,
+        "ProdName": "CARNATION Hermes",
+        "FlowerName": "카네이션",
+        "CounName": "콜롬비아",
+        "score": 1.0
+      },
+      "all_matches_count": 3,
+      "top3_matches": [
+        {
+          "ProdKey": 408,
+          "ProdName": "CARNATION Hermes",
+          "FlowerName": "카네이션",
+          "score": 1.0
+        },
+        {
+          "ProdKey": 409,
+          "ProdName": "CARNATION Hermes Orange",
+          "FlowerName": "카네이션",
+          "score": 1.0
+        },
+        {
+          "ProdKey": 2516,
+          "ProdName": "CARNATION MIx Box B (Megan. Hermes, Ikebana)",
+          "FlowerName": "카네이션",
+          "score": 1.0
+        }
+      ]
+    },
+    "카네이션/네스": {
+      "kakao_count": 1,
+      "variety_name": "네스",
+      "flower_hint": "카네이션",
+      "match_type": "EXACT",
+      "best_match": {
+        "ProdKey": 513,
+        "ProdName": "CARNATION Ness",
+        "FlowerName": "카네이션",
+        "CounName": "콜롬비아",
+        "score": 1.0
+      },
+      "all_matches_count": 1,
+      "top3_matches": [
+        {
+          "ProdKey": 513,
+          "ProdName": "CARNATION Ness",
+          "FlowerName": "카네이션",
+          "score": 1.0
+        }
+      ]
+    },
+    "장미/만달라": {
+      "kakao_count": 1,
+      "variety_name": "만달라",
+      "flower_hint": "장미",
+      "match_type": "EXACT",
+      "best_match": {
+        "ProdKey": 3036,
+        "ProdName": "[오경] ROSE CHINA / 만달라(Mandala)",
+        "FlowerName": "장미",
+        "CounName": "중국",
+        "score": 1.0
+      },
+      "all_matches_count": 10,
+      "top3_matches": [
+        {
+          "ProdKey": 3036,
+          "ProdName": "[오경] ROSE CHINA / 만달라(Mandala)",
+          "FlowerName": "장미",
+          "score": 1.0
+        },
+        {
+          "ProdKey": 2089,
+          "ProdName": "ROSE CHINA / 만달라(Mandala) ",
+          "FlowerName": "장미",
+          "score": 1.0
+        },
+        {
+          "ProdKey": 2462,
+          "ProdName": "ROSE CHINA / 만달라(Mandala) DY",
+          "FlowerName": "장미",
+          "score": 1.0
+        }
+      ]
+    },
+    "카네이션/콜리브리": {
+      "kakao_count": 1,
+      "variety_name": "콜리브리",
+      "flower_hint": "카네이션",
+      "match_type": "FUZZY",
+      "best_match": {
+        "ProdKey": 686,
+        "ProdName": "Eucalyptus / Nicholii",
+        "FlowerName": "유칼립투스",
+        "CounName": "네덜란드",
+        "score": 0.667
+      },
+      "all_matches_count": 1,
+      "top3_matches": [
+        {
+          "ProdKey": 686,
+          "ProdName": "Eucalyptus / Nicholii",
+          "FlowerName": "유칼립투스",
+          "score": 0.667
+        }
+      ]
+    },
+    "알륨/글래디에터": {
+      "kakao_count": 1,
+      "variety_name": "글래디에터",
+      "flower_hint": "알륨",
+      "match_type": "EXACT",
+      "best_match": {
+        "ProdKey": 39,
+        "ProdName": "Allium / Gladiator",
+        "FlowerName": "알륨",
+        "CounName": "네덜란드",
+        "score": 1.0
+      },
+      "all_matches_count": 1,
+      "top3_matches": [
+        {
+          "ProdKey": 39,
+          "ProdName": "Allium / Gladiator",
+          "FlowerName": "알륨",
+          "score": 1.0
+        }
+      ]
+    },
+    "장미/블랙잭": {
+      "kakao_count": 1,
+      "variety_name": "블랙잭",
+      "flower_hint": "장미",
+      "match_type": "EXACT",
+      "best_match": {
+        "ProdKey": 1882,
+        "ProdName": "Tulip / Single Black Jack",
+        "FlowerName": "튤립",
+        "CounName": "네덜란드",
+        "score": 1.0
+      },
+      "all_matches_count": 5,
+      "top3_matches": [
+        {
+          "ProdKey": 1882,
+          "ProdName": "Tulip / Single Black Jack",
+          "FlowerName": "튤립",
+          "score": 1.0
+        },
+        {
+          "ProdKey": 2755,
+          "ProdName": "[MEL] CHINA Eucalyptus / 블랙잭 (베이비 블루) (대) 1Kg",
+          "FlowerName": "기타",
+          "score": 1.0
+        },
+        {
+          "ProdKey": 2226,
+          "ProdName": "Eucalyptus CHINA / 블랙잭 (베이비 블루) (대) 1Kg",
+          "FlowerName": "기타",
+          "score": 1.0
+        }
+      ]
+    },
+    "장미/핑크익스프레션": {
+      "kakao_count": 1,
+      "variety_name": "핑크익스프레션",
+      "flower_hint": "장미",
+      "match_type": "PARTIAL",
+      "best_match": {
+        "ProdKey": 1704,
+        "ProdName": "Garden Rosa O hara Pink 50cm",
+        "FlowerName": "장미",
+        "CounName": "네덜란드",
+        "score": 1.0
+      },
+      "all_matches_count": 10,
+      "top3_matches": [
+        {
+          "ProdKey": 1704,
+          "ProdName": "Garden Rosa O hara Pink 50cm",
+          "FlowerName": "장미",
+          "score": 1.0
+        },
+        {
+          "ProdKey": 1490,
+          "ProdName": "Ecuador Mayra Rose Bridal Pink",
+          "FlowerName": "장미",
+          "score": 1.0
+        },
+        {
+          "ProdKey": 1545,
+          "ProdName": "Ecuador Mayra Rose Hot Pink",
+          "FlowerName": "장미",
+          "score": 1.0
+        }
+      ]
+    },
+    "카네이션/마리포사": {
+      "kakao_count": 1,
+      "variety_name": "마리포사",
+      "flower_hint": "카네이션",
+      "match_type": "EXACT",
+      "best_match": {
+        "ProdKey": 435,
+        "ProdName": "CARNATION Mariposa",
+        "FlowerName": "카네이션",
+        "CounName": "콜롬비아",
+        "score": 1.0
+      },
+      "all_matches_count": 2,
+      "top3_matches": [
+        {
+          "ProdKey": 435,
+          "ProdName": "CARNATION Mariposa",
+          "FlowerName": "카네이션",
+          "score": 1.0
+        },
+        {
+          "ProdKey": 2518,
+          "ProdName": "CARNATION MIx Box D (Mariposa. Yukari cherry, Cherrio)",
+          "FlowerName": "카네이션",
+          "score": 1.0
+        }
+      ]
+    },
+    "카네이션/지오지아": {
+      "kakao_count": 1,
+      "variety_name": "지오지아",
+      "flower_hint": "카네이션",
+      "match_type": "FUZZY",
+      "best_match": {
+        "ProdKey": 2994,
+        "ProdName": "CARNATION Cobalt thrill (Geoflora)",
+        "FlowerName": "카네이션",
+        "CounName": "콜롬비아",
+        "score": 0.667
+      },
+      "all_matches_count": 3,
+      "top3_matches": [
+        {
+          "ProdKey": 2994,
+          "ProdName": "CARNATION Cobalt thrill (Geoflora)",
+          "FlowerName": "카네이션",
+          "score": 0.667
+        },
+        {
+          "ProdKey": 2995,
+          "ProdName": "CARNATION Frenesi (Geoflora)",
+          "FlowerName": "카네이션",
+          "score": 0.667
+        },
+        {
+          "ProdKey": 2993,
+          "ProdName": "CARNATION Yellow Stone (Geoflora)",
+          "FlowerName": "카네이션",
+          "score": 0.667
+        }
+      ]
+    },
+    "아마릴리스/심포니": {
+      "kakao_count": 1,
+      "variety_name": "심포니",
+      "flower_hint": "아마릴리스",
+      "match_type": "EXACT",
+      "best_match": {
+        "ProdKey": 3072,
+        "ProdName": "Amaryllis / White Symphony 10st White",
+        "FlowerName": "아마릴리스",
+        "CounName": "네덜란드",
+        "score": 1.0
+      },
+      "all_matches_count": 2,
+      "top3_matches": [
+        {
+          "ProdKey": 3072,
+          "ProdName": "Amaryllis / White Symphony 10st White",
+          "FlowerName": "아마릴리스",
+          "score": 1.0
+        },
+        {
+          "ProdKey": 3054,
+          "ProdName": "Amaryllis / White Symphony 12st White",
+          "FlowerName": "아마릴리스",
+          "score": 1.0
+        }
+      ]
+    },
+    "카네이션/유카리체리": {
+      "kakao_count": 1,
+      "variety_name": "유카리체리",
+      "flower_hint": "카네이션",
+      "match_type": "EXACT",
+      "best_match": {
+        "ProdKey": 502,
+        "ProdName": "CARNATION Yukari Cherry",
+        "FlowerName": "카네이션",
+        "CounName": "콜롬비아",
+        "score": 1.0
+      },
+      "all_matches_count": 4,
+      "top3_matches": [
+        {
+          "ProdKey": 502,
+          "ProdName": "CARNATION Yukari Cherry",
+          "FlowerName": "카네이션",
+          "score": 1.0
+        },
+        {
+          "ProdKey": 500,
+          "ProdName": "CARNATION Yukari Oscuro",
+          "FlowerName": "카네이션",
+          "score": 1.0
+        },
+        {
+          "ProdKey": 2599,
+          "ProdName": "CARNATION Yukari Violet",
+          "FlowerName": "카네이션",
+          "score": 1.0
+        }
+      ]
+    },
+    "카네이션/브루트": {
+      "kakao_count": 1,
+      "variety_name": "브루트",
+      "flower_hint": "카네이션",
+      "match_type": "EXACT",
+      "best_match": {
+        "ProdKey": 359,
+        "ProdName": "CARNATION Brut",
+        "FlowerName": "카네이션",
+        "CounName": "콜롬비아",
+        "score": 1.0
+      },
+      "all_matches_count": 1,
+      "top3_matches": [
+        {
+          "ProdKey": 359,
+          "ProdName": "CARNATION Brut",
+          "FlowerName": "카네이션",
+          "score": 1.0
+        }
+      ]
+    }
+  },
+  "supplier_matches": {
+    "주광": {
+      "kakao_count": 204,
+      "match_type": "CONTAINS",
+      "best_match": {
+        "CustKey": 533,
+        "CustName": "주광농원",
+        "Group1": "매출거래처"
+      },
+      "all_matches": [
+        {
+          "CustKey": 533,
+          "CustName": "주광농원",
+          "Group1": "매출거래처",
+          "score": 0.5
+        },
+        {
+          "CustKey": 675,
+          "CustName": "주광여분코드",
+          "Group1": "",
+          "score": 0.333
+        }
+      ]
+    },
+    "대한": {
+      "kakao_count": 85,
+      "match_type": "CONTAINS",
+      "best_match": {
+        "CustKey": 352,
+        "CustName": "대한꽃집",
+        "Group1": "매출거래처"
+      },
+      "all_matches": [
+        {
+          "CustKey": 352,
+          "CustName": "대한꽃집",
+          "Group1": "매출거래처",
+          "score": 0.5
+        },
+        {
+          "CustKey": 353,
+          "CustName": "대한익스프레스",
+          "Group1": "매입거래처",
+          "score": 0.286
+        },
+        {
+          "CustKey": 453,
+          "CustName": "씨제이대한통운(주)",
+          "Group1": "매입거래처",
+          "score": 0.2
+        }
+      ]
+    },
+    "신라": {
+      "kakao_count": 81,
+      "match_type": "CONTAINS",
+      "best_match": {
+        "CustKey": 444,
+        "CustName": "신라상사",
+        "Group1": "매출거래처"
+      },
+      "all_matches": [
+        {
+          "CustKey": 444,
+          "CustName": "신라상사",
+          "Group1": "매출거래처",
+          "score": 0.5
+        },
+        {
+          "CustKey": 446,
+          "CustName": "신라호텔",
+          "Group1": "매출거래처",
+          "score": 0.5
+        },
+        {
+          "CustKey": 445,
+          "CustName": "신라상사2",
+          "Group1": "",
+          "score": 0.4
+        }
+      ]
+    },
+    "주광농원": {
+      "kakao_count": 75,
+      "match_type": "EXACT",
+      "best_match": {
+        "CustKey": 533,
+        "CustName": "주광농원",
+        "Group1": "매출거래처"
+      },
+      "all_matches": [
+        {
+          "CustKey": 533,
+          "CustName": "주광농원",
+          "Group1": "매출거래처",
+          "score": 0
+        }
+      ]
+    },
+    "그린": {
+      "kakao_count": 61,
+      "match_type": "CONTAINS",
+      "best_match": {
+        "CustKey": 296,
+        "CustName": "그린원예",
+        "Group1": "매출거래처"
+      },
+      "all_matches": [
+        {
+          "CustKey": 296,
+          "CustName": "그린원예",
+          "Group1": "매출거래처",
+          "score": 0.5
+        },
+        {
+          "CustKey": 297,
+          "CustName": "그린화원",
+          "Group1": "매출거래처",
+          "score": 0.5
+        },
+        {
+          "CustKey": 670,
+          "CustName": "그린테라피",
+          "Group1": "",
+          "score": 0.4
+        }
+      ]
+    },
+    "미우": {
+      "kakao_count": 60,
+      "match_type": "FUZZY",
+      "best_match": {
+        "CustKey": 379,
+        "CustName": "미소",
+        "Group1": "매출거래처"
+      },
+      "all_matches": [
+        {
+          "CustKey": 379,
+          "CustName": "미소",
+          "Group1": "매출거래처",
+          "score": 0.5
+        },
+        {
+          "CustKey": 294,
+          "CustName": "그로우",
+          "Group1": "매출거래처",
+          "score": 0.4
+        },
+        {
+          "CustKey": 374,
+          "CustName": "미경상사",
+          "Group1": "매출거래처",
+          "score": 0.4
+        },
+        {
+          "CustKey": 539,
+          "CustName": "주식회사 미티오",
+          "Group1": "매입거래처",
+          "score": 0.4
+        },
+        {
+          "CustKey": 591,
+          "CustName": "타우블",
+          "Group1": "매출거래처",
+          "score": 0.4
+        }
+      ]
+    },
+    "태림": {
+      "kakao_count": 44,
+      "match_type": "CONTAINS",
+      "best_match": {
+        "CustKey": 565,
+        "CustName": "태림원예",
+        "Group1": "매출거래처"
+      },
+      "all_matches": [
+        {
+          "CustKey": 565,
+          "CustName": "태림원예",
+          "Group1": "매출거래처",
+          "score": 0.5
+        }
+      ]
+    },
+    "소재2호": {
+      "kakao_count": 26,
+      "match_type": "EXACT",
+      "best_match": {
+        "CustKey": 433,
+        "CustName": "소재2호",
+        "Group1": "매출거래처"
+      },
+      "all_matches": [
+        {
+          "CustKey": 433,
+          "CustName": "소재2호",
+          "Group1": "매출거래처",
+          "score": 0
+        }
+      ]
+    },
+    "수연": {
+      "kakao_count": 24,
+      "match_type": "CONTAINS",
+      "best_match": {
+        "CustKey": 439,
+        "CustName": "수연원예",
+        "Group1": "매출거래처"
+      },
+      "all_matches": [
+        {
+          "CustKey": 439,
+          "CustName": "수연원예",
+          "Group1": "매출거래처",
+          "score": 0.5
+        }
+      ]
+    },
+    "꽃길": {
+      "kakao_count": 16,
+      "match_type": "EXACT",
+      "best_match": {
+        "CustKey": 312,
+        "CustName": "꽃길",
+        "Group1": "매출거래처"
+      },
+      "all_matches": [
+        {
+          "CustKey": 312,
+          "CustName": "꽃길",
+          "Group1": "매출거래처",
+          "score": 0
+        }
+      ]
+    },
+    "알파": {
+      "kakao_count": 14,
+      "match_type": "CONTAINS",
+      "best_match": {
+        "CustKey": 461,
+        "CustName": "알파플라워",
+        "Group1": "매출거래처"
+      },
+      "all_matches": [
+        {
+          "CustKey": 461,
+          "CustName": "알파플라워",
+          "Group1": "매출거래처",
+          "score": 0.4
+        }
+      ]
+    },
+    "원협가빈": {
+      "kakao_count": 13,
+      "match_type": "CONTAINS",
+      "best_match": {
+        "CustKey": 515,
+        "CustName": "인터넷공판장 (원협가빈)",
+        "Group1": "매출거래처"
+      },
+      "all_matches": [
+        {
+          "CustKey": 515,
+          "CustName": "인터넷공판장 (원협가빈)",
+          "Group1": "매출거래처",
+          "score": 0.308
+        }
+      ]
+    },
+    "남대문청화": {
+      "kakao_count": 12,
+      "match_type": "FUZZY",
+      "best_match": {
+        "CustKey": 41,
+        "CustName": "(주)청지화원",
+        "Group1": "매출거래처"
+      },
+      "all_matches": [
+        {
+          "CustKey": 41,
+          "CustName": "(주)청지화원",
+          "Group1": "매출거래처",
+          "score": 0.444
+        },
+        {
+          "CustKey": 343,
+          "CustName": "대림화원",
+          "Group1": "",
+          "score": 0.444
+        },
+        {
+          "CustKey": 350,
+          "CustName": "대전청과(주)",
+          "Group1": "매출거래처",
+          "score": 0.444
+        },
+        {
+          "CustKey": 578,
+          "CustName": "청화꽃집",
+          "Group1": "매출거래처",
+          "score": 0.444
+        },
+        {
+          "CustKey": 579,
+          "CustName": "청화원예",
+          "Group1": "매출거래처",
+          "score": 0.444
+        }
+      ]
+    },
+    "광주천사": {
+      "kakao_count": 10,
+      "match_type": "NONE",
+      "best_match": null,
+      "all_matches": []
+    },
+    "참좋은원예": {
+      "kakao_count": 9,
+      "match_type": "EXACT",
+      "best_match": {
+        "CustKey": 572,
+        "CustName": "참좋은원예",
+        "Group1": "매출거래처"
+      },
+      "all_matches": [
+        {
+          "CustKey": 572,
+          "CustName": "참좋은원예",
+          "Group1": "매출거래처",
+          "score": 0
+        }
+      ]
+    },
+    "미카엘": {
+      "kakao_count": 9,
+      "match_type": "CONTAINS",
+      "best_match": {
+        "CustKey": 13,
+        "CustName": "(주)미카엘플라워",
+        "Group1": "매출거래처"
+      },
+      "all_matches": [
+        {
+          "CustKey": 13,
+          "CustName": "(주)미카엘플라워",
+          "Group1": "매출거래처",
+          "score": 0.333
+        }
+      ]
+    },
+    "꽃동산": {
+      "kakao_count": 8,
+      "match_type": "CONTAINS",
+      "best_match": {
+        "CustKey": 315,
+        "CustName": "동산",
+        "Group1": "매출거래처"
+      },
+      "all_matches": [
+        {
+          "CustKey": 315,
+          "CustName": "동산",
+          "Group1": "매출거래처",
+          "score": 0.667
+        }
+      ]
+    },
+    "친구플라워": {
+      "kakao_count": 8,
+      "match_type": "EXACT",
+      "best_match": {
+        "CustKey": 659,
+        "CustName": "친구플라워",
+        "Group1": ""
+      },
+      "all_matches": [
+        {
+          "CustKey": 659,
+          "CustName": "친구플라워",
+          "Group1": "",
+          "score": 0
+        }
+      ]
+    },
+    "일신원예": {
+      "kakao_count": 5,
+      "match_type": "EXACT",
+      "best_match": {
+        "CustKey": 520,
+        "CustName": "일신원예",
+        "Group1": "매출거래처"
+      },
+      "all_matches": [
+        {
+          "CustKey": 520,
+          "CustName": "일신원예",
+          "Group1": "매출거래처",
+          "score": 0
+        }
+      ]
+    },
+    "성남": {
+      "kakao_count": 5,
+      "match_type": "CONTAINS",
+      "best_match": {
+        "CustKey": 420,
+        "CustName": "성남원예",
+        "Group1": "매출거래처"
+      },
+      "all_matches": [
+        {
+          "CustKey": 420,
+          "CustName": "성남원예",
+          "Group1": "매출거래처",
+          "score": 0.5
+        }
+      ]
+    },
+    "시흥": {
+      "kakao_count": 4,
+      "match_type": "CONTAINS",
+      "best_match": {
+        "CustKey": 463,
+        "CustName": "플라워 #(시흥장미)",
+        "Group1": "매출거래처"
+      },
+      "all_matches": [
+        {
+          "CustKey": 463,
+          "CustName": "플라워 #(시흥장미)",
+          "Group1": "매출거래처",
+          "score": 0.182
+        }
+      ]
+    },
+    "경향": {
+      "kakao_count": 3,
+      "match_type": "CONTAINS",
+      "best_match": {
+        "CustKey": 280,
+        "CustName": "경향농원",
+        "Group1": "매출거래처"
+      },
+      "all_matches": [
+        {
+          "CustKey": 280,
+          "CustName": "경향농원",
+          "Group1": "매출거래처",
+          "score": 0.5
+        }
+      ]
+    },
+    "대지원예": {
+      "kakao_count": 3,
+      "match_type": "EXACT",
+      "best_match": {
+        "CustKey": 351,
+        "CustName": "대지원예",
+        "Group1": "매출거래처"
+      },
+      "all_matches": [
+        {
+          "CustKey": 351,
+          "CustName": "대지원예",
+          "Group1": "매출거래처",
+          "score": 0
+        }
+      ]
+    },
+    "꿀벌": {
+      "kakao_count": 3,
+      "match_type": "CONTAINS",
+      "best_match": {
+        "CustKey": 535,
+        "CustName": "주식회사 꿀벌원예",
+        "Group1": "매출거래처"
+      },
+      "all_matches": [
+        {
+          "CustKey": 535,
+          "CustName": "주식회사 꿀벌원예",
+          "Group1": "매출거래처",
+          "score": 0.222
+        }
+      ]
+    },
+    "레바논꽃방": {
+      "kakao_count": 3,
+      "match_type": "FUZZY",
+      "best_match": {
+        "CustKey": 288,
+        "CustName": "레바논 꽃방",
+        "Group1": "매출거래처"
+      },
+      "all_matches": [
+        {
+          "CustKey": 288,
+          "CustName": "레바논 꽃방",
+          "Group1": "매출거래처",
+          "score": 0.909
+        }
+      ]
+    },
+    "경부청화": {
+      "kakao_count": 2,
+      "match_type": "FUZZY",
+      "best_match": {
+        "CustKey": 41,
+        "CustName": "(주)청지화원",
+        "Group1": "매출거래처"
+      },
+      "all_matches": [
+        {
+          "CustKey": 41,
+          "CustName": "(주)청지화원",
+          "Group1": "매출거래처",
+          "score": 0.5
+        },
+        {
+          "CustKey": 405,
+          "CustName": "서부청과(주)",
+          "Group1": "매출거래처",
+          "score": 0.5
+        },
+        {
+          "CustKey": 578,
+          "CustName": "청화꽃집",
+          "Group1": "매출거래처",
+          "score": 0.5
+        },
+        {
+          "CustKey": 579,
+          "CustName": "청화원예",
+          "Group1": "매출거래처",
+          "score": 0.5
+        },
+        {
+          "CustKey": 668,
+          "CustName": "경주신화꽃도매",
+          "Group1": "",
+          "score": 0.4
+        }
+      ]
+    },
+    "상희원예": {
+      "kakao_count": 1,
+      "match_type": "FUZZY",
+      "best_match": {
+        "CustKey": 432,
+        "CustName": "소사원예",
+        "Group1": "매출거래처"
+      },
+      "all_matches": [
+        {
+          "CustKey": 432,
+          "CustName": "소사원예",
+          "Group1": "매출거래처",
+          "score": 0.571
+        },
+        {
+          "CustKey": 277,
+          "CustName": "경원원예",
+          "Group1": "매출거래처",
+          "score": 0.5
+        },
+        {
+          "CustKey": 296,
+          "CustName": "그린원예",
+          "Group1": "매출거래처",
+          "score": 0.5
+        },
+        {
+          "CustKey": 318,
+          "CustName": "꽃샘원예",
+          "Group1": "매출거래처",
+          "score": 0.5
+        },
+        {
+          "CustKey": 335,
+          "CustName": "늘봄원예",
+          "Group1": "매출거래처",
+          "score": 0.5
+        }
+      ]
+    },
+    "영남소재": {
+      "kakao_count": 1,
+      "match_type": "FUZZY",
+      "best_match": {
+        "CustKey": 31,
+        "CustName": "(주)영남꽃소재",
+        "Group1": "매출거래처"
+      },
+      "all_matches": [
+        {
+          "CustKey": 31,
+          "CustName": "(주)영남꽃소재",
+          "Group1": "매출거래처",
+          "score": 0.889
+        },
+        {
+          "CustKey": 633,
+          "CustName": "호남소재",
+          "Group1": "매출거래처",
+          "score": 0.75
+        },
+        {
+          "CustKey": 325,
+          "CustName": "남촌양재",
+          "Group1": "매출거래처",
+          "score": 0.5
+        },
+        {
+          "CustKey": 433,
+          "CustName": "소재2호",
+          "Group1": "매출거래처",
+          "score": 0.5
+        },
+        {
+          "CustKey": 575,
+          "CustName": "청목소재",
+          "Group1": "매출거래처",
+          "score": 0.5
+        }
+      ]
+    }
+  },
+  "unmatched_analysis": {
+    "products": {
+      "살릭스": {
+        "reason": "DB FlowerName에 해당 대분류 없음",
+        "suggestion": "FlowerName '살릭스'을 DB에 추가하거나 별칭 매핑 필요"
+      }
+    },
+    "varieties": {},
+    "suppliers": {
+      "광주천사": {
+        "reason": "DB CustName에 해당 거래처명 없음",
+        "suggestion": "'광주천사' 거래처를 DB에 등록하거나 별칭 매핑 필요"
+      }
+    }
+  },
+  "low_confidence_warnings": {
+    "varieties": {
+      "카네이션/폴림니아": {
+        "warnings": [
+          "매칭 신뢰도 낮음 (score=0.667)",
+          "꽃분류 불일치: 카톡='카네이션' vs DB='왁스' -- DB에 해당 품종 미등록 가능성"
+        ],
+        "matched_to": "PAEONIA",
+        "matched_flower": "왁스",
+        "expected_flower": "카네이션",
+        "needs_review": true,
+        "action": "DB에 해당 품종 신규 등록 필요"
+      },
+      "장미/로라": {
+        "warnings": [
+          "매칭 신뢰도 낮음 (score=0.667)"
+        ],
+        "matched_to": "ROSE CHINA / 칼로라(CAROLA) ",
+        "matched_flower": "장미",
+        "expected_flower": "장미",
+        "needs_review": true,
+        "action": "수동 매칭 확인 필요"
+      },
+      "카네이션/콜리브리": {
+        "warnings": [
+          "매칭 신뢰도 낮음 (score=0.667)",
+          "꽃분류 불일치: 카톡='카네이션' vs DB='유칼립투스' -- DB에 해당 품종 미등록 가능성"
+        ],
+        "matched_to": "Eucalyptus / Nicholii",
+        "matched_flower": "유칼립투스",
+        "expected_flower": "카네이션",
+        "needs_review": true,
+        "action": "DB에 해당 품종 신규 등록 필요"
+      },
+      "장미/블랙잭": {
+        "warnings": [
+          "꽃분류 불일치: 카톡='장미' vs DB='튤립' -- DB에 해당 품종 미등록 가능성"
+        ],
+        "matched_to": "Tulip / Single Black Jack",
+        "matched_flower": "튤립",
+        "expected_flower": "장미",
+        "needs_review": true,
+        "action": "DB에 해당 품종 신규 등록 필요"
+      },
+      "카네이션/지오지아": {
+        "warnings": [
+          "매칭 신뢰도 낮음 (score=0.667)"
+        ],
+        "matched_to": "CARNATION Cobalt thrill (Geoflora)",
+        "matched_flower": "카네이션",
+        "expected_flower": "카네이션",
+        "needs_review": true,
+        "action": "수동 매칭 확인 필요"
+      }
+    },
+    "suppliers": {
+      "미우": {
+        "warning": "유사도 기반 매칭 - 수동 확인 필요",
+        "matched_to": "미소",
+        "needs_review": true
+      },
+      "남대문청화": {
+        "warning": "유사도 기반 매칭 - 수동 확인 필요",
+        "matched_to": "(주)청지화원",
+        "needs_review": true
+      },
+      "레바논꽃방": {
+        "warning": "유사도 기반 매칭 - 수동 확인 필요",
+        "matched_to": "레바논 꽃방",
+        "needs_review": true
+      },
+      "경부청화": {
+        "warning": "유사도 기반 매칭 - 수동 확인 필요",
+        "matched_to": "(주)청지화원",
+        "needs_review": true
+      },
+      "상희원예": {
+        "warning": "유사도 기반 매칭 - 수동 확인 필요",
+        "matched_to": "소사원예",
+        "needs_review": true
+      },
+      "영남소재": {
+        "warning": "유사도 기반 매칭 - 수동 확인 필요",
+        "matched_to": "(주)영남꽃소재",
+        "needs_review": true
+      }
+    }
+  },
+  "alias_suggestions": [
+    {
+      "kakao_term": "화이트",
+      "kakao_full": "수국/화이트",
+      "db_prodkey": 965,
+      "db_prodname": "Hydrangea / Snow Ball White",
+      "match_type": "EXACT",
+      "confidence": 1.0,
+      "auto_approve": true
+    },
+    {
+      "kakao_term": "블루",
+      "kakao_full": "수국/블루",
+      "db_prodkey": 899,
+      "db_prodname": "Hydrangea / Aphrodite Light Blue",
+      "match_type": "EXACT",
+      "confidence": 1.0,
+      "auto_approve": true
+    },
+    {
+      "kakao_term": "문라이트",
+      "kakao_full": "카네이션/문라이트",
+      "db_prodkey": 2308,
+      "db_prodname": "Carnation CHINA / 문라이트 (Moonlight)",
+      "match_type": "EXACT",
+      "confidence": 1.0,
+      "auto_approve": true
+    },
+    {
+      "kakao_term": "그린",
+      "kakao_full": "수국/그린",
+      "db_prodkey": 902,
+      "db_prodname": "Hydrangea / Bodensee Classic Green",
+      "match_type": "EXACT",
+      "confidence": 1.0,
+      "auto_approve": true
+    },
+    {
+      "kakao_term": "핑크",
+      "kakao_full": "수국/핑크",
+      "db_prodkey": 973,
+      "db_prodname": "[EZ] Hydrangea / Glowing Alps Pink",
+      "match_type": "EXACT",
+      "confidence": 1.0,
+      "auto_approve": true
+    },
+    {
+      "kakao_term": "연핑크",
+      "kakao_full": "수국/연핑크",
+      "db_prodkey": 878,
+      "db_prodname": "Hydrangea P.PK (BA) (연핑크)",
+      "match_type": "EXACT",
+      "confidence": 1.0,
+      "auto_approve": true
+    },
+    {
+      "kakao_term": "캔들라이트",
+      "kakao_full": "장미/캔들라이트",
+      "db_prodkey": 1636,
+      "db_prodname": "Rose Candlelight 50cm",
+      "match_type": "EXACT",
+      "confidence": 1.0,
+      "auto_approve": true
+    },
+    {
+      "kakao_term": "노비아",
+      "kakao_full": "카네이션/노비아",
+      "db_prodkey": 456,
+      "db_prodname": "CARNATION Novia",
+      "match_type": "EXACT",
+      "confidence": 1.0,
+      "auto_approve": true
+    },
+    {
+      "kakao_term": "로라",
+      "kakao_full": "장미/로라",
+      "db_prodkey": 2653,
+      "db_prodname": "ROSE CHINA / 칼로라(CAROLA) ",
+      "match_type": "PARTIAL",
+      "confidence": 0.667,
+      "auto_approve": false
+    },
+    {
+      "kakao_term": "헤르메스",
+      "kakao_full": "카네이션/헤르메스",
+      "db_prodkey": 408,
+      "db_prodname": "CARNATION Hermes",
+      "match_type": "EXACT",
+      "confidence": 1.0,
+      "auto_approve": true
+    },
+    {
+      "kakao_term": "네스",
+      "kakao_full": "카네이션/네스",
+      "db_prodkey": 513,
+      "db_prodname": "CARNATION Ness",
+      "match_type": "EXACT",
+      "confidence": 1.0,
+      "auto_approve": true
+    },
+    {
+      "kakao_term": "만달라",
+      "kakao_full": "장미/만달라",
+      "db_prodkey": 3036,
+      "db_prodname": "[오경] ROSE CHINA / 만달라(Mandala)",
+      "match_type": "EXACT",
+      "confidence": 1.0,
+      "auto_approve": true
+    },
+    {
+      "kakao_term": "글래디에터",
+      "kakao_full": "알륨/글래디에터",
+      "db_prodkey": 39,
+      "db_prodname": "Allium / Gladiator",
+      "match_type": "EXACT",
+      "confidence": 1.0,
+      "auto_approve": true
+    },
+    {
+      "kakao_term": "블랙잭",
+      "kakao_full": "장미/블랙잭",
+      "db_prodkey": 1882,
+      "db_prodname": "Tulip / Single Black Jack",
+      "match_type": "EXACT",
+      "confidence": 1.0,
+      "auto_approve": true
+    },
+    {
+      "kakao_term": "핑크익스프레션",
+      "kakao_full": "장미/핑크익스프레션",
+      "db_prodkey": 1704,
+      "db_prodname": "Garden Rosa O hara Pink 50cm",
+      "match_type": "PARTIAL",
+      "confidence": 1.0,
+      "auto_approve": true
+    },
+    {
+      "kakao_term": "마리포사",
+      "kakao_full": "카네이션/마리포사",
+      "db_prodkey": 435,
+      "db_prodname": "CARNATION Mariposa",
+      "match_type": "EXACT",
+      "confidence": 1.0,
+      "auto_approve": true
+    },
+    {
+      "kakao_term": "심포니",
+      "kakao_full": "아마릴리스/심포니",
+      "db_prodkey": 3072,
+      "db_prodname": "Amaryllis / White Symphony 10st White",
+      "match_type": "EXACT",
+      "confidence": 1.0,
+      "auto_approve": true
+    },
+    {
+      "kakao_term": "유카리체리",
+      "kakao_full": "카네이션/유카리체리",
+      "db_prodkey": 502,
+      "db_prodname": "CARNATION Yukari Cherry",
+      "match_type": "EXACT",
+      "confidence": 1.0,
+      "auto_approve": true
+    },
+    {
+      "kakao_term": "브루트",
+      "kakao_full": "카네이션/브루트",
+      "db_prodkey": 359,
+      "db_prodname": "CARNATION Brut",
+      "match_type": "EXACT",
+      "confidence": 1.0,
+      "auto_approve": true
+    }
+  ],
+  "transliteration_dict": {
+    "candlelight": "캔들라이트",
+    "moonlight": "문라이트",
+    "novia": "노비아",
+    "hermes": "헤르메스",
+    "doncel": "돈셀",
+    "brut": "브루트",
+    "mariposa": "마리포사",
+    "colibri": "콜리브리",
+    "gladiator": "글래디에터",
+    "symphony": "심포니",
+    "polymnia": "폴림니아",
+    "mandala": "만달라",
+    "carola": "카롤라",
+    "laura": "로라",
+    "blackjack": "블랙잭",
+    "black jack": "블랙잭",
+    "yukari cherry": "유카리체리",
+    "yukari": "유카리",
+    "georgia": "지오지아",
+    "pink expression": "핑크익스프레션",
+    "ness": "네스",
+    "white": "화이트",
+    "blue": "블루",
+    "green": "그린",
+    "pink": "핑크",
+    "red": "레드",
+    "orange": "오렌지",
+    "dark pink": "진핑크",
+    "light pink": "연핑크",
+    "salix": "살릭스",
+    "salicis": "살릭스",
+    "lisianthus": "리시안셔스",
+    "hydrangea": "수국",
+    "carnation": "카네이션",
+    "rose": "장미",
+    "tulip": "튤립",
+    "allium": "알륨",
+    "amaryllis": "아마릴리스",
+    "alstroemeria": "알스트로",
+    "eucalyptus": "유칼립투스"
+  },
+  "matching_rules": {
+    "priority_order": [
+      "1. 검색 인덱스 완전 일치 (ProdName 파싱 토큰 == 카톡 품명)",
+      "2. 영문<->한글 음역 사전 변환 후 재매칭",
+      "3. 인덱스 부분 일치 (포함 관계, score >= 0.3)",
+      "4. SequenceMatcher 유사도 >= 0.6",
+      "5. FlowerName 힌트로 동명이인 필터링"
+    ],
+    "index_extraction": [
+      "ProdName 원본",
+      "괄호 안 내용: (Moonlight) -> Moonlight, (연핑크) -> 연핑크",
+      "/ 구분자 분리: 'Carnation CHINA / 문라이트' -> '문라이트'",
+      "한글만 추출, 영문만 추출",
+      "국가명(CHINA, COLOMBIA 등) 제거",
+      "cm 크기 제거"
+    ]
+  },
+  "manual_corrections": {
+    "카네이션/폴림니아": {
+      "status": "MATCHED",
+      "ProdKey": 467,
+      "ProdName": "CARNATION Polimnia",
+      "note": "수동 보정"
+    },
+    "카네이션/콜리브리": {
+      "status": "FARM_NAME",
+      "ProdKey": null,
+      "note": "콜리브리는 농장이름, 품종 아님. 해당 농장의 카네이션 품종을 별도 확인 필요"
+    },
+    "장미/블랙잭": {
+      "status": "DB_MISSING",
+      "ProdKey": null,
+      "note": "중국장미 블랙잭. DB에 ROSE CHINA/블랙잭 미등록. DB 등록 필요"
+    },
+    "장미/로라": {
+      "status": "DB_MISSING",
+      "ProdKey": null,
+      "note": "중국장미 또는 콜롬비아장미 로라. DB 칼로라(CAROLA)와 다른 품종. DB 등록 필요"
+    },
+    "카네이션/지오지아": {
+      "status": "MATCHED",
+      "ProdKey": 518,
+      "ProdName": "CARNATION Giogia",
+      "note": "수동 보정"
+    }
+  },
+  "db_registration_needed": [
+    {
+      "kakaotalk": "장미/블랙잭",
+      "suggested_code": "ROSE CHINA / 블랙잭 (Black Jack)",
+      "FlowerName": "장미",
+      "CounName": "중국"
+    },
+    {
+      "kakaotalk": "장미/로라",
+      "suggested_code": "ROSE CHINA / 로라 (Laura)",
+      "FlowerName": "장미",
+      "CounName": "중국/콜롬비아"
+    },
+    {
+      "kakaotalk": "살릭스",
+      "suggested_code": "Salix (버드나무)",
+      "FlowerName": "기타",
+      "CounName": "TBD"
+    }
+  ],
+  "final_matching_rates": {
+    "total_varieties": 22,
+    "matched": 19,
+    "farm_name_not_variety": 1,
+    "db_missing": 2,
+    "matching_rate": "86.4%",
+    "achievable_rate": "90.9% (농장명 제외 시)",
+    "to_100_pct": "DB에 2개 품종 등록 필요 (블랙잭, 로라)"
+  }
+}

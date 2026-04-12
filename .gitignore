@@ -1,0 +1,26 @@
+.env
+captures/
+logs/
+__pycache__/
+*.pyc
+
+# 민감/대용량 데이터
+data/collected_data.jsonl
+data/usage_stats.json
+data/gsheet_credentials.json
+data/master_products.json
+data/master_customers.json
+data/product_dictionary.json
+data/analysis_dump.json
+data/analysis_flow.json
+data/analysis_lifecycle.json
+data/analysis_people.json
+data/analysis_bottleneck.json
+data/sync_state.json
+data/matching_update_summary.json
+data/screen_*.png
+data/rooms_*.png
+data/explorer/
+data/guard/
+data/last_content/
+data/learning/

@@ -1,0 +1,745 @@
+{
+  "moonlight": {
+    "flower_type": "카네이션",
+    "name_kr": "문라이트",
+    "name_en": "Moonlight",
+    "color_desc": "연노랑/크림색",
+    "primary": {
+      "h_min": 40,
+      "h_max": 65,
+      "s_min": 15,
+      "s_max": 50,
+      "v_min": 75,
+      "v_max": 100
+    },
+    "secondary": null
+  },
+  "doncel": {
+    "flower_type": "카네이션",
+    "name_kr": "돈셀",
+    "name_en": "Doncel",
+    "color_desc": "핑크",
+    "primary": {
+      "h_min": 320,
+      "h_max": 350,
+      "s_min": 30,
+      "s_max": 80,
+      "v_min": 60,
+      "v_max": 100
+    },
+    "secondary": null
+  },
+  "hermes": {
+    "flower_type": "카네이션",
+    "name_kr": "헤르메스",
+    "name_en": "Hermes",
+    "color_desc": "주황/살구색",
+    "primary": {
+      "h_min": 15,
+      "h_max": 35,
+      "s_min": 40,
+      "s_max": 80,
+      "v_min": 65,
+      "v_max": 100
+    },
+    "secondary": null
+  },
+  "hermes_orange": {
+    "flower_type": "카네이션",
+    "name_kr": "헤르메스오렌지",
+    "name_en": "Hermes Orange",
+    "color_desc": "진한 주황",
+    "primary": {
+      "h_min": 10,
+      "h_max": 30,
+      "s_min": 60,
+      "s_max": 100,
+      "v_min": 60,
+      "v_max": 100
+    },
+    "secondary": null
+  },
+  "novia": {
+    "flower_type": "카네이션",
+    "name_kr": "노비아",
+    "name_en": "Novia",
+    "color_desc": "연핑크/화이트",
+    "primary": {
+      "h_min": 330,
+      "h_max": 360,
+      "s_min": 5,
+      "s_max": 30,
+      "v_min": 85,
+      "v_max": 100
+    },
+    "secondary": null
+  },
+  "giogia": {
+    "flower_type": "카네이션",
+    "name_kr": "지오지아",
+    "name_en": "Giogia",
+    "color_desc": "빨강/딥핑크",
+    "primary": {
+      "h_min": 340,
+      "h_max": 360,
+      "s_min": 60,
+      "s_max": 100,
+      "v_min": 40,
+      "v_max": 85
+    },
+    "secondary": {
+      "h_min": 0,
+      "h_max": 10,
+      "s_min": 60,
+      "s_max": 100,
+      "v_min": 40,
+      "v_max": 85
+    }
+  },
+  "polimnia": {
+    "flower_type": "카네이션",
+    "name_kr": "폴림니아",
+    "name_en": "Polimnia",
+    "color_desc": "연보라/라벤더",
+    "primary": {
+      "h_min": 260,
+      "h_max": 290,
+      "s_min": 15,
+      "s_max": 50,
+      "v_min": 60,
+      "v_max": 95
+    },
+    "secondary": null
+  },
+  "cherio": {
+    "flower_type": "카네이션",
+    "name_kr": "체리오",
+    "name_en": "Cherio",
+    "color_desc": "빨강+화이트 투톤",
+    "primary": {
+      "h_min": 350,
+      "h_max": 360,
+      "s_min": 50,
+      "s_max": 100,
+      "v_min": 50,
+      "v_max": 100
+    },
+    "secondary": {
+      "h_min": 0,
+      "h_max": 30,
+      "s_min": 0,
+      "s_max": 15,
+      "v_min": 85,
+      "v_max": 100
+    },
+    "is_bicolor": true
+  },
+  "eucari_cherry": {
+    "flower_type": "카네이션",
+    "name_kr": "유카리체리",
+    "name_en": "Eucari Cherry",
+    "color_desc": "체리핑크",
+    "primary": {
+      "h_min": 335,
+      "h_max": 355,
+      "s_min": 50,
+      "s_max": 90,
+      "v_min": 50,
+      "v_max": 90
+    },
+    "secondary": null
+  },
+  "brut": {
+    "flower_type": "카네이션",
+    "name_kr": "브루트",
+    "name_en": "Brut",
+    "color_desc": "연핑크",
+    "primary": {
+      "h_min": 330,
+      "h_max": 355,
+      "s_min": 10,
+      "s_max": 40,
+      "v_min": 80,
+      "v_max": 100
+    },
+    "secondary": null
+  },
+  "ness": {
+    "flower_type": "카네이션",
+    "name_kr": "네스",
+    "name_en": "Ness",
+    "color_desc": "진분홍",
+    "primary": {
+      "h_min": 325,
+      "h_max": 350,
+      "s_min": 50,
+      "s_max": 90,
+      "v_min": 50,
+      "v_max": 90
+    },
+    "secondary": null
+  },
+  "mariposa": {
+    "flower_type": "카네이션",
+    "name_kr": "마리포사",
+    "name_en": "Mariposa",
+    "color_desc": "연분홍/살구",
+    "primary": {
+      "h_min": 5,
+      "h_max": 25,
+      "s_min": 20,
+      "s_max": 50,
+      "v_min": 75,
+      "v_max": 100
+    },
+    "secondary": {
+      "h_min": 330,
+      "h_max": 350,
+      "s_min": 10,
+      "s_max": 35,
+      "v_min": 80,
+      "v_max": 100
+    }
+  },
+  "electric_purple": {
+    "flower_type": "카네이션",
+    "name_kr": "일렉트릭퍼플",
+    "name_en": "Electric Purple",
+    "color_desc": "보라/퍼플",
+    "primary": {
+      "h_min": 270,
+      "h_max": 310,
+      "s_min": 40,
+      "s_max": 100,
+      "v_min": 30,
+      "v_max": 80
+    },
+    "secondary": null
+  },
+  "colibri": {
+    "flower_type": "카네이션",
+    "name_kr": "콜리브리",
+    "name_en": "Colibri",
+    "color_desc": "다양 (농장명)",
+    "primary": {
+      "h_min": 0,
+      "h_max": 360,
+      "s_min": 10,
+      "s_max": 100,
+      "v_min": 20,
+      "v_max": 100
+    },
+    "secondary": null,
+    "is_wildcard": true
+  },
+  "farida": {
+    "flower_type": "카네이션",
+    "name_kr": "파리다",
+    "name_en": "Farida",
+    "color_desc": "빨강",
+    "primary": {
+      "h_min": 350,
+      "h_max": 360,
+      "s_min": 60,
+      "s_max": 100,
+      "v_min": 40,
+      "v_max": 90
+    },
+    "secondary": {
+      "h_min": 0,
+      "h_max": 10,
+      "s_min": 60,
+      "s_max": 100,
+      "v_min": 40,
+      "v_max": 90
+    }
+  },
+  "minuetto": {
+    "flower_type": "카네이션",
+    "name_kr": "미뉴에또",
+    "name_en": "Minuetto",
+    "color_desc": "화이트+핑크엣지",
+    "primary": {
+      "h_min": 0,
+      "h_max": 360,
+      "s_min": 0,
+      "s_max": 12,
+      "v_min": 88,
+      "v_max": 100
+    },
+    "secondary": {
+      "h_min": 330,
+      "h_max": 355,
+      "s_min": 25,
+      "s_max": 65,
+      "v_min": 70,
+      "v_max": 100
+    },
+    "is_bicolor": true
+  },
+  "spray_white": {
+    "flower_type": "카네이션",
+    "name_kr": "스프레이화이트",
+    "name_en": "Spray White",
+    "color_desc": "화이트",
+    "primary": {
+      "h_min": 0,
+      "h_max": 360,
+      "s_min": 0,
+      "s_max": 12,
+      "v_min": 88,
+      "v_max": 100
+    },
+    "secondary": null
+  },
+  "spray_light_pink": {
+    "flower_type": "카네이션",
+    "name_kr": "스프레이연핑크",
+    "name_en": "Spray Light Pink",
+    "color_desc": "연핑크",
+    "primary": {
+      "h_min": 330,
+      "h_max": 355,
+      "s_min": 8,
+      "s_max": 35,
+      "v_min": 82,
+      "v_max": 100
+    },
+    "secondary": null
+  },
+  "proud": {
+    "flower_type": "장미",
+    "name_kr": "프라우드",
+    "name_en": "Proud",
+    "color_desc": "화이트",
+    "primary": {
+      "h_min": 0,
+      "h_max": 360,
+      "s_min": 0,
+      "s_max": 12,
+      "v_min": 88,
+      "v_max": 100
+    },
+    "secondary": null
+  },
+  "candlelight": {
+    "flower_type": "장미",
+    "name_kr": "캔들라이트",
+    "name_en": "Candlelight",
+    "color_desc": "노랑/크림",
+    "primary": {
+      "h_min": 40,
+      "h_max": 65,
+      "s_min": 20,
+      "s_max": 60,
+      "v_min": 75,
+      "v_max": 100
+    },
+    "secondary": null
+  },
+  "mandala": {
+    "flower_type": "장미",
+    "name_kr": "만달라",
+    "name_en": "Mandala",
+    "color_desc": "핑크",
+    "primary": {
+      "h_min": 320,
+      "h_max": 350,
+      "s_min": 30,
+      "s_max": 75,
+      "v_min": 60,
+      "v_max": 100
+    },
+    "secondary": null
+  },
+  "coral_reef": {
+    "flower_type": "장미",
+    "name_kr": "코랄리프",
+    "name_en": "Coral Reef",
+    "color_desc": "코랄/살구",
+    "primary": {
+      "h_min": 5,
+      "h_max": 25,
+      "s_min": 30,
+      "s_max": 70,
+      "v_min": 70,
+      "v_max": 100
+    },
+    "secondary": null
+  },
+  "pink_floyd": {
+    "flower_type": "장미",
+    "name_kr": "핑크플로이드",
+    "name_en": "Pink Floyd",
+    "color_desc": "핑크",
+    "primary": {
+      "h_min": 320,
+      "h_max": 345,
+      "s_min": 35,
+      "s_max": 80,
+      "v_min": 55,
+      "v_max": 95
+    },
+    "secondary": null
+  },
+  "star_platinum": {
+    "flower_type": "장미",
+    "name_kr": "스타플레티넘",
+    "name_en": "Star Platinum",
+    "color_desc": "화이트/크림",
+    "primary": {
+      "h_min": 30,
+      "h_max": 60,
+      "s_min": 5,
+      "s_max": 25,
+      "v_min": 85,
+      "v_max": 100
+    },
+    "secondary": null
+  },
+  "laura": {
+    "flower_type": "장미",
+    "name_kr": "로라",
+    "name_en": "Laura",
+    "color_desc": "핑크/코랄",
+    "primary": {
+      "h_min": 340,
+      "h_max": 360,
+      "s_min": 30,
+      "s_max": 70,
+      "v_min": 60,
+      "v_max": 100
+    },
+    "secondary": {
+      "h_min": 0,
+      "h_max": 15,
+      "s_min": 30,
+      "s_max": 70,
+      "v_min": 60,
+      "v_max": 100
+    }
+  },
+  "red_panther": {
+    "flower_type": "장미",
+    "name_kr": "레드팬서",
+    "name_en": "Red Panther",
+    "color_desc": "빨강",
+    "primary": {
+      "h_min": 350,
+      "h_max": 360,
+      "s_min": 65,
+      "s_max": 100,
+      "v_min": 35,
+      "v_max": 85
+    },
+    "secondary": {
+      "h_min": 0,
+      "h_max": 10,
+      "s_min": 65,
+      "s_max": 100,
+      "v_min": 35,
+      "v_max": 85
+    }
+  },
+  "pink_mondial": {
+    "flower_type": "장미",
+    "name_kr": "핑크몬디알",
+    "name_en": "Pink Mondial",
+    "color_desc": "연핑크",
+    "primary": {
+      "h_min": 330,
+      "h_max": 355,
+      "s_min": 10,
+      "s_max": 40,
+      "v_min": 80,
+      "v_max": 100
+    },
+    "secondary": null
+  },
+  "black_jack": {
+    "flower_type": "장미",
+    "name_kr": "블랙잭",
+    "name_en": "Black Jack",
+    "color_desc": "진빨강/다크레드",
+    "primary": {
+      "h_min": 345,
+      "h_max": 360,
+      "s_min": 60,
+      "s_max": 100,
+      "v_min": 15,
+      "v_max": 55
+    },
+    "secondary": {
+      "h_min": 0,
+      "h_max": 10,
+      "s_min": 60,
+      "s_max": 100,
+      "v_min": 15,
+      "v_max": 55
+    }
+  },
+  "pink_expression": {
+    "flower_type": "장미",
+    "name_kr": "핑크익스프레션",
+    "name_en": "Pink Expression",
+    "color_desc": "핑크",
+    "primary": {
+      "h_min": 325,
+      "h_max": 350,
+      "s_min": 30,
+      "s_max": 70,
+      "v_min": 60,
+      "v_max": 95
+    },
+    "secondary": null
+  },
+  "jumilia": {
+    "flower_type": "장미",
+    "name_kr": "주밀리아",
+    "name_en": "Jumilia",
+    "color_desc": "핑크+화이트",
+    "primary": {
+      "h_min": 325,
+      "h_max": 350,
+      "s_min": 20,
+      "s_max": 60,
+      "v_min": 70,
+      "v_max": 100
+    },
+    "secondary": {
+      "h_min": 0,
+      "h_max": 360,
+      "s_min": 0,
+      "s_max": 12,
+      "v_min": 88,
+      "v_max": 100
+    },
+    "is_bicolor": true
+  },
+  "pink_snowberg": {
+    "flower_type": "장미",
+    "name_kr": "핑크스노우버그",
+    "name_en": "Pink Snowberg",
+    "color_desc": "연핑크",
+    "primary": {
+      "h_min": 330,
+      "h_max": 350,
+      "s_min": 8,
+      "s_max": 30,
+      "v_min": 85,
+      "v_max": 100
+    },
+    "secondary": null
+  },
+  "sweet_avalanche": {
+    "flower_type": "장미",
+    "name_kr": "스윗아발란체",
+    "name_en": "Sweet Avalanche",
+    "color_desc": "연핑크/화이트",
+    "primary": {
+      "h_min": 330,
+      "h_max": 355,
+      "s_min": 5,
+      "s_max": 25,
+      "v_min": 88,
+      "v_max": 100
+    },
+    "secondary": null
+  },
+  "julring": {
+    "flower_type": "장미",
+    "name_kr": "줄링",
+    "name_en": "Julring",
+    "color_desc": "빨강",
+    "primary": {
+      "h_min": 350,
+      "h_max": 360,
+      "s_min": 60,
+      "s_max": 100,
+      "v_min": 40,
+      "v_max": 90
+    },
+    "secondary": {
+      "h_min": 0,
+      "h_max": 10,
+      "s_min": 60,
+      "s_max": 100,
+      "v_min": 40,
+      "v_max": 90
+    }
+  },
+  "matina": {
+    "flower_type": "장미",
+    "name_kr": "마티나",
+    "name_en": "Matina",
+    "color_desc": "빨강",
+    "primary": {
+      "h_min": 350,
+      "h_max": 360,
+      "s_min": 55,
+      "s_max": 100,
+      "v_min": 35,
+      "v_max": 85
+    },
+    "secondary": {
+      "h_min": 0,
+      "h_max": 10,
+      "s_min": 55,
+      "s_max": 100,
+      "v_min": 35,
+      "v_max": 85
+    }
+  },
+  "hydrangea_white": {
+    "flower_type": "수국",
+    "name_kr": "화이트",
+    "name_en": "Hydrangea White",
+    "color_desc": "화이트",
+    "primary": {
+      "h_min": 0,
+      "h_max": 360,
+      "s_min": 0,
+      "s_max": 15,
+      "v_min": 85,
+      "v_max": 100
+    },
+    "secondary": null
+  },
+  "hydrangea_blue": {
+    "flower_type": "수국",
+    "name_kr": "블루",
+    "name_en": "Hydrangea Blue",
+    "color_desc": "파랑/보라",
+    "primary": {
+      "h_min": 210,
+      "h_max": 280,
+      "s_min": 25,
+      "s_max": 80,
+      "v_min": 30,
+      "v_max": 85
+    },
+    "secondary": null
+  },
+  "hydrangea_light_pink": {
+    "flower_type": "수국",
+    "name_kr": "연핑크",
+    "name_en": "Hydrangea Light Pink",
+    "color_desc": "연핑크",
+    "primary": {
+      "h_min": 330,
+      "h_max": 355,
+      "s_min": 10,
+      "s_max": 40,
+      "v_min": 75,
+      "v_max": 100
+    },
+    "secondary": null
+  },
+  "hydrangea_pink": {
+    "flower_type": "수국",
+    "name_kr": "핑크",
+    "name_en": "Hydrangea Pink",
+    "color_desc": "핑크",
+    "primary": {
+      "h_min": 320,
+      "h_max": 350,
+      "s_min": 30,
+      "s_max": 75,
+      "v_min": 55,
+      "v_max": 95
+    },
+    "secondary": null
+  },
+  "hydrangea_green": {
+    "flower_type": "수국",
+    "name_kr": "그린",
+    "name_en": "Hydrangea Green",
+    "color_desc": "연두/그린",
+    "primary": {
+      "h_min": 80,
+      "h_max": 150,
+      "s_min": 15,
+      "s_max": 60,
+      "v_min": 50,
+      "v_max": 90
+    },
+    "secondary": null
+  },
+  "ruscus": {
+    "flower_type": "기타",
+    "name_kr": "루스커스",
+    "name_en": "Ruscus",
+    "color_desc": "짙은 녹색 잎",
+    "primary": {
+      "h_min": 100,
+      "h_max": 160,
+      "s_min": 30,
+      "s_max": 80,
+      "v_min": 20,
+      "v_max": 60
+    },
+    "secondary": null
+  },
+  "lemon_leaf": {
+    "flower_type": "기타",
+    "name_kr": "레몬잎",
+    "name_en": "Lemon Leaf",
+    "color_desc": "밝은 녹색 잎",
+    "primary": {
+      "h_min": 80,
+      "h_max": 145,
+      "s_min": 25,
+      "s_max": 70,
+      "v_min": 45,
+      "v_max": 85
+    },
+    "secondary": null
+  },
+  "mokara": {
+    "flower_type": "기타",
+    "name_kr": "모카라",
+    "name_en": "Mokara",
+    "color_desc": "주황~빨강 난",
+    "primary": {
+      "h_min": 0,
+      "h_max": 30,
+      "s_min": 50,
+      "s_max": 100,
+      "v_min": 50,
+      "v_max": 100
+    },
+    "secondary": null
+  },
+  "alstroemeria": {
+    "flower_type": "기타",
+    "name_kr": "알스트로",
+    "name_en": "Alstroemeria",
+    "color_desc": "다양한 색",
+    "primary": {
+      "h_min": 0,
+      "h_max": 360,
+      "s_min": 10,
+      "s_max": 100,
+      "v_min": 20,
+      "v_max": 100
+    },
+    "secondary": null,
+    "is_wildcard": true
+  },
+  "tulip": {
+    "flower_type": "기타",
+    "name_kr": "튤립",
+    "name_en": "Tulip",
+    "color_desc": "다양한 색",
+    "primary": {
+      "h_min": 0,
+      "h_max": 360,
+      "s_min": 10,
+      "s_max": 100,
+      "v_min": 20,
+      "v_max": 100
+    },
+    "secondary": null,
+    "is_wildcard": true
+  }
+}
