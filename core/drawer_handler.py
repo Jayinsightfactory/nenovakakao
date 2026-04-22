@@ -1040,9 +1040,30 @@ def open_drawer(chat_hwnd: int) -> int | None:
 
 def _save_one_bundle(v_hwnd: int) -> bool:
     """뷰어가 열린 상태에서 묶음저장 1회 실행. 성공 여부 반환."""
+    # 뷰어를 안전 위치로 이동 + TOPMOST (액션 로그/Claude 등 가림 방지)
+    try:
+        import win32con as _wc
+        vr_orig = win32gui.GetWindowRect(v_hwnd)
+        vw = vr_orig[2] - vr_orig[0]
+        vh = vr_orig[3] - vr_orig[1]
+        # 뷰어 중심이 액션 로그 영역 (x>=1620) 안이면 왼쪽으로 이동
+        vc_x = (vr_orig[0] + vr_orig[2]) // 2
+        if vc_x >= 1500 or vr_orig[2] > 1600:
+            # 왼쪽으로 이동 (100, 50) — 화면 좌상단
+            new_x = max(50, min(1500 - vw, 100))
+            win32gui.MoveWindow(v_hwnd, new_x, 50, vw, vh, True)
+            time.sleep(0.3)
+        # TOPMOST
+        SWP = _wc.SWP_NOMOVE | _wc.SWP_NOSIZE | _wc.SWP_SHOWWINDOW
+        win32gui.SetWindowPos(v_hwnd, -1, 0, 0, 0, 0, SWP)
+        time.sleep(0.2)
+    except Exception as e:
+        print(f"    [서랍] 뷰어 위치 조정 실패 (무시): {e}", flush=True)
+
     _activate(v_hwnd)
     time.sleep(0.5)
     vr = win32gui.GetWindowRect(v_hwnd)
+    print(f"    [서랍] 뷰어 rect={vr}", flush=True)
 
     dl_x = vr[2] - 70
     dl_y = vr[3] - 22
