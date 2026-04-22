@@ -138,29 +138,58 @@ nenova_agent/
       pywinauto 로 ≡/서랍/사진탭을 접근성 이름으로 `.invoke()` (픽셀 무관).
       기존 `drawer_handler.open_drawer` 픽셀 경로는 폴백으로 유지.
       블로킹 팝업 ("100% 완료되었습니다" 등) 사전 제거 내장.
-- [ ] 실제 환경 테스트 (관리자 실행 검증 필요)
+- [x] **Vision-first + hover-first 하이브리드 (2026-04-22)** → `core/drawer_handler.py`
+      E2E 검증 완료: 드로어 열기 + 사진 다운로드 100% 작동.
+      - ≡ 버튼: Vision OCR 우선 (conf 0.95+) → 하드코딩 폴백
+      - "채팅방 서랍": Vision OCR 좌표 → hover 2초 (서브메뉴 유도) → click 2.5초 폴백
+      - "사진/동영상": Vision OCR → click
+      - 서랍 사진 다운로드: layout 체크박스 (다량) / 더블클릭 묶음저장 (소량) 자동 폴백
+      - Vision 이모지 출력 UnicodeEncodeError 방지
+- [x] 실제 환경 테스트 완료 — PHOTO_*.png 파일 저장 확인
 
-#### 사진 자동화 3중 방어 (2026-04-22)
+#### 사진 자동화 확정 파이프라인 (2026-04-22, E2E 검증)
 ```
-extract_photos_from_chat_via_layout (drawer_layout_auto.py)
-  ├─ 1. open_drawer_uia(chat_hwnd)          ← UIA (권장, 픽셀 무관)
-  │     ├─ dismiss_blocking_dialogs()       ← "100% 완료" 등 선제 닫기
-  │     ├─ _click_hamburger_via_uia         ← ≡ 접근성 이름 invoke
-  │     ├─ _find_kakao_popup_menu           ← EVA_Menu 창 UIA 래핑
-  │     ├─ _click_drawer_item_via_uia       ← "채팅방 서랍" MenuItem invoke
-  │     └─ _click_photo_tab_via_uia         ← "사진/동영상" MenuItem invoke
+main.py  (monitor loop)
+  └─ _process_room_result
+      ├─ _has_existing_separate() ← 기존 분리창 있으면 재클릭 스킵 (토글 방지)
+      ├─ click_room (없을 때만)
+      ├─ 분리창 hwnd 감지 (visible+minimized 모두, iconic 복원)
+      └─ extract_photos_from_room (drawer_layout_auto.py)
+
+extract_photos_from_chat_via_layout
+  ├─ [1] 서랍 열기
+  │    ├─ open_drawer_uia (UIA 경로 — 카톡 DirectUI 라 실패 확실)
+  │    └─ drawer_handler.open_drawer (픽셀+Vision)
+  │         ├─ fix_chat_window_position → (910, 50, 600, 800) + TOPMOST
+  │         ├─ dismiss_blocking_dialogs (선제 완료팝업 정리)
+  │         ├─ Vision-first: ≡ 버튼 좌표 OCR (conf 0.95+) → 하드코딩 폴백
+  │         ├─ ≡ 클릭 (pyautogui) → 팝업(EVA_Menu, 225x324) 감지
+  │         └─ _try_uia_inner_nav (팝업 내 네비게이션)
+  │               ├─ "채팅방 서랍" UIA invoke (MenuItems 없음 → Vision 폴백)
+  │               ├─ Vision → hover 2초 → 서브메뉴 자동 출현
+  │               │  (서브메뉴 미출현 시 click 2.5초 폴백)
+  │               └─ "사진/동영상" Vision 클릭 → 서랍 창 (panel)
   │
-  └─ 실패 시 → drawer_handler.open_drawer    ← 픽셀 경로 (기존 코드)
-        └─ Vision 폴백: Claude로 ≡ 위치 식별 후 클릭
+  ├─ [2] 사진 다운로드 (이중 전략)
+  │    ├─ download_n_from_drawer("photo", N) ← layout 3x5 그리드 체크박스 방식
+  │    │  (다량 사진 방에 효과적)
+  │    └─ 0건이면 → drawer_handler.download_photos_from_drawer ← 더블클릭 묶음저장
+  │       (소량 사진 / 단일 사진 방에 효과적)
+  │         ├─ 그리드 셀 더블클릭 → 뷰어 열림
+  │         ├─ ↓ 버튼 → "묶음사진 전체저장"
+  │         ├─ "다른 이름으로 저장" → Enter
+  │         └─ 덮어쓰기 확인 팝업 → Y
+  │
+  └─ [3] 파일 리네임: PHOTO_<방이름>__<timestamp>_<idx>.<ext>
 
 환경 스위치:
   NENOVA_DRAWER_FORCE_PIXEL=1  # UIA 완전 스킵 (비상용)
   NENOVA_DRAWER_DEBUG=1        # captures/uia_*.txt 에 트리 덤프
 
-진단:
-  "$PYTHON" tools/probe_kakao_uia.py
-  # 5초 내 카톡 채팅방 클릭 → foreground → 접근성 트리 덤프
-  # 결과로 ≡ 버튼의 UIA 이름 확인 ('메뉴'/'더보기'/'More'/'Menu' 후보)
+진단 도구:
+  "$PYTHON" tools/probe_kakao_uia.py         # UIA 트리 덤프 (5초 카운트)
+  "$PYTHON" tools/diagnose_hamburger_click.py # ≡ 클릭 3방식 비교
+  "$PYTHON" tools/test_drawer_e2e.py          # 서랍 E2E 검증 (필요 시)
 ```
 
 #### 실전 테스트 절차 (관리자)
