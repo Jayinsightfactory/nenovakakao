@@ -215,10 +215,30 @@ class ActionLogger:
         self._last_action = action
 
 
-def get_logger() -> ActionLogger:
+def _is_disabled() -> bool:
+    """NENOVA_NO_ACTION_LOG=1 이면 GUI 로그 창 비활성화 (stdout 만 사용).
+    배경: 로그창이 tk.Tk 로 띄워지면서 포커스/클릭 이벤트 가로채는 문제 방지.
+    """
+    import os
+    return os.getenv("NENOVA_NO_ACTION_LOG") == "1"
+
+
+class _StubLogger:
+    """로그창 없는 더미. stdout 으로만 출력."""
+    def log(self, msg: str, tag: str = "INFO"):
+        print(f"[LOG-{tag}] {msg}", flush=True)
+    def start(self): pass
+    def log_foreground(self, title): pass
+    def log_action(self, action): pass
+
+
+def get_logger():
     if ActionLogger._instance is None:
-        ActionLogger._instance = ActionLogger()
-        ActionLogger._instance.start()
+        if _is_disabled():
+            ActionLogger._instance = _StubLogger()
+        else:
+            ActionLogger._instance = ActionLogger()
+            ActionLogger._instance.start()
     return ActionLogger._instance
 
 
@@ -236,7 +256,12 @@ def log(msg: str, tag: str = "INFO"):
 # ═══════════════════════════════════════════════════════
 
 def install_pyautogui_hooks():
-    """pyautogui의 주요 함수를 monkey-patch해서 액션 로그 자동 기록."""
+    """pyautogui의 주요 함수를 monkey-patch해서 액션 로그 자동 기록.
+    NENOVA_NO_ACTION_LOG=1 이면 훅 설치 스킵 (클릭 오버헤드/간섭 제거).
+    """
+    if _is_disabled():
+        print("[LOG] NENOVA_NO_ACTION_LOG=1 → pyautogui 훅 스킵", flush=True)
+        return
     import pyautogui
 
     orig_click = pyautogui.click

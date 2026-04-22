@@ -1065,15 +1065,61 @@ def _save_one_bundle(v_hwnd: int) -> bool:
     vr = win32gui.GetWindowRect(v_hwnd)
     print(f"    [서랍] 뷰어 rect={vr}", flush=True)
 
-    dl_x = vr[2] - 70
+    # Vision 우선으로 ↓ 드롭다운 좌표 찾기 (하드코딩은 폴백).
+    # 뷰어 크기는 방마다/화면 해상도마다 달라서 rect[2]-70, rect[3]-22 가
+    # 안 맞는 경우가 많음. 뷰어 하단 바를 집중 스캔.
+    dl_x = vr[2] - 70  # 기본값 (하드코딩 폴백)
     dl_y = vr[3] - 22
+    try:
+        from core.vision_clicker import find_and_click
+        # 뷰어 하단 바 영역만 캡처 (하단 60px)
+        bar_bbox = (vr[0], vr[3] - 60, vr[2], vr[3])
+        v = find_and_click(
+            bar_bbox,
+            "카카오톡 사진 뷰어 하단 바의 오른쪽 끝에 있는 아래 방향 화살표(↓) "
+            "드롭다운 버튼. 다운로드/저장 옵션을 여는 아이콘. "
+            "X(닫기) 버튼이나 왼쪽 화살표(←/→) 이동 버튼이 아님.",
+            tag="viewer.download_dropdown",
+            min_confidence=0.55,
+            dry_run=True,
+        )
+        if v.found:
+            y_offset = v.y - vr[3]  # vr[3] 기준 (음수여야 정상 — 하단 바 안)
+            # 하단 바 범위 내 (상대 -60 ~ -5) 인지 검증
+            if -60 <= y_offset <= -5:
+                dl_x, dl_y = v.x, v.y
+                print(f"    [서랍] Vision ↓ 좌표: ({dl_x}, {dl_y}) conf={v.confidence:.2f}", flush=True)
+            else:
+                print(f"    [서랍] Vision ↓ y_offset={y_offset} 비정상 → 하드코딩", flush=True)
+    except Exception as e:
+        print(f"    [서랍] Vision ↓ 예외: {e} → 하드코딩", flush=True)
+
     mark("download.dropdown_clicked", "before", {"xy": [dl_x, dl_y]})
     pyautogui.click(dl_x, dl_y)
     time.sleep(1.5)
     mark("download.dropdown_clicked", "after")
 
-    save_x = dl_x - 30
+    # "묶음사진 전체저장" 메뉴도 Vision 으로 찾기 (드롭다운 위에 나타난 메뉴)
+    save_x = dl_x - 30  # 하드코딩 폴백
     save_y = dl_y - 55
+    try:
+        from core.vision_clicker import find_and_click
+        # 드롭다운 메뉴 예상 영역: ↓ 위쪽 150x100 정도
+        menu_bbox = (dl_x - 160, dl_y - 150, dl_x + 20, dl_y - 10)
+        v2 = find_and_click(
+            menu_bbox,
+            "'묶음사진 전체저장' 또는 '전체 저장' 또는 '모두 저장' 텍스트 메뉴 항목. "
+            "한 장만 저장하는 옵션이 아니라 묶음 전체를 저장하는 항목.",
+            tag="viewer.batch_save",
+            min_confidence=0.55,
+            dry_run=True,
+        )
+        if v2.found:
+            save_x, save_y = v2.x, v2.y
+            print(f"    [서랍] Vision 묶음저장 좌표: ({save_x}, {save_y}) conf={v2.confidence:.2f}", flush=True)
+    except Exception as e:
+        print(f"    [서랍] Vision 묶음저장 예외: {e} → 하드코딩", flush=True)
+
     mark("download.batch_save_clicked", "before", {"xy": [save_x, save_y]})
     pyautogui.click(save_x, save_y)
     time.sleep(2.5)
