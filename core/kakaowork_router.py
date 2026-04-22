@@ -827,6 +827,7 @@ def send_delta_interleaved(
             # ═══════════════════════════════════════════════
             try:
                 from core.photo_uploader import upload_many as _nw_upload_many
+                from core.photo_uploader import delete_from_nenovaweb as _nw_delete
                 from core.photo_uploader import _get_client_id as _nw_check
                 if _nw_check():
                     # 헤더 메시지 먼저 (텍스트 순서 보존)
@@ -834,12 +835,18 @@ def send_delta_interleaved(
                     if _send_single(conv_id, header_txt):
                         stats["text_sent"] += 1
                     time.sleep(delay)
-                    # 각 사진 nenovaweb 업로드 + image_link 블록 전송
+                    # 각 사진 nenovaweb 업로드 + image_link 블록 전송 + 성공시 서버에서 삭제
                     urls = _nw_upload_many(photos_for_this, room=kakaotalk_name)
                     for j, (f, url) in enumerate(zip(photos_for_this, urls)):
                         if url:
-                            if send_image_block(conv_id, url):
+                            work_sent = send_image_block(conv_id, url)
+                            if work_sent:
                                 stats["photos_uploaded"] += 1
+                                # 워크 전송 성공 → nenovaweb 서버 용량 관리 위해 즉시 삭제
+                                try:
+                                    _nw_delete(url)
+                                except Exception as _de:
+                                    print(f"  [NENOVAWEB] 삭제 예외 (무시): {_de}", flush=True)
                             else:
                                 stats["photos_missing"] += 1
                             time.sleep(delay)

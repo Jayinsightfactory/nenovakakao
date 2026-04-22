@@ -30,6 +30,7 @@ load_dotenv(ROOT / ".env", override=True)
 
 NENOVAWEB_URL = os.getenv("NENOVAWEB_URL", "https://nenovaweb.com").rstrip("/")
 UPLOAD_ENDPOINT = f"{NENOVAWEB_URL}/api/agent/photo-upload"
+DELETE_ENDPOINT = f"{NENOVAWEB_URL}/api/agent/photo-delete"
 _TIMEOUT = 30
 _MAX_RETRIES = 3
 _RETRY_DELAY = 2.0
@@ -60,6 +61,37 @@ def _get_session() -> Optional[requests.Session]:
         return None
 
 
+def _resize_if_too_large(file_path: Path, max_bytes: int = 5_000_000,
+                         max_dim: int = 2048) -> Path:
+    """파일이 너무 크면 리사이즈한 임시 파일 경로 반환. 아니면 원본 반환.
+    nenovaweb HTTP 413 방지. max: 5MB 또는 2048px 긴변.
+    """
+    try:
+        size = file_path.stat().st_size
+        if size <= max_bytes:
+            return file_path
+        from PIL import Image
+        img = Image.open(file_path)
+        w, h = img.size
+        scale = max_dim / max(w, h)
+        if scale >= 1.0 and size <= max_bytes * 2:
+            return file_path
+        scale = min(scale, 1.0)
+        nw, nh = int(w * scale), int(h * scale)
+        img = img.resize((nw, nh), Image.LANCZOS)
+        resized_path = file_path.parent / f".resized_{file_path.name}"
+        # JPEG 로 저장 (크기 추가 감소)
+        if img.mode in ("RGBA", "P"):
+            img = img.convert("RGB")
+        img.save(resized_path, "JPEG", quality=85, optimize=True)
+        new_size = resized_path.stat().st_size
+        print(f"  [NENOVAWEB] 리사이즈 {w}x{h}/{size//1024}KB → {nw}x{nh}/{new_size//1024}KB", flush=True)
+        return resized_path
+    except Exception as e:
+        print(f"  [NENOVAWEB] 리사이즈 실패 (원본 그대로): {e}", flush=True)
+        return file_path
+
+
 def upload_to_nenovaweb(file_path: Path, room: str = "") -> Optional[str]:
     """단일 이미지 업로드. 성공 시 공개 URL, 실패 시 None."""
     if not file_path.exists():
@@ -75,9 +107,12 @@ def upload_to_nenovaweb(file_path: Path, room: str = "") -> Optional[str]:
     if session is None:
         return None
 
+    # 크기 체크 + 필요 시 리사이즈
+    upload_path = _resize_if_too_large(file_path)
+
     for attempt in range(1, _MAX_RETRIES + 1):
         try:
-            with open(file_path, "rb") as f:
+            with open(upload_path, "rb") as f:
                 files = {"file": (file_path.name, f, "image/jpeg")}
                 data = {"room": room} if room else {}
                 resp = session.post(
@@ -128,6 +163,51 @@ def upload_many(file_paths: list[Path], room: str = "") -> list[Optional[str]]:
         url = upload_to_nenovaweb(p, room=room)
         urls.append(url)
     return urls
+
+
+def delete_from_nenovaweb(url: str) -> bool:
+    """워크 전송 성공 후 nenovaweb 서버의 업로드 파일 삭제 (용량 관리).
+
+    Args:
+        url: upload_to_nenovaweb 가 반환한 공개 URL
+             (예: https://nenovaweb.com/uploads/photos/2026/04/22/xxx.png)
+    Returns: True = 삭제 성공 / False = 실패 (서버 측 엔드포인트 미구현 등)
+    """
+    if not url:
+        return False
+    session = _get_session()
+    if session is None:
+        return False
+    try:
+        # DELETE API 로 파일 경로 전달
+        resp = session.post(
+            DELETE_ENDPOINT,
+            json={"url": url},
+            timeout=_TIMEOUT,
+        )
+        if resp.status_code in (200, 204):
+            print(f"  [NENOVAWEB] 삭제: {url.rsplit('/', 1)[-1]}", flush=True)
+            # 캐시에서도 제거
+            for k, v in list(_cache.items()):
+                if v == url:
+                    del _cache[k]
+            return True
+        elif resp.status_code == 404:
+            print(f"  [NENOVAWEB] 삭제 엔드포인트 미구현: {DELETE_ENDPOINT}", flush=True)
+        else:
+            print(f"  [NENOVAWEB] 삭제 실패 HTTP {resp.status_code}: {resp.text[:100]}", flush=True)
+    except Exception as e:
+        print(f"  [NENOVAWEB] 삭제 예외: {e}", flush=True)
+    return False
+
+
+def delete_many(urls: list[str]) -> int:
+    """여러 URL 순차 삭제. 성공 개수 반환."""
+    n = 0
+    for u in urls:
+        if u and delete_from_nenovaweb(u):
+            n += 1
+    return n
 
 
 def _get_client_id() -> bool:
