@@ -572,6 +572,10 @@ def cmd_monitor(*, with_recorder: bool = False) -> int:
                     row_ys = [_tp + 35 + i * SWEEP_ROW_HEIGHT for i in range(ROWS_PER_PAGE)]
                     rows_desc = list(reversed(row_ys))  # 아래→위
 
+                    # 연속 미열림 카운터 — N회 연속이면 페이지 나머지 스킵 (빈 행 낭비 제거)
+                    consecutive_misses = 0
+                    MAX_CONSECUTIVE_MISSES = 3
+
                     for iter_idx, row_y in enumerate(rows_desc, 1):
                         if overlay.should_stop:
                             break
@@ -591,8 +595,14 @@ def cmd_monitor(*, with_recorder: bool = False) -> int:
                             if not result:
                                 _log_issue("chat_didnt_open", cycle=cycle, page=page_idx, row=iter_idx,
                                            context={"click_xy": [CLICK_X, row_y]})
-                                print(f"     [p{page_idx} r{iter_idx}] y={row_y} 분리창 미열림 → 스킵", flush=True)
+                                consecutive_misses += 1
+                                print(f"     [p{page_idx} r{iter_idx}] y={row_y} 분리창 미열림 → 스킵 (연속 {consecutive_misses})", flush=True)
+                                if consecutive_misses >= MAX_CONSECUTIVE_MISSES:
+                                    print(f"     [p{page_idx}] {MAX_CONSECUTIVE_MISSES}회 연속 미열림 → 페이지 나머지 스킵", flush=True)
+                                    break
                                 continue
+                            # 결과가 있으면 연속 카운터 리셋
+                            consecutive_misses = 0
 
                             if result.get("_duplicate"):
                                 _log_issue("duplicate_skip", cycle=cycle, page=page_idx, row=iter_idx,
