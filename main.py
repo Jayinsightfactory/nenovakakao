@@ -556,7 +556,7 @@ def cmd_monitor(*, with_recorder: bool = False) -> int:
                 if n_closed:
                     print(f"[{cycle}] 이전 분리창 {n_closed}개 정리", flush=True)
 
-                # 보강: selected_rooms 에 없는 분리창 (개인톡 등) 도 강제 정리
+                # 보강 A: selected_rooms 에 없는 분리창 (개인톡 등) 도 강제 정리
                 stray_seps = []
                 def _find_strays(h, _):
                     if not _w32.IsWindowVisible(h):
@@ -580,6 +580,33 @@ def cmd_monitor(*, with_recorder: bool = False) -> int:
                         except Exception:
                             pass
                     time.sleep(0.5)
+
+                # 보강 B: 무명 EVA_Window_Dblclk 잔여 팝업 (광고/알림 등) 정리
+                # 이전 ≡ 메뉴가 닫히지 않고 남아 있어서 새 ≡ 클릭과 충돌하는 케이스 방지.
+                stray_popups = []
+                def _find_stray_popups(h, _):
+                    if not _w32.IsWindowVisible(h):
+                        return
+                    t = _w32.GetWindowText(h) or ""
+                    if t:  # 제목 있으면 스킵 (분리창/메인이면 위에서 처리)
+                        return
+                    cls = _w32.GetClassName(h) or ""
+                    if "EVA_" not in cls:
+                        return
+                    r = _w32.GetWindowRect(h)
+                    w, hh = r[2]-r[0], r[3]-r[1]
+                    # 팝업 크기 범위 (180~500 x 100~700) — 광고 팝업도 포함
+                    if 100 <= w <= 500 and 100 <= hh <= 700:
+                        stray_popups.append((h, cls, r))
+                _w32.EnumWindows(_find_stray_popups, None)
+                if stray_popups:
+                    print(f"[{cycle}] 잔여 EVA 팝업 {len(stray_popups)}개 정리: {[(c, r) for _,c,r in stray_popups[:3]]}", flush=True)
+                    for h, c, r in stray_popups:
+                        try:
+                            _w32.PostMessage(h, _wc.WM_CLOSE, 0, 0)
+                        except Exception:
+                            pass
+                    time.sleep(0.3)
 
                 cleanup_popups()
                 window = focus_kakaotalk()

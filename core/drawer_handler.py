@@ -635,6 +635,34 @@ def open_drawer(chat_hwnd: int) -> int | None:
 
     mark("open_drawer.focus", "before", {"chat_hwnd": chat_hwnd})
 
+    # 잔여 무명 EVA 팝업 선제 정리 (이전 ≡ 메뉴 미닫힘, 광고 등)
+    try:
+        import win32con as _wc_pre
+        stray_popups_pre = []
+        def _find_pre(h, _):
+            if not win32gui.IsWindowVisible(h):
+                return
+            if win32gui.GetWindowText(h):  # 제목 있으면 스킵
+                return
+            cls = win32gui.GetClassName(h) or ""
+            if "EVA_" not in cls:
+                return
+            r = win32gui.GetWindowRect(h)
+            w, hh = r[2]-r[0], r[3]-r[1]
+            if 100 <= w <= 500 and 100 <= hh <= 700:
+                stray_popups_pre.append((h, cls, r))
+        win32gui.EnumWindows(_find_pre, None)
+        if stray_popups_pre:
+            print(f"    [서랍] ≡ 클릭 전 잔여 EVA 팝업 {len(stray_popups_pre)}개 정리", flush=True)
+            for h, c, r in stray_popups_pre:
+                try:
+                    win32gui.PostMessage(h, _wc_pre.WM_CLOSE, 0, 0)
+                except Exception:
+                    pass
+            time.sleep(0.3)
+    except Exception as e:
+        print(f"    [서랍] 사전 팝업 정리 실패 (무시): {e}", flush=True)
+
     # chat_hwnd 유효성 체크 (open_drawer_uia 등에서 무효화됐을 수 있음)
     if not win32gui.IsWindow(chat_hwnd):
         # 재탐색: 같은 방 제목의 유효한 hwnd 찾기
