@@ -493,9 +493,37 @@ def cmd_monitor(*, with_recorder: bool = False) -> int:
 
             # ── 매 사이클 시작: 정체 다이얼로그 처치 + 잔여 분리창 정리 + 팝업 정리 + 카톡 활성화 ──
             try:
-                # (0) "다른 이름으로 저장" 등 정체 다이얼로그 자동 처리
                 import win32gui as _w32
                 import win32con as _wc
+                import ctypes as _ct
+
+                # (0a) 카톡 메인 창 강제 visible (숨겨진 상태 복원)
+                kakao_main_hwnd = None
+                def _find_kakao_any(h, _):
+                    nonlocal kakao_main_hwnd
+                    if kakao_main_hwnd:
+                        return
+                    if _w32.IsWindow(h) and _w32.GetWindowText(h) == "카카오톡":
+                        kakao_main_hwnd = h
+                _w32.EnumWindows(_find_kakao_any, None)
+                if kakao_main_hwnd and not _w32.IsWindowVisible(kakao_main_hwnd):
+                    print(f"[{cycle}] 카톡 메인 숨김 상태 → SW_SHOW 강제 복원", flush=True)
+                    _w32.ShowWindow(kakao_main_hwnd, _wc.SW_SHOW)
+                    time.sleep(0.3)
+                    _w32.ShowWindow(kakao_main_hwnd, _wc.SW_RESTORE)
+                    time.sleep(0.3)
+                    # Alt 트릭 + foreground
+                    _ct.windll.user32.keybd_event(0x12, 0, 0, 0)
+                    time.sleep(0.05)
+                    _ct.windll.user32.keybd_event(0x12, 0, 0x0002, 0)
+                    time.sleep(0.1)
+                    try:
+                        _w32.SetForegroundWindow(kakao_main_hwnd)
+                    except Exception:
+                        pass
+                    time.sleep(0.3)
+
+                # (0b) "다른 이름으로 저장" 등 정체 다이얼로그 자동 처리
                 stuck_dialogs = []
                 def _find_stuck(h, _):
                     if not _w32.IsWindowVisible(h):
