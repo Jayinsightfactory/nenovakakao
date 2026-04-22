@@ -1,283 +1,1046 @@
 """
-Phase 1.5: 카카오톡 서랍 사진 다운로드 자동화
+카카오톡 서랍 사진 다운로드 + 카카오워크 업로드 자동화.
 
-채팅방에서 Ctrl+K → 서랍 열기 → 사진/동영상 탭 → 사진 다운로드.
+실측 검증 완료 (2026-04-16):
+  1. ≡ 클릭 → 팝업 메뉴
+  2. "채팅방 서랍" hover (팝업 y+82) → 서브메뉴 출현
+  3. "사진/동영상" 클릭 (서브메뉴 첫 항목)
+  4. 서랍 창 열림 (좌측: 방 리스트, 우측: 사진 그리드)
+  5. 좌측에서 방 선택 → 우측 사진 그리드 갱신
+  6. 사진 더블클릭 → 뷰어 (제목: "발신자 날짜")
+  7. ↓ 버튼 (하단 바 우측에서 ~70px) → 드롭다운
+  8. "묶음사진 전체저장" → "다른 이름으로 저장" → Enter → 파일 저장
 
-검증된 좌표 (2026-04-10, captures/drawer.png + drawer_photos.png 기준):
-  서랍 창: 별도 윈도우 "채팅방 서랍", 약 840x600
-  사진/동영상 탭: drawer.left + 120, drawer.top + 190
-  첫번째 사진:   drawer.left + 150, drawer.top + 280
-  다운로드 버튼:  drawer.left + width - 25, drawer.top + height - 25
-  그리드: 3열, 열간격 ~140px, 행간격 ~140px
+핵심 전략: 서랍 1회 열기 → 좌측 리스트에서 방 순회 → 전부 다운로드.
+방 이름 매칭: Claude Vision OCR → 드로어 breadcrumb 검증.
 """
 from __future__ import annotations
 
+import base64
+import ctypes
+import os
+import re
 import time
 from pathlib import Path
 
 import pyautogui
-import pygetwindow as gw
 import win32gui
+import win32con
 
-# 사진 다운로드 경로 (카카오톡 기본값)
+from core.traced_actions import mark
+
+pyautogui.FAILSAFE = False
+ctypes.windll.user32.AllowSetForegroundWindow(-1)
+
 KAKAO_DOWNLOAD_DIR = Path("C:/Users/USER/Documents/카카오톡 받은 파일")
-
-# 서랍 창 제목 키워드
-DRAWER_TITLE_KEYWORD = "서랍"
-
-# 서랍 내부 상대 좌표 (drawer.png / drawer_photos.png 분석 기준)
-PHOTO_TAB_X_OFFSET = 120       # 사진/동영상 탭
-PHOTO_TAB_Y_OFFSET = 190
-FIRST_PHOTO_X_OFFSET = 150     # 첫번째 사진 썸네일
-FIRST_PHOTO_Y_OFFSET = 280
-DOWNLOAD_BTN_X_FROM_RIGHT = 25  # 다운로드 버튼 (우하단 기준)
-DOWNLOAD_BTN_Y_FROM_BOTTOM = 25
-
-# 그리드 레이아웃 (3열, 행/열 간격)
-GRID_COLS = 3
-GRID_COL_SPACING = 140         # 열 간격 (px)
-GRID_ROW_SPACING = 140         # 행 간격 (px)
-MAX_PHOTOS = 12                # 최대 다운로드 수 (안전장치)
-
-# 캡처 저장 경로
 CAPTURES_DIR = Path(__file__).parent.parent / "captures"
 
 
-def _snapshot_downloads() -> set[str]:
-    """다운로드 폴더의 현재 파일 목록 스냅샷"""
-    if not KAKAO_DOWNLOAD_DIR.exists():
-        return set()
-    return {str(p) for p in KAKAO_DOWNLOAD_DIR.rglob("*") if p.is_file()}
+# ═══════════════════════════════════════════════════════
+# 방 이름 매칭 (OCR 기반)
+# ═══════════════════════════════════════════════════════
+
+def _normalize_room_name(name: str) -> str:
+    """방 이름 정규화: 공백/특수문자 제거, 소문자화."""
+    if not name:
+        return ""
+    # 공백·점·이음표·따옴표 모두 제거, & 와 + 를 동등 취급
+    n = re.sub(r"[\s\.\-_\"'()]+", "", name)
+    n = n.replace("&", "+").lower()
+    return n
 
 
-def _capture_verify(label: str) -> Path:
-    """
-    동작 전 화면 캡처 → 저장. (캡처→확인→동작 룰)
-    Returns: 캡처 파일 경로
-    """
-    CAPTURES_DIR.mkdir(parents=True, exist_ok=True)
-    save_path = CAPTURES_DIR / f"drawer_verify_{label}.png"
-    screenshot = pyautogui.screenshot()
-    screenshot.save(str(save_path))
-    return save_path
+def _rooms_match(a: str, b: str, min_prefix: int = 4) -> bool:
+    """두 방 이름이 같은지 (정규화 + 접두사 매칭)."""
+    na, nb = _normalize_room_name(a), _normalize_room_name(b)
+    if not na or not nb:
+        return False
+    if na == nb:
+        return True
+    # 한쪽이 잘린 경우 (예: "네노바 + 다..." vs "네노바 + 다원")
+    short, long_ = (na, nb) if len(na) <= len(nb) else (nb, na)
+    if len(short) >= min_prefix and long_.startswith(short):
+        return True
+    return False
 
 
-def _get_thumbnail_position(drawer, index: int) -> tuple[int, int]:
-    """
-    그리드 인덱스(0-based) → 절대 좌표 계산.
-    행 = index // 3, 열 = index % 3
-    """
-    row = index // GRID_COLS
-    col = index % GRID_COLS
-    x = drawer.left + FIRST_PHOTO_X_OFFSET + (col * GRID_COL_SPACING)
-    y = drawer.top + FIRST_PHOTO_Y_OFFSET + (row * GRID_ROW_SPACING)
-    return x, y
-
-
-def find_drawer_window():
-    """
-    서랍 창을 찾는다.
-    pygetwindow 타이틀 검색 + 크기 필터 (width>500, height>300).
-
-    Returns:
-        pygetwindow.Win32Window
-
-    Raises:
-        RuntimeError: 서랍 창을 찾을 수 없을 때
-    """
-    windows = gw.getWindowsWithTitle(DRAWER_TITLE_KEYWORD)
-    # 크기 필터: 너무 작은 창은 서랍이 아님
-    candidates = [w for w in windows if w.width > 500 and w.height > 300]
-    if not candidates:
-        raise RuntimeError(
-            f"'{DRAWER_TITLE_KEYWORD}' 창을 찾을 수 없습니다. "
-            "Ctrl+K로 서랍이 열려있는지 확인해주세요."
+def _vision_ocr(image_path: Path, prompt: str, max_tokens: int = 200) -> str | None:
+    """Claude Vision OCR. 실패 시 None."""
+    try:
+        import anthropic  # type: ignore
+    except ImportError:
+        return None
+    api_key = os.getenv("ANTHROPIC_API_KEY")
+    if not api_key:
+        return None
+    try:
+        client = anthropic.Anthropic(api_key=api_key)
+        with open(image_path, "rb") as f:
+            data = base64.standard_b64encode(f.read()).decode()
+        msg = client.messages.create(
+            model="claude-haiku-4-5-20251001",
+            max_tokens=max_tokens,
+            messages=[{
+                "role": "user",
+                "content": [
+                    {"type": "image", "source": {"type": "base64", "media_type": "image/png", "data": data}},
+                    {"type": "text", "text": prompt},
+                ],
+            }],
         )
+        return msg.content[0].text.strip()
+    except Exception as e:
+        print(f"    [OCR] 실패: {e}", flush=True)
+        return None
+
+
+def _ocr_drawer_header(drawer_hwnd: int) -> str | None:
+    """드로어 상단 breadcrumb OCR → 현재 선택된 방 이름."""
+    try:
+        from PIL import ImageGrab
+    except ImportError:
+        return None
+    dr = win32gui.GetWindowRect(drawer_hwnd)
+    dw = dr[2] - dr[0]
+    # 좌측 패널은 약 195px 폭. breadcrumb는 우측 패널 상단 (약 y+90~135)
+    panel_left = dr[0] + 210
+    header_top = dr[1] + 85
+    header_right = dr[0] + min(dw - 30, panel_left + 300)
+    header_bottom = dr[1] + 135
+    try:
+        CAPTURES_DIR.mkdir(parents=True, exist_ok=True)
+        img = ImageGrab.grab(bbox=(panel_left, header_top, header_right, header_bottom))
+        crop_path = CAPTURES_DIR / "drawer_header_ocr.png"
+        img.save(crop_path)
+    except Exception as e:
+        print(f"    [OCR] breadcrumb 캡처 실패: {e}", flush=True)
+        return None
+    return _vision_ocr(
+        crop_path,
+        "이 이미지에 표시된 채팅방 이름 텍스트만 그대로 한 줄로 반환. 설명 없이 이름만. 없으면 빈 문자열.",
+        max_tokens=80,
+    )
+
+
+def verify_drawer_room(drawer_hwnd: int, expected_room: str) -> bool:
+    """드로어의 현재 선택된 방이 expected_room과 일치하는지."""
+    current = _ocr_drawer_header(drawer_hwnd)
+    if not current:
+        print(f"    [서랍] breadcrumb OCR 실패 — 검증 불가", flush=True)
+        return False
+    match = _rooms_match(current, expected_room)
+    tag = "일치" if match else "불일치"
+    print(f"    [서랍] breadcrumb={current!r} vs 기대={expected_room!r} → {tag}", flush=True)
+    return match
+
+
+def _ocr_drawer_left_list(drawer_hwnd: int) -> list[dict]:
+    """드로어 좌측 리스트 OCR → [{'name': ..., 'rel_y': ...}, ...]"""
+    try:
+        from PIL import ImageGrab
+    except ImportError:
+        return []
+    dr = win32gui.GetWindowRect(drawer_hwnd)
+    # 좌측 패널 영역 (아이콘 포함)
+    panel_left = dr[0] + 30
+    panel_right = dr[0] + 200
+    panel_top = dr[1] + 55
+    panel_bottom = dr[3] - 20
+    try:
+        CAPTURES_DIR.mkdir(parents=True, exist_ok=True)
+        img = ImageGrab.grab(bbox=(panel_left, panel_top, panel_right, panel_bottom))
+        crop_path = CAPTURES_DIR / "drawer_left_list_ocr.png"
+        img.save(crop_path)
+        list_height = panel_bottom - panel_top
+    except Exception as e:
+        print(f"    [OCR] 좌측 리스트 캡처 실패: {e}", flush=True)
+        return []
+    raw = _vision_ocr(
+        crop_path,
+        (
+            "이 이미지는 채팅방 서랍의 좌측 방 리스트입니다. "
+            "각 항목은 아이콘+이름+사진수로 구성됩니다. "
+            "위에서부터 순서대로 각 방의 이름만 한 줄씩 나열하세요. "
+            "숫자·사진수·아이콘 설명은 빼고 방 이름 텍스트만. "
+            "다른 설명 없이 이름만 줄바꿈으로 구분."
+        ),
+        max_tokens=500,
+    )
+    if not raw:
+        return []
+    lines = [ln.strip() for ln in raw.splitlines() if ln.strip()]
+    if not lines:
+        return []
+    # 각 항목의 rel_y는 대략 균등 분할 (정확하진 않지만 클릭엔 충분)
+    step = list_height / max(len(lines), 1)
+    return [
+        {"name": ln, "rel_y": int(step * i + step / 2)}
+        for i, ln in enumerate(lines)
+    ]
+
+
+def _click_in_drawer_left(drawer_hwnd: int, rel_y: int):
+    dr = win32gui.GetWindowRect(drawer_hwnd)
+    list_x = dr[0] + 115
+    list_top = dr[1] + 55
+    pyautogui.click(list_x, list_top + rel_y)
+    time.sleep(1.2)
+
+
+def select_room_in_drawer_by_name(
+    drawer_hwnd: int, target_room: str, max_scroll: int = 6
+) -> bool:
+    """드로어 좌측 리스트에서 target_room 찾아서 클릭 → 검증까지."""
+    # 이미 맞으면 스킵
+    if verify_drawer_room(drawer_hwnd, target_room):
+        return True
+
+    dr = win32gui.GetWindowRect(drawer_hwnd)
+    # 먼저 맨 위로 스크롤
+    pyautogui.moveTo(dr[0] + 100, dr[1] + 200)
+    for _ in range(10):
+        pyautogui.scroll(3)
+        time.sleep(0.1)
+    time.sleep(0.5)
+
+    for scroll_attempt in range(max_scroll):
+        rooms = _ocr_drawer_left_list(drawer_hwnd)
+        print(
+            f"    [서랍] 좌측 {len(rooms)}개 감지: "
+            f"{[r['name'] for r in rooms[:5]]}...",
+            flush=True,
+        )
+        for r in rooms:
+            if _rooms_match(r["name"], target_room):
+                print(f"    [서랍] 매칭: {r['name']!r} → 클릭", flush=True)
+                _click_in_drawer_left(drawer_hwnd, r["rel_y"])
+                # 검증
+                if verify_drawer_room(drawer_hwnd, target_room):
+                    return True
+                # 한번 더 OCR로 재확인
+                time.sleep(0.5)
+                if verify_drawer_room(drawer_hwnd, target_room):
+                    return True
+                # 매칭 OCR이지만 검증 실패 — 계속 시도
+
+        # 현재 화면에 없음 → 아래로 스크롤
+        pyautogui.moveTo(dr[0] + 100, dr[1] + 300)
+        pyautogui.scroll(-3)
+        time.sleep(0.5)
+
+    print(f"    [서랍] '{target_room}' 좌측 리스트에서 못 찾음", flush=True)
+    return False
+
+
+def _snapshot_downloads() -> set[str]:
+    """사진 저장 폴더(들) 스냅샷.
+    카톡이 '마지막 폴더 기억'으로 우리 강제 텍스트 폴더(KAKAO_SAVE_DIR)에 사진을
+    저장할 수 있으므로 두 곳 모두 감시한다.
+    """
+    result: set[str] = set()
+    paths = [KAKAO_DOWNLOAD_DIR]
+    try:
+        from core.message_extractor import KAKAO_SAVE_DIR
+        if KAKAO_SAVE_DIR not in paths:
+            paths.append(KAKAO_SAVE_DIR)
+    except Exception:
+        pass
+    for p in paths:
+        if p.exists():
+            for f in p.rglob("*"):
+                if f.is_file():
+                    result.add(str(f))
+    return result
+
+
+def _activate(hwnd: int):
+    try:
+        win32gui.ShowWindow(hwnd, win32con.SW_RESTORE)
+        time.sleep(0.1)
+        win32gui.SetForegroundWindow(hwnd)
+    except Exception:
+        pass
+    time.sleep(0.3)
+
+
+def _find_popup(min_w=180, max_w=350, min_h=200, max_h=550, near_xy=None):
+    """제목 없는 팝업 찾기 (≡ 메뉴).
+
+    near_xy=(x, y) 지정 시 그 좌표에 가장 가까운 팝업 선택 (≡ 클릭 위치 기준).
+    """
+    results = []
+    def cb(hwnd, lst):
+        if win32gui.IsWindowVisible(hwnd):
+            if not win32gui.GetWindowText(hwnd):
+                r = win32gui.GetWindowRect(hwnd)
+                w, h = r[2] - r[0], r[3] - r[1]
+                if min_w <= w <= max_w and min_h <= h <= max_h:
+                    # EVA_Menu 클래스 우선 (카톡 메뉴)
+                    cls = win32gui.GetClassName(hwnd) or ""
+                    lst.append((r, cls))
+    win32gui.EnumWindows(cb, results)
+    if not results:
+        return None
+
+    # EVA_Menu 클래스만 필터링 (실제 카톡 메뉴)
+    eva = [r for r, c in results if "EVA_Menu" in c]
+    candidates = eva if eva else [r for r, c in results]
+
+    if near_xy and candidates:
+        # 클릭 위치에서 가장 가까운 팝업 선택 + 거리 300px 초과면 제외 (오탐 방지)
+        cx, cy = near_xy
+        def dist(r):
+            rx = (r[0] + r[2]) // 2
+            ry = (r[1] + r[3]) // 2
+            return ((rx - cx) ** 2 + (ry - cy) ** 2) ** 0.5
+        best = min(candidates, key=dist)
+        d = dist(best)
+        if d > 350:
+            # 근처에 팝업 없음 = 실제 메뉴가 안 열린 것
+            return None
+        return best
     return candidates[0]
 
 
-def _activate_window(hwnd: int):
-    """win32gui로 창 활성화 (포그라운드)"""
+def _find_submenu():
+    """서브메뉴 (작은 팝업) 찾기."""
+    results = []
+    def cb(hwnd, lst):
+        if win32gui.IsWindowVisible(hwnd):
+            if not win32gui.GetWindowText(hwnd):
+                r = win32gui.GetWindowRect(hwnd)
+                w, h = r[2] - r[0], r[3] - r[1]
+                if 50 <= w <= 250 and 30 <= h <= 150:
+                    lst.append(r)
+    win32gui.EnumWindows(cb, results)
+    return results[0] if results else None
+
+
+def _find_drawer_window():
+    """'채팅방 서랍' 독립 창 찾기."""
+    results = []
+    def cb(hwnd, lst):
+        if win32gui.IsWindowVisible(hwnd):
+            t = win32gui.GetWindowText(hwnd)
+            if t == "채팅방 서랍":
+                lst.append((hwnd, win32gui.GetWindowRect(hwnd)))
+    win32gui.EnumWindows(cb, results)
+    return results[0] if results else None
+
+
+def _find_viewer():
+    """사진 뷰어 찾기 (제목에 날짜 포함)."""
+    results = []
+    def cb(hwnd, lst):
+        if win32gui.IsWindowVisible(hwnd):
+            t = win32gui.GetWindowText(hwnd)
+            r = win32gui.GetWindowRect(hwnd)
+            w, h = r[2] - r[0], r[3] - r[1]
+            if w > 300 and h > 300 and "2026" in t:
+                lst.append((hwnd, t, r))
+    win32gui.EnumWindows(cb, results)
+    return results[0] if results else None
+
+
+# ═══════════════════════════════════════════════════════
+# UIA 기반 팝업 내부 메뉴 네비 (≡ 이미 클릭된 상태에서 호출)
+# ═══════════════════════════════════════════════════════
+
+def _try_uia_inner_nav(popup_rect: tuple) -> bool:
+    """팝업이 이미 떠 있는 상태에서 "채팅방 서랍" → "사진/동영상" 을 UIA 로 클릭.
+
+    popup_rect: `_find_popup` 이 반환한 (l, t, r, b) 튜플.
+
+    Returns:
+        True — 성공 (서랍 창이 뜰 시간까지 sleep 포함)
+        False — 실패 (호출자가 픽셀 폴백을 진행해야 함)
+    """
+    import os as _os
+    print(f"    [UIA-NAV] 진입: popup={popup_rect}", flush=True)
+
+    if _os.getenv("NENOVA_DRAWER_FORCE_PIXEL") == "1":
+        print(f"    [UIA-NAV] FORCE_PIXEL — 스킵", flush=True)
+        return False
+
     try:
-        win32gui.SetForegroundWindow(hwnd)
-    except Exception:
-        # 간혹 실패 → 최소화 후 복원으로 재시도
-        win32gui.ShowWindow(hwnd, 6)   # SW_MINIMIZE
-        time.sleep(0.2)
-        win32gui.ShowWindow(hwnd, 9)   # SW_RESTORE
-        time.sleep(0.3)
-        win32gui.SetForegroundWindow(hwnd)
-    time.sleep(0.3)
+        from core.drawer_uia import (
+            PYWINAUTO_AVAILABLE, _find_by_name_substr, _invoke_safely,
+            MENU_NAMES_DRAWER, MENU_NAMES_PHOTO_TAB,
+        )
+    except Exception as e:
+        print(f"    [UIA-NAV] 모듈 import 실패: {e}", flush=True)
+        return False
 
+    if not PYWINAUTO_AVAILABLE:
+        print(f"    [UIA-NAV] pywinauto 사용 불가", flush=True)
+        return False
 
-def open_drawer(chat_hwnd: int) -> object:
-    """
-    채팅방 창 활성화 → Ctrl+K → 서랍 창 찾기.
+    # ── Step 1: 팝업 rect 매칭되는 hwnd 찾기 (fuzzy) ──
+    popup_cx = (popup_rect[0] + popup_rect[2]) // 2
+    popup_cy = (popup_rect[1] + popup_rect[3]) // 2
 
-    Args:
-        chat_hwnd: 열려있는 채팅방 창 핸들 (win32gui HWND)
+    # EnumWindows 는 파이썬 콜백을 호출. 콜백에서 예외 나면 C 레벨에서 중단.
+    # 단순 수집기 패턴으로 안전하게.
+    all_small_popups: list = []
 
-    Returns:
-        서랍 pygetwindow.Win32Window
-    """
-    _activate_window(chat_hwnd)
-    time.sleep(0.3)
+    def _collect(hwnd, _):
+        try:
+            if not win32gui.IsWindowVisible(hwnd):
+                return
+            if win32gui.GetWindowText(hwnd):
+                return
+            r = win32gui.GetWindowRect(hwnd)
+            w, h = r[2] - r[0], r[3] - r[1]
+            if 100 <= w <= 500 and 100 <= h <= 700:
+                cls = win32gui.GetClassName(hwnd) or ""
+                all_small_popups.append((hwnd, r, cls))
+        except Exception:
+            pass
 
-    pyautogui.hotkey("ctrl", "k")
-    time.sleep(2.0)  # 서랍 로딩 대기
+    try:
+        win32gui.EnumWindows(_collect, None)
+    except Exception as e:
+        print(f"    [UIA-NAV] EnumWindows 실패: {e}", flush=True)
+        return False
 
-    drawer = find_drawer_window()
-    _activate_window(drawer._hWnd)
-    return drawer
+    print(f"    [UIA-NAV] 팝업 후보 {len(all_small_popups)}개", flush=True)
 
+    # 중심점 거리로 정렬, EVA_Menu 우선
+    def _dist(cand):
+        r = cand[1]
+        cx = (r[0] + r[2]) // 2
+        cy = (r[1] + r[3]) // 2
+        return abs(cx - popup_cx) + abs(cy - popup_cy)
 
-def download_photos(drawer, max_count: int = 0) -> list[Path]:
-    """
-    서랍에서 여러 사진을 순회 다운로드.
+    eva = [c for c in all_small_popups if "EVA_Menu" in c[2]]
+    pool = eva if eva else all_small_popups
+    if not pool:
+        print(f"    [UIA-NAV] 후보 0개 — 실패", flush=True)
+        return False
 
-    그리드 썸네일을 순서대로 클릭 → 다운로드 → ESC → 다음 썸네일.
-    각 단계마다 캡처→확인 수행.
+    pool.sort(key=_dist)
+    popup_hwnd, popup_rect_live, popup_cls = pool[0]
+    d = _dist(pool[0])
+    if d > 80:
+        print(f"    [UIA-NAV] 가장 가까운 팝업도 거리 {d}px — 매칭 실패", flush=True)
+        for hwnd, r, c in pool[:3]:
+            print(f"       hwnd={hwnd} cls={c} rect={r} dist={_dist((hwnd, r, c))}", flush=True)
+        return False
 
-    Args:
-        drawer: pygetwindow.Win32Window (서랍 창)
-        max_count: 다운로드할 최대 사진 수 (0 = 가능한 모든 사진, MAX_PHOTOS까지)
+    print(f"    [UIA-NAV] 매칭: hwnd={popup_hwnd} cls={popup_cls} rect={popup_rect_live} dist={d}", flush=True)
 
-    Returns:
-        새로 다운로드된 파일 경로 리스트
-    """
-    before_all = _snapshot_downloads()
-    limit = min(max_count, MAX_PHOTOS) if max_count > 0 else MAX_PHOTOS
+    # ── Step 2: UIA 로 팝업 연결 → "채팅방 서랍" MenuItem invoke ──
+    try:
+        from pywinauto import Application
+        app = Application(backend="uia").connect(handle=popup_hwnd, timeout=1)
+        popup_win = app.window(handle=popup_hwnd)
+    except Exception as e:
+        print(f"    [UIA-NAV] 팝업 UIA connect 실패: {e}", flush=True)
+        return False
 
-    # 1. 사진/동영상 탭 클릭
-    _capture_verify("before_photo_tab")
-    tab_x = drawer.left + PHOTO_TAB_X_OFFSET
-    tab_y = drawer.top + PHOTO_TAB_Y_OFFSET
-    pyautogui.click(tab_x, tab_y)
-    time.sleep(1.0)
-    _capture_verify("after_photo_tab")
+    drawer_item = _find_by_name_substr(
+        popup_win, MENU_NAMES_DRAWER,
+        control_types=["MenuItem", "ListItem", "Button", "Text"],
+    )
 
-    all_new_files = []
-    consecutive_empty = 0  # 연속 빈 다운로드 카운터 (종료 조건)
+    drawer_clicked_via = None  # "uia" | "vision"
+    if drawer_item is not None:
+        print(f"    [UIA-NAV] '채팅방 서랍' UIA 발견: {drawer_item.element_info.name!r} → invoke", flush=True)
+        if _invoke_safely(drawer_item, "open_drawer.uia_drawer_item"):
+            drawer_clicked_via = "uia"
 
-    for i in range(limit):
-        before_one = _snapshot_downloads()
+    if drawer_clicked_via is None:
+        # UIA 가 MenuItem 을 못 봄 (팝업도 DirectUI) → Vision OCR 로 좌표 찾기
+        try:
+            items = popup_win.descendants(control_type="MenuItem")
+            names = [(it.element_info.name or "")[:30] for it in items]
+            print(f"    [UIA-NAV] MenuItems 비어있음 ({names[:10]}) → Vision 폴백", flush=True)
+        except Exception:
+            print(f"    [UIA-NAV] MenuItems 조회 실패 → Vision 폴백", flush=True)
 
-        # 2. 썸네일 클릭
-        thumb_x, thumb_y = _get_thumbnail_position(drawer, i)
+        try:
+            from core.vision_clicker import find_and_click
+            # popup_rect_live = 실제 팝업 hwnd 의 rect (여백 포함)
+            v_result = find_and_click(
+                popup_rect_live,
+                "카카오톡 채팅방 메뉴 팝업에서 '채팅방 서랍' 또는 '서랍' 텍스트가 있는 메뉴 항목. "
+                "서랍 아이콘 옆에 표시됨. '대화 내용'이나 '톡캘린더'가 아님.",
+                tag="drawer.vision_find_drawer_item",
+                min_confidence=0.55,
+            )
+            if v_result.found:
+                print(f"    [UIA-NAV] Vision 클릭 성공: ({v_result.x},{v_result.y}) conf={v_result.confidence:.2f}", flush=True)
+                drawer_clicked_via = "vision"
+            else:
+                print(f"    [UIA-NAV] Vision '채팅방 서랍' 못 찾음 — 실패", flush=True)
+                return False
+        except Exception as e:
+            print(f"    [UIA-NAV] Vision 호출 에러: {e}", flush=True)
+            return False
 
-        # 서랍 영역 밖이면 중단
-        if thumb_y > drawer.top + drawer.height - 60:
-            print(f"       [DRAWER] 썸네일 {i}: 서랍 영역 밖 → 중단")
+    time.sleep(1.2)
+
+    # ── Step 3: 서브메뉴 찾기 (새로 뜬 팝업 — popup_hwnd 와 다른 것) ──
+    submenu_rect = None
+    t0 = time.time()
+    while time.time() - t0 < 3.0:
+        new_popups: list = []
+
+        def _collect_sub(hwnd, _):
+            try:
+                if not win32gui.IsWindowVisible(hwnd):
+                    return
+                if win32gui.GetWindowText(hwnd):
+                    return
+                if hwnd == popup_hwnd:
+                    return
+                r = win32gui.GetWindowRect(hwnd)
+                w, h = r[2] - r[0], r[3] - r[1]
+                if 80 <= w <= 500 and 30 <= h <= 500:
+                    cls = win32gui.GetClassName(hwnd) or ""
+                    new_popups.append((hwnd, r, cls))
+            except Exception:
+                pass
+
+        try:
+            win32gui.EnumWindows(_collect_sub, None)
+        except Exception as e:
+            print(f"    [UIA-NAV] 서브메뉴 enum 실패: {e}", flush=True)
             break
 
-        _capture_verify(f"before_thumb_{i}")
-        print(f"       [DRAWER] 썸네일 {i} 클릭 ({thumb_x}, {thumb_y})")
-        pyautogui.click(thumb_x, thumb_y)
+        if new_popups:
+            # 원래 팝업 옆에 붙는 작은 서브메뉴 우선 (높이 < 원 팝업 높이)
+            pop_h = popup_rect_live[3] - popup_rect_live[1]
+            smaller = [p for p in new_popups if (p[1][3] - p[1][1]) < pop_h]
+            candidates = smaller if smaller else new_popups
+            # 중심 x 가 원 팝업 오른쪽 근처인 것 우선
+            pop_right = popup_rect_live[2]
+            def _score(p):
+                r = p[1]
+                cx = (r[0] + r[2]) // 2
+                return abs(cx - (pop_right + 80))
+            best = min(candidates, key=_score)
+            submenu_rect = best[1]
+            print(f"    [UIA-NAV] 서브메뉴 hwnd={best[0]} cls={best[2]} rect={submenu_rect}", flush=True)
+            break
+        time.sleep(0.2)
+
+    if submenu_rect is None:
+        print(f"    [UIA-NAV] 서브메뉴 창 없음 (3초 대기)", flush=True)
+        return False
+
+    # ── Step 4: 서브메뉴에서 "사진/동영상" 클릭 (Vision) ──
+    try:
+        from core.vision_clicker import find_and_click
+        v_result = find_and_click(
+            submenu_rect,
+            "카카오톡 서랍 서브메뉴에서 '사진/동영상' 또는 '사진' 텍스트 메뉴 항목. "
+            "보통 서브메뉴의 첫 번째 항목.",
+            tag="drawer.vision_find_photo_tab",
+            min_confidence=0.55,
+        )
+        if v_result.found:
+            print(f"    [UIA-NAV] '사진/동영상' Vision 클릭 성공: ({v_result.x},{v_result.y})", flush=True)
+            mark("open_drawer.submenu_detected", "after", {"method": "vision"})
+            mark("open_drawer.photo_tab_clicked", "after", {"method": "vision"})
+            time.sleep(2.5)
+            return True
+        else:
+            print(f"    [UIA-NAV] '사진/동영상' Vision 못 찾음", flush=True)
+            return False
+    except Exception as e:
+        print(f"    [UIA-NAV] 서브메뉴 Vision 에러: {e}", flush=True)
+        return False
+
+
+# ═══════════════════════════════════════════════════════
+# 1단계: 서랍 열기 (아무 채팅방에서 1회)
+# ═══════════════════════════════════════════════════════
+
+def open_drawer(chat_hwnd: int) -> int | None:
+    """
+    채팅방에서 ≡ → 채팅방 서랍 → 사진/동영상 탭 열기.
+    Returns: 서랍 창 hwnd or None.
+
+    학습 포인트(mark): open_drawer.{focus,click_menu,popup_detected,
+      hover_submenu,submenu_detected,photo_tab_clicked,panel_opened}
+    """
+    # 안전 가드: 카톡 활성 + 위험 팝업 자동 처치
+    try:
+        from core.safety_guard import pre_action_guard
+        if not pre_action_guard("kakaotalk"):
+            mark("open_drawer.focus", "fail", {"reason": "safety guard"})
+            return None
+    except Exception:
+        pass
+
+    mark("open_drawer.focus", "before", {"chat_hwnd": chat_hwnd})
+    _activate(chat_hwnd)
+    # 분리창 TOPMOST 강제 (Claude 등이 덮지 못하게)
+    try:
+        import win32con
+        SWP_NOMOVE = 0x0002
+        SWP_NOSIZE = 0x0001
+        SWP_SHOWWINDOW = 0x0040
+        HWND_TOPMOST = -1
+        win32gui.SetWindowPos(chat_hwnd, HWND_TOPMOST, 0, 0, 0, 0,
+                               SWP_NOMOVE | SWP_NOSIZE | SWP_SHOWWINDOW)
+        time.sleep(0.2)
+    except Exception as e:
+        print(f"    [서랍] 분리창 TOPMOST 실패: {e}", flush=True)
+    rect = win32gui.GetWindowRect(chat_hwnd)
+    mark("open_drawer.focus", "after", {"rect": rect})
+
+    # ≡ 메뉴 클릭: 실측 좌표 (카톡 분리창 600x800 고정 기준)
+    menu_x, menu_y = rect[2] - 20, rect[1] + 55
+    print(f"    [서랍] ≡ 클릭 시작: ({menu_x}, {menu_y}), rect={rect}", flush=True)
+
+    # 최대 3회 시도
+    popup = None
+    for attempt in range(3):
+        print(f"    [서랍] 시도 {attempt+1}/3", flush=True)
+        mark("open_drawer.click_menu", "before", {"xy": [menu_x, menu_y], "attempt": attempt})
+        try:
+            import win32con
+            SWP = 0x0002 | 0x0001 | 0x0040
+            win32gui.SetWindowPos(chat_hwnd, -1, 0, 0, 0, 0, SWP)
+            win32gui.SetForegroundWindow(chat_hwnd)
+        except Exception as e:
+            print(f"    [서랍] foreground 실패: {e}", flush=True)
+        time.sleep(0.4)
+
+        # moveTo 먼저 → click (일부 앱은 선이동 필요)
+        pyautogui.moveTo(menu_x, menu_y, duration=0.1)
+        time.sleep(0.2)
+        pyautogui.click(menu_x, menu_y)
+        time.sleep(1.8)  # 팝업 뜰 시간
+        mark("open_drawer.click_menu", "after", {"attempt": attempt})
+
+        # ≡ 클릭 좌표 근처 팝업만 선택 (오탐 방지)
+        popup = _find_popup(near_xy=(menu_x, menu_y))
+        print(f"    [서랍] popup 체크 후: {popup}", flush=True)
+        if popup:
+            print(f"    [서랍] ≡ 클릭 성공 (시도 {attempt+1}/3)", flush=True)
+            break
+        if attempt < 2:
+            print(f"    [서랍] 시도 {attempt+1}/3 실패, 재시도", flush=True)
+    if not popup:
+        # 하드코딩 실패 → Vision으로 ≡ 버튼 찾기 (분리창 전체를 컨텍스트로)
+        print("    [서랍] 하드코딩 ≡ 실패 → Vision 폴백 (분리창 전체 캡처)", flush=True)
+        try:
+            from core.vision_clicker import find_and_click
+            # 분리창 전체 — Vision이 방 제목, 메시지, 버튼 배치를 모두 보고 ≡를 식별
+            bbox = (rect[0], rect[1], rect[2], rect[3])
+            v_result = find_and_click(
+                bbox,
+                "카카오톡 채팅 분리창의 상단 툴바에서 햄버거(≡) 메뉴 버튼. "
+                "보통 방 제목 옆 오른쪽에 있는 가로 세 줄 아이콘. "
+                "전화/영상/검색 아이콘 왼쪽 또는 오른쪽 끝에 위치. "
+                "Windows 시스템 닫기(X) 버튼이 아님.",
+                tag="drawer.menu_hamburger",
+                min_confidence=0.6,
+            )
+            if v_result.found:
+                print(f"    [서랍] Vision ≡ 클릭: ({v_result.x}, {v_result.y}) conf={v_result.confidence:.2f}", flush=True)
+                time.sleep(2.0)
+                popup = _find_popup(near_xy=(v_result.x, v_result.y))
+        except Exception as e:
+            print(f"    [서랍] Vision 폴백 에러: {e}", flush=True)
+
+    if not popup:
+        print("    [서랍] ≡ 팝업 미감지 → 사진 스킵", flush=True)
+        mark("open_drawer.popup_detected", "fail")
+        try:
+            pyautogui.press("escape")
+        except Exception:
+            pass
+        return None
+    mark("open_drawer.popup_detected", "after", {"popup": popup})
+
+    # ─────────────────────────────────────────────
+    # UIA 경로 (권장): 팝업 내 "채팅방 서랍" → "사진/동영상" 을 접근성 이름으로 직접 invoke.
+    # 팝업은 표준 EVA_Menu 창이라 UIA 가 MenuItem 을 제대로 노출한다.
+    # (≡ 버튼은 DirectUI 라 UIA 불가 — 픽셀로 이미 열린 상태.)
+    # 실패 시 아래 기존 y+82 hover/click 로 폴백.
+    # ─────────────────────────────────────────────
+    uia_ok = False
+    try:
+        uia_ok = _try_uia_inner_nav(popup)
+    except Exception as e:
+        import traceback
+        print(f"    [UIA] 내부 네비 예외: {e}", flush=True)
+        traceback.print_exc()
+
+    if not uia_ok:
+        # ───── 기존 픽셀 경로 (폴백) ─────
+        # "채팅방 서랍" hover → 서브메뉴 (실측: 팝업 y+82)
+        target_x = (popup[0] + popup[2]) // 2
+        target_y = popup[1] + 82
+        mark("open_drawer.hover_submenu", "before", {"xy": [target_x, target_y]})
+        pyautogui.moveTo(target_x, target_y, duration=0.2)
+        time.sleep(1.5)
+        mark("open_drawer.hover_submenu", "after")
+
+        sub = _find_submenu()
+        if not sub:
+            # hover 실패 → 직접 클릭 시도
+            pyautogui.click(target_x, target_y)
+            time.sleep(1.5)
+            sub = _find_submenu()
+
+        if not sub:
+            print("    [서랍] 서브메뉴 미감지", flush=True)
+            mark("open_drawer.submenu_detected", "fail")
+            pyautogui.press("escape")
+            return None
+        mark("open_drawer.submenu_detected", "after", {"sub": sub})
+
+        # "사진/동영상" 클릭 (서브메뉴 첫 항목)
+        px = (sub[0] + sub[2]) // 2
+        py = sub[1] + 15
+        mark("open_drawer.photo_tab_clicked", "before", {"xy": [px, py]})
+        pyautogui.click(px, py)
+        time.sleep(3.0)
+        mark("open_drawer.photo_tab_clicked", "after")
+
+    # 서랍 창 찾기
+    drawer = _find_drawer_window()
+    if drawer:
+        print(f"    [서랍] 열림: hwnd={drawer[0]}", flush=True)
+        mark("open_drawer.panel_opened", "after", {"hwnd": drawer[0]})
+        return drawer[0]
+
+    # 제목 없는 큰 패널로 열렸을 수 있음
+    results = []
+    def cb(hwnd, lst):
+        if win32gui.IsWindowVisible(hwnd):
+            t = win32gui.GetWindowText(hwnd)
+            r = win32gui.GetWindowRect(hwnd)
+            w, h = r[2] - r[0], r[3] - r[1]
+            if not t and 300 <= w <= 500 and 500 <= h <= 800:
+                lst.append((hwnd, r))
+    win32gui.EnumWindows(cb, results)
+    if results:
+        print(f"    [서랍] 패널 열림: hwnd={results[0][0]}", flush=True)
+        mark("open_drawer.panel_opened", "after", {"hwnd": results[0][0], "fallback": True})
+        return results[0][0]
+
+    print("    [서랍] 서랍 창 미감지", flush=True)
+    mark("open_drawer.panel_opened", "fail")
+    return None
+
+
+# ═══════════════════════════════════════════════════════
+# 2단계: 서랍 내 방 선택 + 사진 다운로드
+# ═══════════════════════════════════════════════════════
+
+def _save_one_bundle(v_hwnd: int) -> bool:
+    """뷰어가 열린 상태에서 묶음저장 1회 실행. 성공 여부 반환."""
+    _activate(v_hwnd)
+    time.sleep(0.5)
+    vr = win32gui.GetWindowRect(v_hwnd)
+
+    dl_x = vr[2] - 70
+    dl_y = vr[3] - 22
+    mark("download.dropdown_clicked", "before", {"xy": [dl_x, dl_y]})
+    pyautogui.click(dl_x, dl_y)
+    time.sleep(1.5)
+    mark("download.dropdown_clicked", "after")
+
+    save_x = dl_x - 30
+    save_y = dl_y - 55
+    mark("download.batch_save_clicked", "before", {"xy": [save_x, save_y]})
+    pyautogui.click(save_x, save_y)
+    time.sleep(2.5)
+    mark("download.batch_save_clicked", "after")
+
+    fg = win32gui.GetForegroundWindow()
+    ft = win32gui.GetWindowText(fg)
+    dialog_opened = False
+    print(f"    [서랍] 묶음저장 후 foreground='{ft[:80]}'", flush=True)
+    if "저장" in ft or "Save" in ft or "다른 이름" in ft:
+        mark("download.save_dialog_opened", "after", {"title": ft})
+        pyautogui.press("enter")
         time.sleep(1.0)
+        mark("download.save_confirmed", "after")
+        dialog_opened = True
 
-        # 3. 다운로드 버튼 클릭 (우하단)
-        _capture_verify(f"before_download_{i}")
-        dl_x = drawer.left + drawer.width - DOWNLOAD_BTN_X_FROM_RIGHT
-        dl_y = drawer.top + drawer.height - DOWNLOAD_BTN_Y_FROM_BOTTOM
-        pyautogui.click(dl_x, dl_y)
+        # Enter 직후 1초 간격으로 8초간 foreground 추적
+        # 핵심: '다른 이름으로 저장 확인' 덮어쓰기 팝업의 기본 포커스는 '아니요'.
+        #       Enter 누르면 NO → 저장 취소. 반드시 Y(예)를 직접 눌러야 한다.
+        last_seen = ft
+        for sec in range(1, 9):
+            fg2 = win32gui.GetForegroundWindow()
+            ft2 = win32gui.GetWindowText(fg2)
+            if ft2 != last_seen:
+                print(f"    [서랍] Enter+{sec}s foreground='{ft2[:80]}'", flush=True)
+                last_seen = ft2
+            # 덮어쓰기 확인 팝업 — title이 "확인" 으로 끝나거나 키워드 포함
+            is_overwrite = (
+                "확인" in ft2 and "저장" in ft2
+                or any(k in ft2 for k in ["바꾸", "교체"])
+                or "있습니다" in ft2
+                or "Replace" in ft2 or "Confirm Save" in ft2
+            )
+            if is_overwrite:
+                print(f"    [서랍] Enter+{sec}s 덮어쓰기 팝업 → 'Y' 입력", flush=True)
+                pyautogui.press("y")
+                time.sleep(0.5)
+            elif ft2 == "다른 이름으로 저장" or ft2.endswith("저장") or "Save As" in ft2:
+                # 저장 다이얼로그가 안 닫힘 → 한 번 더 Enter
+                if sec >= 2:
+                    print(f"    [서랍] Enter+{sec}s 다이얼로그 잔존 → 추가 Enter", flush=True)
+                    pyautogui.press("enter")
+                time.sleep(1.0)
+            else:
+                # 다이얼로그 닫힘
+                break
+    else:
+        mark("download.save_dialog_opened", "fail", {"title": ft})
+        print(f"    [서랍] 저장 다이얼로그 미감지", flush=True)
+
+    # 호출자가 파일 스냅샷으로 확정 판정
+    return dialog_opened
+
+
+def download_photos_from_drawer(
+    drawer_hwnd: int,
+    room_key: str = "",
+    *,
+    verify_room: bool = True,
+    max_bundles: int = 9,
+) -> list[Path]:
+    """
+    서랍 사진 그리드에서 **여러 묶음**을 순차적으로 다운로드.
+
+    동작:
+      1. 그리드 3x3 = 9개 셀 위치 순회
+      2. 각 셀 더블클릭 → 뷰어 열리면 묶음저장 → 뷰어 닫기
+      3. 뷰어 안 뜨면 빈 셀로 스킵
+      4. 이미 저장된 파일은 스냅샷 비교로 자동 중복 제거
+
+    Args:
+        room_key: 파일 리네임 식별자
+        verify_room: OCR breadcrumb 검증
+        max_bundles: 최대 처리할 묶음 수 (기본 9 = 3x3 그리드)
+    """
+    # ── 방 이름 검증 ──
+    if verify_room and room_key:
+        if not verify_drawer_room(drawer_hwnd, room_key):
+            print(f"    [서랍] '{room_key}' 불일치 — 좌측에서 찾기 시도", flush=True)
+            if not select_room_in_drawer_by_name(drawer_hwnd, room_key):
+                print(f"    [서랍] '{room_key}' 선택 실패 → 다운로드 중단", flush=True)
+                return []
+
+    before_all = _snapshot_downloads()
+    dr = win32gui.GetWindowRect(drawer_hwnd)
+    dw, dh = dr[2] - dr[0], dr[3] - dr[1]
+
+    # 그리드 셀 좌표 생성 (3열 x 3행, 서랍 우측 패널)
+    # 좌측 패널 ~230px, 탭 헤더 ~200px
+    grid_x0 = 235
+    grid_y0 = 225
+    cell_dx = max((dw - grid_x0 - 30) // 3, 100)
+    cell_dy = max((dh - grid_y0 - 30) // 3, 100)
+    positions = [
+        (dr[0] + grid_x0 + col * cell_dx + cell_dx // 2,
+         dr[1] + grid_y0 + row * cell_dy + cell_dy // 2)
+        for row in range(3) for col in range(3)
+    ]
+
+    all_new: list[Path] = []
+    bundles_done = 0
+    seen_viewers: set[str] = set()  # 같은 뷰어 제목이면 같은 묶음 → 스킵
+
+    for idx, (px, py) in enumerate(positions[:max_bundles]):
+        before = _snapshot_downloads()
+
+        mark("download.photo_dblclick", "before", {"xy": [px, py], "cell": idx, "room": room_key})
+        pyautogui.doubleClick(px, py)
         time.sleep(2.5)
+        mark("download.photo_dblclick", "after")
 
-        # 4. 팝업/미리보기 닫기 → 그리드로 복귀
+        viewer = _find_viewer()
+        if not viewer:
+            continue  # 빈 셀
+
+        v_hwnd, v_title, _ = viewer
+
+        # 같은 뷰어 제목 = 같은 묶음의 다른 사진 → 이미 저장했으니 스킵
+        if v_title in seen_viewers:
+            pyautogui.press("escape")
+            time.sleep(0.3)
+            continue
+        seen_viewers.add(v_title)
+
+        mark("download.viewer_detected", "after", {"title": v_title, "cell": idx})
+        print(f"    [서랍] [{idx+1}] 뷰어: {v_title}", flush=True)
+
+        # 묶음저장
+        dialog_ok = _save_one_bundle(v_hwnd)
+        bundles_done += 1
+
+        # 뷰어 닫기
         pyautogui.press("escape")
         time.sleep(0.5)
 
-        # 5. 새로 생긴 파일 확인
-        after_one = _snapshot_downloads()
-        new_in_round = after_one - before_one
-        if new_in_round:
-            consecutive_empty = 0
-            print(f"       [DRAWER] 썸네일 {i}: {len(new_in_round)}개 파일 다운로드")
+        # 이번 셀에서 새로 받은 파일 (최대 8초 폴링 — 묶음/대용량 대비)
+        cell_new: list[Path] = []
+        if dialog_ok:
+            for _ in range(8):
+                after = _snapshot_downloads()
+                cell_new = sorted(
+                    [Path(f) for f in (after - before)],
+                    key=lambda p: p.stat().st_mtime,
+                )
+                if cell_new:
+                    break
+                time.sleep(1.0)
+        all_new.extend(cell_new)
+        if cell_new:
+            print(f"    [서랍] [{idx+1}] +{len(cell_new)}장 (누적 {len(all_new)})", flush=True)
         else:
-            consecutive_empty += 1
-            print(f"       [DRAWER] 썸네일 {i}: 새 파일 없음 (이미 다운로드됨?)")
-            if consecutive_empty >= 3:
-                print(f"       [DRAWER] 연속 3회 빈 다운로드 → 중단")
-                break
+            reason = "다이얼로그 미감지" if not dialog_ok else "저장 후 새 파일 없음 (폴링 8초)"
+            print(f"    [서랍] [{idx+1}] 다운로드 실패 ({reason})", flush=True)
 
-        # 서랍 창 다시 활성화 (ESC 후 포커스 잃을 수 있음)
+    # ★ 유니크 파일명으로 즉시 rename
+    renamed: list[Path] = []
+    if all_new and room_key:
+        safe_room = re.sub(r"[^\w가-힣-]", "_", room_key)
+        ts = int(time.time() * 1000)
+        for i, f in enumerate(all_new):
+            new_name = f"PHOTO_{safe_room}__{ts}_{i:02d}{f.suffix}"
+            try:
+                new_path = f.parent / new_name
+                f.rename(new_path)
+                renamed.append(new_path)
+            except Exception as e:
+                print(f"    [서랍] rename 실패: {e}", flush=True)
+                renamed.append(f)
+        all_new = renamed
+
+    print(f"    [서랍] 총 {len(all_new)}장 다운로드 ({bundles_done}묶음)", flush=True)
+    return all_new
+
+
+def select_room_in_drawer(drawer_hwnd: int, room_index: int) -> bool:
+    """서랍 좌측 리스트에서 N번째 방 클릭."""
+    dr = win32gui.GetWindowRect(drawer_hwnd)
+    # 좌측 리스트 영역: x=dr[0]+115, 항목 높이 ~47px, 첫 항목 y=dr[1]+72
+    list_x = dr[0] + 115
+    item_y = dr[1] + 72 + (room_index * 47)
+
+    # 서랍 영역 밖이면 스크롤 필요
+    if item_y > dr[3] - 30:
+        pyautogui.moveTo(list_x, dr[1] + 300)
+        pyautogui.scroll(-3)
+        time.sleep(0.5)
+        # 스크롤 후 재계산 (간단히 고정 오프셋)
+        item_y -= 140
+
+    pyautogui.click(list_x, item_y)
+    time.sleep(1.5)
+    return True
+
+
+# ═══════════════════════════════════════════════════════
+# 3단계: 전체 방 순회 다운로드 (서랍 1회 열기)
+# ═══════════════════════════════════════════════════════
+
+def download_all_rooms_photos(chat_hwnd: int, room_names: list[str]) -> dict[str, list[Path]]:
+    """
+    서랍 1회 열기 → 좌측 리스트에서 방 순회 → 사진 다운로드.
+
+    Args:
+        chat_hwnd: 아무 채팅방 hwnd (서랍 열기용)
+        room_names: 다운로드 대상 방 이름 리스트
+
+    Returns:
+        {방이름: [다운로드된 파일]} dict
+    """
+    drawer = open_drawer(chat_hwnd)
+    if not drawer:
+        return {}
+
+    results: dict[str, list[Path]] = {}
+    total = len(room_names)
+
+    for idx, room_name in enumerate(room_names):
+        print(f"  [{idx+1}/{total}] {room_name} 사진...", flush=True)
         try:
-            _activate_window(drawer._hWnd)
-        except Exception:
-            pass
-        time.sleep(0.3)
+            # 좌측 리스트에서 방 선택
+            select_room_in_drawer(drawer, idx)
+            time.sleep(1.0)
 
-    # 전체 새 파일 집계
-    after_all = _snapshot_downloads()
-    all_new_files = sorted(
-        [Path(f) for f in (after_all - before_all)],
-        key=lambda p: p.stat().st_mtime,
+            # 사진 다운로드 (방 키로 리네임)
+            files = download_photos_from_drawer(drawer, room_key=room_name)
+            results[room_name] = files
+
+        except Exception as e:
+            print(f"    [{room_name}] 예외: {e}", flush=True)
+            results[room_name] = []
+
+    # 서랍 닫기
+    for _ in range(3):
+        pyautogui.press("escape")
+        time.sleep(0.2)
+
+    return results
+
+
+# ═══════════════════════════════════════════════════════
+# 레거시 호환 (이전 API)
+# ═══════════════════════════════════════════════════════
+
+def extract_photos_from_room(
+    chat_hwnd: int,
+    photo_count: int = 0,
+    room_name: str = "",
+    *,
+    verify_room: bool | None = None,
+) -> list[Path]:
+    """단일 방 사진 추출. 서랍 방식으로 동작.
+
+    Args:
+        chat_hwnd: 채팅방 창 hwnd (서랍 열기 기준)
+        photo_count: 기대 사진 수 (현재는 로그용)
+        room_name: 방 이름. 제공 시 OCR로 breadcrumb 검증 + 좌측 재선택.
+                   미제공이면 검증 없이 첫 사진 다운로드 (하위호환).
+        verify_room: None=자동(분리창 제목이 room_name과 일치하면 False, 아니면 True),
+                     True/False=명시 강제. 분리창 hwnd로 호출되면 win32 검증이 이미
+                     끝났으므로 OCR 재검증 불필요.
+    """
+    drawer = open_drawer(chat_hwnd)
+    if not drawer:
+        return []
+
+    # ── verify 자동 결정: 분리창 제목 = room_name이면 검증 스킵 ──
+    if verify_room is None:
+        try:
+            chat_title = win32gui.GetWindowText(chat_hwnd) or ""
+            nt = chat_title.replace(" ", "")
+            nr = (room_name or "").replace(" ", "")
+            if room_name and nt and nt != "카카오톡" and (nt == nr or nr in nt or nt in nr):
+                verify_room = False
+                print(f"    [서랍] win32 제목 매칭 OK ('{chat_title}') - OCR 검증 스킵", flush=True)
+            else:
+                verify_room = bool(room_name)
+        except Exception:
+            verify_room = bool(room_name)
+
+    files = download_photos_from_drawer(
+        drawer,
+        room_key=room_name,
+        verify_room=verify_room,
     )
-    _capture_verify("download_complete")
-    return all_new_files
+    # 서랍 닫기
+    for _ in range(3):
+        pyautogui.press("escape")
+        time.sleep(0.2)
+    return files
 
 
 def close_drawer():
-    """서랍 창 닫기 (ESC)"""
-    pyautogui.press("escape")
-    time.sleep(0.5)
-
-
-def extract_photos_from_room(chat_hwnd: int, photo_count: int = 0) -> list[Path]:
-    """
-    전체 시퀀스: 서랍 열기 → 사진 다운로드 (여러 장) → 서랍 닫기.
-
-    Args:
-        chat_hwnd: 열려있는 채팅방 창 핸들
-        photo_count: 다운로드할 사진 수 (0 = 가능한 모든 사진)
-
-    Returns:
-        다운로드된 파일 경로 리스트 (빈 리스트 = 사진 없음/실패)
-    """
-    try:
-        _capture_verify("before_open_drawer")
-        drawer = open_drawer(chat_hwnd)
-        _capture_verify("after_open_drawer")
-        files = download_photos(drawer, max_count=photo_count)
-        close_drawer()
-        _capture_verify("after_close_drawer")
-        return files
-    except RuntimeError as e:
-        print(f"       [DRAWER] 서랍 열기 실패: {e}")
-        # 실패 시에도 캡처 남기기
-        _capture_verify("drawer_error")
-        return []
-
-
-if __name__ == "__main__":
-    import sys
-
-    print("[drawer_handler] 스탠드얼론 테스트")
-    print("  사전조건: 카카오톡 채팅방이 열려있어야 합니다.")
-    print()
-
-    # 채팅방 창 찾기 (제목에 "-" 포함된 창 = 채팅방)
-    all_wins = gw.getAllWindows()
-    chat_wins = [
-        w for w in all_wins
-        if w.title and "카카오톡" not in w.title
-        and w.width > 300 and w.height > 400
-        and w.visible
-    ]
-
-    # win32gui로 현재 포그라운드 창을 채팅방으로 사용
-    fg_hwnd = win32gui.GetForegroundWindow()
-    title = win32gui.GetWindowText(fg_hwnd)
-    print(f"  현재 포그라운드 창: '{title}'")
-    print(f"  이 창에서 Ctrl+K 서랍을 열겠습니다.")
-    print()
-
-    input("  Enter를 누르면 3초 후 시작합니다...")
-    time.sleep(3)
-
-    files = extract_photos_from_room(fg_hwnd)
-    if files:
-        print(f"\n  [OK] {len(files)}개 파일 다운로드 완료:")
-        for f in files:
-            print(f"    → {f}")
-    else:
-        print("\n  [WARN] 다운로드된 파일 없음")
+    for _ in range(3):
+        pyautogui.press("escape")
+        time.sleep(0.3)

@@ -28,11 +28,35 @@
 ### 실행 명령
 ```bash
 PYTHON="C:/Users/USER/AppData/Local/Programs/Python/Python312/python.exe"
-"$PYTHON" main.py            # 감시 모드 (뱃지 감지 → 저장 → 미러 전송)
-"$PYTHON" main.py scan       # 방 리스트 전체 스캔
-"$PYTHON" main.py select     # 감시 방 GUI 선택
-"$PYTHON" main.py mirror     # 카카오워크 미러 방 생성
+"$PYTHON" main.py                       # 감시 모드 (뱃지 감지 → 저장 → 미러 전송)
+"$PYTHON" main.py scan                  # 방 리스트 전체 스캔
+"$PYTHON" main.py select                # 감시 방 GUI 선택
+"$PYTHON" main.py mirror                # 카카오워크 미러 방 생성
+"$PYTHON" main.py cleanup-mirrors --dry-run   # 중복 미러 방 탐지 (읽기 전용)
+"$PYTHON" main.py cleanup-mirrors             # "[중복삭제] X" 리네이밍 + mapping 정리
+"$PYTHON" main.py cleanup-mirrors --ui        # + 카카오워크 앱에서 나가기 UI 자동화
+
+# ── 100% 자기학습 루프 (반복 실행 시 스텝 자동 안정화) ──
+"$PYTHON" main.py learn                       # 파이프라인 1회를 전체 화면 녹화 + 이벤트
+"$PYTHON" main.py auto-anchor --commit        # 누적 후보를 클러스터링해 앵커 자동 확정
+"$PYTHON" main.py metrics                     # 스텝별 성공률/재시도 메트릭 (CLI)
+"$PYTHON" main.py metrics --gui               # tkinter 대시보드 (3초 새로고침)
+"$PYTHON" main.py unlock <step>               # 특정 스텝 락 해제 → 재학습
+"$PYTHON" main.py unlock --all                # 전 스텝 락 해제
+"$PYTHON" main.py calibrate                   # learn → auto-anchor → metrics 1사이클
 ```
+
+### 학습 루프 동작 방식
+
+1. `learn` 실행 시 `LearningRecorder`가 10fps 전체 화면 녹화 + 각 자동화 스텝의
+   `mark(step, "before|after|fail")` 이벤트 수집
+2. 종료 시 `after` 프레임을 `data/anchor_candidates/<session>/<step>__*.png`로 추출
+3. `auto-anchor`가 여러 세션의 후보를 pHash로 클러스터링 → 3회 이상 동일 프레임이
+   나타난 스텝을 `data/anchors/<step>.png`로 자동 승인
+4. 다음 실행부터는 `scoped_step`·`run_step`이 확정 앵커로 검증 → 실패 시 재시도
+5. 20회 연속 성공 스텝은 자동 락 (검증 생략, 성능 우선). 실패 시 락 해제 + 재학습
+6. 실패 프레임은 `data/anchor_candidates/failed/<step>/<ts>.png`로 축적되어
+   다음 iteration에서 새 후보로 승격 가능
 
 ## 📏 하네스 운영 원칙 (반드시 준수)
 
@@ -110,7 +134,61 @@ nenova_agent/
 - [x] 상태 표시등 → status_overlay.py (우하단 빨간불 깜빡임)
 - [x] 이슈 보고 시스템 → issue_reporter.py (팝업 + 워크 이슈방 + 일시정지)
 - [x] 여러 사진 순회 다운로드 (그리드 3열 순회 + 캡처 확인)
+- [x] **UIA 기반 드로어 오프너 (2026-04-22)** → `core/drawer_uia.py`
+      pywinauto 로 ≡/서랍/사진탭을 접근성 이름으로 `.invoke()` (픽셀 무관).
+      기존 `drawer_handler.open_drawer` 픽셀 경로는 폴백으로 유지.
+      블로킹 팝업 ("100% 완료되었습니다" 등) 사전 제거 내장.
 - [ ] 실제 환경 테스트 (관리자 실행 검증 필요)
+
+#### 사진 자동화 3중 방어 (2026-04-22)
+```
+extract_photos_from_chat_via_layout (drawer_layout_auto.py)
+  ├─ 1. open_drawer_uia(chat_hwnd)          ← UIA (권장, 픽셀 무관)
+  │     ├─ dismiss_blocking_dialogs()       ← "100% 완료" 등 선제 닫기
+  │     ├─ _click_hamburger_via_uia         ← ≡ 접근성 이름 invoke
+  │     ├─ _find_kakao_popup_menu           ← EVA_Menu 창 UIA 래핑
+  │     ├─ _click_drawer_item_via_uia       ← "채팅방 서랍" MenuItem invoke
+  │     └─ _click_photo_tab_via_uia         ← "사진/동영상" MenuItem invoke
+  │
+  └─ 실패 시 → drawer_handler.open_drawer    ← 픽셀 경로 (기존 코드)
+        └─ Vision 폴백: Claude로 ≡ 위치 식별 후 클릭
+
+환경 스위치:
+  NENOVA_DRAWER_FORCE_PIXEL=1  # UIA 완전 스킵 (비상용)
+  NENOVA_DRAWER_DEBUG=1        # captures/uia_*.txt 에 트리 덤프
+
+진단:
+  "$PYTHON" tools/probe_kakao_uia.py
+  # 5초 내 카톡 채팅방 클릭 → foreground → 접근성 트리 덤프
+  # 결과로 ≡ 버튼의 UIA 이름 확인 ('메뉴'/'더보기'/'More'/'Menu' 후보)
+```
+
+#### 실전 테스트 절차 (관리자)
+
+```bash
+PYTHON="C:/Users/USER/AppData/Local/Programs/Python/Python312/python.exe"
+
+# 1. 오프라인 회귀 점검 (앱 없이도 OK)
+"$PYTHON" diagnostic.py
+
+# 2. 중복 미러 방 현황 확인 (읽기 전용)
+"$PYTHON" main.py cleanup-mirrors --dry-run
+
+# 3. 중복 리네이밍 실행 (API만, 방은 아직 존재)
+"$PYTHON" main.py cleanup-mirrors
+#    → data/room_mapping.json 정리됨
+#    → "[미러] X" 중복이 "[중복삭제] X"로 이름 변경됨
+#    → 관리자가 카카오워크 앱에서 수동 확인 가능
+
+# 4. (선택) UI 자동 나가기 — 카카오워크 앱 실행 필요
+"$PYTHON" main.py cleanup-mirrors --ui
+
+# 5. 라이브 진단 (카톡/워크 실행 중)
+"$PYTHON" diagnostic.py --live
+
+# 6. 실제 감시 모드
+"$PYTHON" main.py
+```
 
 **검증된 카카오워크 이미지 업로드 방식 (2026-04-10):**
 ```
@@ -145,18 +223,30 @@ nenova_agent/
 - 실제 환경 테스트 (관리자 실행 후 좌표/타이밍 미세조정)
 - 여러 사진 순회 다운로드 (현재는 첫번째만 — Ctrl+A 전체선택 또는 순차 클릭 필요)
 
-### Phase 2: 분류 엔진 (대기)
-- 관리자가 collected_data.jsonl 검토 → classification_rules.yaml 작성
-- AI가 분류 기준 임의로 세우지 말 것 (관리자 지시 명시)
+### Phase 2: 분류 엔진 ⏳ 초안 완료 — 관리자 규칙 검토 필요
+- [x] 분류 규칙 YAML 외부화 → `data/classification_rules.yaml` (재기동 없이 mtime 감지 재로딩)
+- [x] `core/gsheet_sync.parse_message` — 12개 event_type 기반 우선순위 분류
+- [x] 차수·수량·거래처·품목 추출 (SEQ_PATTERN, QTY_PATTERN, pipeline_config)
+- [x] `classify_and_log_delta` + `process_admin_feedback` (구글시트 학습 루프)
+- [ ] 관리자가 `data/classification_rules.yaml` 키워드 보강 (실전 샘플 기반)
+- [ ] 방별 고유 규칙 오버라이드 (memory의 room_specific_analysis_design.md)
 
-### Phase 2.5: 구글시트 연동 (대기)
-- 신규 델타 내용을 구글시트에 분류 기록
-- 톡방별 내용 분석 → 분류 기준 자체 학습/디벨롭
+### Phase 2.5: 구글시트 연동 ⏳ 진행 중
+- [x] 이벤트로그/비즈니스이벤트/의사결정추적 3계층 스키마
+- [x] 파이프라인단계 탭 구성 (`_ensure_worksheets`)
+- [x] 관리자 수정 → 학습로그 피드백 루프
+- [ ] 톡방별 내용 분석 → 분류 기준 자체 학습/디벨롭
 
-### Phase 3: nenovaweb.com ERP 자동 입력 (대기)
-- ~~Playwright 웹 자동화~~ → **API 직접 연동** (관리자 API 구조 제공 완료)
-- 주문등록: POST /api/shipment/stock-status
-- 거래처/품목 조회: GET /api/master
+### Phase 3: nenovaweb.com ERP 자동 입력 ⏳ 스켈레톤 완료
+- [x] `core/erp_bridge.py` — JWT auth + 마스터 조회 + 이슈/백업 API
+- [x] 주문등록 API wrapper: `add_order / distribute_outgoing / set_start_stock / create_shipment_detail`
+- [x] 날짜 → 차수 변환 stub: `date_to_week` (PeriodDay 엔드포인트)
+- [x] `core/order_pipeline.py` — delta → 메시지 → 파싱 → 마스터 매칭 → 스테이징
+- [x] 마스터 캐시 (`data/erp_master_cache.json`, 1h TTL)
+- [x] Pending 대기열 (`data/pending_orders.json`) — 관리자 검토 후 `commit_pending_orders()`
+- [ ] 실제 ERP 연동 테스트 (관리자 계정으로 `add_order` dry-commit)
+- [ ] 거래처/품목 매칭 정확도 튜닝 (현재 완전일치→공백제거→부분포함)
+- [ ] 자동 커밋 정책 수립 (방별 / event_type별 화이트리스트)
 - PeriodDay 테이블로 날짜↔차수 자동 변환
 
 **nenovaweb.com API 구조 (2026-04-10 관리자 제공):**
