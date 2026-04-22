@@ -235,6 +235,7 @@ def click_download_and_confirm(max_wait: int = 15) -> list[Path]:
         pass
 
     mark("drawer.download_click", "before", {"xy": [dl["x"], dl["y"]]})
+    print(f"  [DRAWER] ↓ 다운로드 버튼 클릭: ({dl['x']}, {dl['y']})", flush=True)
     pyautogui.click(dl["x"], dl["y"])
     time.sleep(2.0)
     mark("drawer.download_click", "after")
@@ -242,6 +243,7 @@ def click_download_and_confirm(max_wait: int = 15) -> list[Path]:
     # 저장 다이얼로그 대응
     fg = win32gui.GetForegroundWindow()
     ft = win32gui.GetWindowText(fg)
+    print(f"  [DRAWER] 다이얼로그 체크: foreground='{ft}'", flush=True)
     if any(k in ft for k in ["저장", "Save", "다른 이름"]):
         mark("drawer.save_dialog", "after", {"title": ft})
         pyautogui.press("enter")
@@ -286,9 +288,19 @@ def download_n_from_drawer(kind: str, n: int) -> list[Path]:
 
     # 1. 서랍 락
     _status(f"서랍 창 락 ({kind})")
+    hwnd = find_drawer_hwnd()
+    if hwnd:
+        r_before = win32gui.GetWindowRect(hwnd)
+        print(f"  [DRAWER] 락 전 서랍 rect={r_before}", flush=True)
     if not lock_drawer_to_layout():
         print(f"  [DRAWER] 서랍 창 락 실패 → 다운로드 중단", flush=True)
         return []
+    if hwnd:
+        r_after = win32gui.GetWindowRect(hwnd)
+        layout = load_layout()
+        d = layout["drawer"]
+        expected = (d["left"], d["top"], d["left"]+d["width"], d["top"]+d["height"])
+        print(f"  [DRAWER] 락 후 서랍 rect={r_after} / 기대={expected}", flush=True)
 
     # 2. 탭 클릭
     _status(f"{kind} 탭 클릭")
@@ -297,6 +309,7 @@ def download_n_from_drawer(kind: str, n: int) -> list[Path]:
     # 3. N개 체크
     _status(f"체크박스 {n}개 클릭 중")
     clicked = check_items(kind, n)
+    print(f"  [DRAWER] 체크박스 {clicked}개 클릭 완료", flush=True)
     if clicked == 0:
         print(f"  [DRAWER] 체크 실패", flush=True)
         return []
@@ -345,10 +358,7 @@ def extract_photos_from_chat_via_layout(
     if photo_count <= 0:
         return []
 
-    # ── 1. 서랍 열기: UIA 우선 → 실패 시 기존 픽셀 경로 폴백 ──
-    # UIA는 ≡/메뉴/서브메뉴를 접근성 이름으로 찾아 .invoke() 하므로
-    # 픽셀 좌표/창 크기/타이밍 영향을 받지 않음. 카톡 빌드가 DirectUI라
-    # 접근성 트리에 ≡가 안 보이는 경우만 픽셀 경로로 fallback.
+    # ── 1. 서랍 열기: UIA → 픽셀(Vision) 폴백 체인 ──
     _status("서랍 열기 (UIA 시도)")
     drawer_hwnd = None
     try:
@@ -360,7 +370,7 @@ def extract_photos_from_chat_via_layout(
         print(f"  [DRAWER-V2] UIA 경로 예외: {e}", flush=True)
 
     if not drawer_hwnd:
-        _status("서랍 메뉴 열기 (≡ 픽셀 폴백)")
+        _status("서랍 메뉴 열기 (≡ 픽셀/Vision 폴백)")
         try:
             from core.drawer_handler import open_drawer
         except Exception as e:
@@ -377,14 +387,27 @@ def extract_photos_from_chat_via_layout(
     time.sleep(0.5)
 
     try:
-        # 2~4. layout 기반 일괄 다운로드
+        # 2. 사진 다운로드: layout 기반 체크박스 방식 먼저, 0건이면 더블클릭 묶음저장 폴백
+        _status(f"layout 체크박스 방식 시도")
         files = download_n_from_drawer("photo", photo_count)
+        if files:
+            return files
 
-        if room_name and files:
-            # 파일명에 방 이름 힌트 남기기 (선택 사항, 중복 방지용)
-            pass  # 현재는 카톡 기본 파일명 유지
-
-        return files
+        # layout 방식 실패 → 기존 더블클릭 묶음저장 방식 (단일 사진 방에 효과적)
+        print(f"  [DRAWER-V2] layout 방식 0건 → 더블클릭 묶음저장 폴백", flush=True)
+        _status("더블클릭 묶음저장 폴백")
+        try:
+            from core.drawer_handler import download_photos_from_drawer
+            files = download_photos_from_drawer(
+                drawer_hwnd,
+                room_key=room_name,
+                verify_room=False,  # 이미 올바른 방 선택됨
+                max_bundles=max(photo_count, 3),
+            )
+            return files
+        except Exception as e:
+            print(f"  [DRAWER-V2] 더블클릭 폴백 예외: {e}", flush=True)
+            return []
     finally:
         # 5. 서랍 닫기 (ESC 2회: 서랍 → 카톡 본창)
         try:

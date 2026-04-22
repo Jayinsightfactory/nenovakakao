@@ -461,29 +461,37 @@ def _try_uia_inner_nav(popup_rect: tuple) -> bool:
         try:
             from core.vision_clicker import find_and_click
             # popup_rect_live = 실제 팝업 hwnd 의 rect (여백 포함)
+            # dry_run=True: 좌표만 받고 직접 hover/click 제어
             v_result = find_and_click(
                 popup_rect_live,
                 "카카오톡 채팅방 메뉴 팝업에서 '채팅방 서랍' 또는 '서랍' 텍스트가 있는 메뉴 항목. "
                 "서랍 아이콘 옆에 표시됨. '대화 내용'이나 '톡캘린더'가 아님.",
                 tag="drawer.vision_find_drawer_item",
                 min_confidence=0.55,
+                dry_run=True,
             )
-            if v_result.found:
-                print(f"    [UIA-NAV] Vision 클릭 성공: ({v_result.x},{v_result.y}) conf={v_result.confidence:.2f}", flush=True)
-                drawer_clicked_via = "vision"
-            else:
+            if not v_result.found:
                 print(f"    [UIA-NAV] Vision '채팅방 서랍' 못 찾음 — 실패", flush=True)
                 return False
+
+            drawer_x, drawer_y = v_result.x, v_result.y
+            print(f"    [UIA-NAV] Vision '채팅방 서랍' 좌표: ({drawer_x},{drawer_y}) conf={v_result.confidence:.2f}", flush=True)
+
+            # 핵심: "채팅방 서랍"은 서브메뉴가 달린 항목 → HOVER 만으로 서브메뉴 출현.
+            # CLICK 하면 팝업이 닫힐 수 있음. moveTo 만 해서 hover 효과.
+            import pyautogui as _pag
+            _pag.moveTo(drawer_x, drawer_y, duration=0.2)
+            print(f"    [UIA-NAV] hover → 서브메뉴 대기", flush=True)
+            drawer_clicked_via = "vision_hover"
         except Exception as e:
             print(f"    [UIA-NAV] Vision 호출 에러: {e}", flush=True)
             return False
 
-    time.sleep(1.2)
-
-    # ── Step 3: 서브메뉴 찾기 (새로 뜬 팝업 — popup_hwnd 와 다른 것) ──
-    submenu_rect = None
-    t0 = time.time()
-    while time.time() - t0 < 3.0:
+    # ── Step 3: 서브메뉴 찾기. 2단계 전략:
+    #   (a) 1.5초 hover 대기 — hover 에 반응하는 경우 (일반적)
+    #   (b) 못 찾으면 click — 일부 빌드는 click 해야 서브메뉴 출현
+    # ────────────────────────────────────────────────────────
+    def _scan_submenu_once() -> tuple | None:
         new_popups: list = []
 
         def _collect_sub(hwnd, _):
@@ -506,27 +514,48 @@ def _try_uia_inner_nav(popup_rect: tuple) -> bool:
             win32gui.EnumWindows(_collect_sub, None)
         except Exception as e:
             print(f"    [UIA-NAV] 서브메뉴 enum 실패: {e}", flush=True)
-            break
+            return None
 
-        if new_popups:
-            # 원래 팝업 옆에 붙는 작은 서브메뉴 우선 (높이 < 원 팝업 높이)
-            pop_h = popup_rect_live[3] - popup_rect_live[1]
-            smaller = [p for p in new_popups if (p[1][3] - p[1][1]) < pop_h]
-            candidates = smaller if smaller else new_popups
-            # 중심 x 가 원 팝업 오른쪽 근처인 것 우선
-            pop_right = popup_rect_live[2]
-            def _score(p):
-                r = p[1]
-                cx = (r[0] + r[2]) // 2
-                return abs(cx - (pop_right + 80))
-            best = min(candidates, key=_score)
+        if not new_popups:
+            return None
+
+        pop_h = popup_rect_live[3] - popup_rect_live[1]
+        smaller = [p for p in new_popups if (p[1][3] - p[1][1]) < pop_h]
+        candidates = smaller if smaller else new_popups
+        pop_right = popup_rect_live[2]
+        def _score(p):
+            r = p[1]
+            cx = (r[0] + r[2]) // 2
+            return abs(cx - (pop_right + 80))
+        return min(candidates, key=_score)
+
+    submenu_rect = None
+    # (a) hover 만 해두고 대기
+    t0 = time.time()
+    while time.time() - t0 < 2.0:
+        best = _scan_submenu_once()
+        if best:
             submenu_rect = best[1]
-            print(f"    [UIA-NAV] 서브메뉴 hwnd={best[0]} cls={best[2]} rect={submenu_rect}", flush=True)
+            print(f"    [UIA-NAV] hover 로 서브메뉴 감지: hwnd={best[0]} cls={best[2]} rect={submenu_rect}", flush=True)
             break
         time.sleep(0.2)
 
+    # (b) hover 실패 → 그 위치를 CLICK (일부 빌드는 클릭 필요)
+    if submenu_rect is None and drawer_clicked_via == "vision_hover":
+        print(f"    [UIA-NAV] hover 로 서브메뉴 안 뜸 → click 재시도", flush=True)
+        import pyautogui as _pag
+        _pag.click(drawer_x, drawer_y)
+        t0 = time.time()
+        while time.time() - t0 < 2.5:
+            best = _scan_submenu_once()
+            if best:
+                submenu_rect = best[1]
+                print(f"    [UIA-NAV] click 후 서브메뉴: hwnd={best[0]} cls={best[2]} rect={submenu_rect}", flush=True)
+                break
+            time.sleep(0.2)
+
     if submenu_rect is None:
-        print(f"    [UIA-NAV] 서브메뉴 창 없음 (3초 대기)", flush=True)
+        print(f"    [UIA-NAV] 서브메뉴 창 없음 (hover + click 모두 실패)", flush=True)
         return False
 
     # ── Step 4: 서브메뉴에서 "사진/동영상" 클릭 (Vision) ──
@@ -575,6 +604,15 @@ def open_drawer(chat_hwnd: int) -> int | None:
         pass
 
     mark("open_drawer.focus", "before", {"chat_hwnd": chat_hwnd})
+
+    # 안전 위치로 이동 + TOPMOST (window_manager 활용)
+    try:
+        from core.window_manager import fix_chat_window_position
+        fix_chat_window_position(chat_hwnd)
+        time.sleep(0.3)
+    except Exception as e:
+        print(f"    [서랍] 창 위치 고정 실패 (무시): {e}", flush=True)
+
     _activate(chat_hwnd)
     # 분리창 TOPMOST 강제 (Claude 등이 덮지 못하게)
     try:
@@ -591,61 +629,113 @@ def open_drawer(chat_hwnd: int) -> int | None:
     rect = win32gui.GetWindowRect(chat_hwnd)
     mark("open_drawer.focus", "after", {"rect": rect})
 
-    # ≡ 메뉴 클릭: 실측 좌표 (카톡 분리창 600x800 고정 기준)
-    menu_x, menu_y = rect[2] - 20, rect[1] + 55
-    print(f"    [서랍] ≡ 클릭 시작: ({menu_x}, {menu_y}), rect={rect}", flush=True)
+    # ── Vision-first: 분리창 크기가 다양해서 하드코딩 좌표가 자주 틀림.
+    # 매번 Vision OCR 로 ≡ 정확히 찾고 클릭. 실패 시 하드코딩 폴백.
+    menu_x = menu_y = None
+    try:
+        from core.vision_clicker import find_and_click
+        v = find_and_click(
+            (rect[0], rect[1], rect[2], rect[3]),
+            "카카오톡 채팅 분리창 상단 툴바의 햄버거 메뉴(≡) 아이콘. "
+            "방 제목 옆 오른쪽, 전화/영상/검색 아이콘들과 함께. "
+            "Windows 닫기(X) 버튼 아님.",
+            tag="drawer.menu_hamburger",
+            min_confidence=0.55,
+            dry_run=True,  # 좌표만 — 클릭은 아래에서 제어
+        )
+        if v.found:
+            menu_x, menu_y = v.x, v.y
+            print(f"    [서랍] Vision ≡ 좌표: ({menu_x}, {menu_y}) conf={v.confidence:.2f}", flush=True)
+    except Exception as e:
+        print(f"    [서랍] Vision ≡ 예외: {e}", flush=True)
+
+    if menu_x is None:
+        # 하드코딩 폴백 (600x800 가정)
+        menu_x, menu_y = rect[2] - 20, rect[1] + 55
+        print(f"    [서랍] Vision 실패 → 하드코딩 ≡: ({menu_x}, {menu_y})", flush=True)
 
     # 최대 3회 시도
     popup = None
     for attempt in range(3):
         print(f"    [서랍] 시도 {attempt+1}/3", flush=True)
         mark("open_drawer.click_menu", "before", {"xy": [menu_x, menu_y], "attempt": attempt})
+        # 매 시도 직전 TOPMOST + Foreground 강화
         try:
             import win32con
             SWP = 0x0002 | 0x0001 | 0x0040
             win32gui.SetWindowPos(chat_hwnd, -1, 0, 0, 0, 0, SWP)
-            win32gui.SetForegroundWindow(chat_hwnd)
+            try:
+                win32gui.SetForegroundWindow(chat_hwnd)
+            except Exception:
+                # 권한 문제면 Alt 트릭 (sendkey 로 입력 포커스 확보)
+                import win32com.client  # noqa: F401  # pywin32 shell 필요
+                pyautogui.press("alt")
+                time.sleep(0.05)
+                win32gui.SetForegroundWindow(chat_hwnd)
         except Exception as e:
             print(f"    [서랍] foreground 실패: {e}", flush=True)
         time.sleep(0.4)
 
-        # moveTo 먼저 → click (일부 앱은 선이동 필요)
-        pyautogui.moveTo(menu_x, menu_y, duration=0.1)
+        # WindowFromPoint 로 클릭 대상 확인 (디버그) — 분리창이 아니면 경고
+        try:
+            target = win32gui.WindowFromPoint((menu_x, menu_y))
+            if target != chat_hwnd:
+                # 자식창일 수도, 부모 체인 확인
+                root = win32gui.GetAncestor(target, 2)  # GA_ROOT
+                t_title = win32gui.GetWindowText(target) or ""
+                r_title = win32gui.GetWindowText(root) or ""
+                print(f"    [서랍] WindowFromPoint({menu_x},{menu_y})={target}({t_title!r}) root={root}({r_title!r}) expected={chat_hwnd}", flush=True)
+        except Exception:
+            pass
+
+        # 클릭 직전 마우스 이동 → 실제 클릭 (moveTo + click 분리)
+        pyautogui.moveTo(menu_x, menu_y, duration=0.15)
         time.sleep(0.2)
         pyautogui.click(menu_x, menu_y)
         time.sleep(1.8)  # 팝업 뜰 시간
         mark("open_drawer.click_menu", "after", {"attempt": attempt})
 
-        # ≡ 클릭 좌표 근처 팝업만 선택 (오탐 방지)
+        # 팝업 감지: 근접 필터 + 디버그 덤프
         popup = _find_popup(near_xy=(menu_x, menu_y))
-        print(f"    [서랍] popup 체크 후: {popup}", flush=True)
+        if not popup:
+            # 실패 시 모든 EVA_Menu 덤프 (디버그용)
+            all_popups = []
+            def _dump(h, _):
+                if not win32gui.IsWindowVisible(h):
+                    return
+                if win32gui.GetWindowText(h):
+                    return
+                cls = win32gui.GetClassName(h) or ""
+                if "EVA_Menu" in cls or "EVA_Window_Dblclk" in cls:
+                    r = win32gui.GetWindowRect(h)
+                    w, hh = r[2]-r[0], r[3]-r[1]
+                    if 50 <= w <= 800 and 50 <= hh <= 900:
+                        all_popups.append((h, r, cls))
+            win32gui.EnumWindows(_dump, None)
+            if all_popups:
+                print(f"    [서랍] popup 근접매칭 실패 — EVA 후보 {len(all_popups)}개:", flush=True)
+                for h, r, c in all_popups[:5]:
+                    d = ((r[0]+r[2])//2 - menu_x)**2 + ((r[1]+r[3])//2 - menu_y)**2
+                    print(f"       hwnd={h} cls={c} rect={r} dist={int(d**0.5)}", flush=True)
+                # 거리 제한 완화해서 가장 가까운 EVA_Menu 를 popup 으로
+                menu_only = [p for p in all_popups if "EVA_Menu" in p[2]]
+                if menu_only:
+                    closest = min(menu_only, key=lambda p: ((p[1][0]+p[1][2])//2 - menu_x)**2 + ((p[1][1]+p[1][3])//2 - menu_y)**2)
+                    popup = closest[1]
+                    print(f"    [서랍] 거리 완화 매칭: {popup}", flush=True)
+            else:
+                print(f"    [서랍] popup 체크 후: None (EVA 후보 0개)", flush=True)
+        else:
+            print(f"    [서랍] popup 체크 후: {popup}", flush=True)
         if popup:
             print(f"    [서랍] ≡ 클릭 성공 (시도 {attempt+1}/3)", flush=True)
             break
         if attempt < 2:
             print(f"    [서랍] 시도 {attempt+1}/3 실패, 재시도", flush=True)
     if not popup:
-        # 하드코딩 실패 → Vision으로 ≡ 버튼 찾기 (분리창 전체를 컨텍스트로)
-        print("    [서랍] 하드코딩 ≡ 실패 → Vision 폴백 (분리창 전체 캡처)", flush=True)
-        try:
-            from core.vision_clicker import find_and_click
-            # 분리창 전체 — Vision이 방 제목, 메시지, 버튼 배치를 모두 보고 ≡를 식별
-            bbox = (rect[0], rect[1], rect[2], rect[3])
-            v_result = find_and_click(
-                bbox,
-                "카카오톡 채팅 분리창의 상단 툴바에서 햄버거(≡) 메뉴 버튼. "
-                "보통 방 제목 옆 오른쪽에 있는 가로 세 줄 아이콘. "
-                "전화/영상/검색 아이콘 왼쪽 또는 오른쪽 끝에 위치. "
-                "Windows 시스템 닫기(X) 버튼이 아님.",
-                tag="drawer.menu_hamburger",
-                min_confidence=0.6,
-            )
-            if v_result.found:
-                print(f"    [서랍] Vision ≡ 클릭: ({v_result.x}, {v_result.y}) conf={v_result.confidence:.2f}", flush=True)
-                time.sleep(2.0)
-                popup = _find_popup(near_xy=(v_result.x, v_result.y))
-        except Exception as e:
-            print(f"    [서랍] Vision 폴백 에러: {e}", flush=True)
+        # Vision 은 이미 위에서 사용 (menu_x, menu_y 는 Vision 결과) → 재시도 의미 없음
+        # 여기로 왔다는 건 클릭은 했는데 팝업이 정말 안 뜬 것
+        print("    [서랍] 3회 시도 모두 실패. Vision 이 찾은 좌표에서도 팝업 안 뜸.", flush=True)
 
     if not popup:
         print("    [서랍] ≡ 팝업 미감지 → 사진 스킵", flush=True)
