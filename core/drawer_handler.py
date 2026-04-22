@@ -726,6 +726,27 @@ def open_drawer(chat_hwnd: int) -> int | None:
         print(f"    [서랍] _activate 후 chat_hwnd 무효 → 실패", flush=True)
         return None
 
+    # 포커스 확실히 확보 (Alt 트릭)
+    try:
+        import ctypes as _ct
+        fg_before = win32gui.GetForegroundWindow()
+        fg_before_title = win32gui.GetWindowText(fg_before) if fg_before else ""
+        if fg_before != chat_hwnd:
+            _ct.windll.user32.keybd_event(0x12, 0, 0, 0)  # Alt down
+            time.sleep(0.05)
+            _ct.windll.user32.keybd_event(0x12, 0, 0x0002, 0)  # Alt up
+            time.sleep(0.1)
+            try:
+                win32gui.SetForegroundWindow(chat_hwnd)
+            except Exception:
+                pass
+            time.sleep(0.3)
+            fg_after = win32gui.GetForegroundWindow()
+            fg_after_title = win32gui.GetWindowText(fg_after) if fg_after else ""
+            print(f"    [서랍] 포커스 전환: {fg_before_title[:20]!r} → {fg_after_title[:20]!r}", flush=True)
+    except Exception as e:
+        print(f"    [서랍] Alt 포커스 트릭 실패: {e}", flush=True)
+
     rect = win32gui.GetWindowRect(chat_hwnd)
     print(f"    [서랍] 분리창 rect={rect} size={rect[2]-rect[0]}x{rect[3]-rect[1]}", flush=True)
     mark("open_drawer.focus", "after", {"rect": rect})
@@ -790,22 +811,39 @@ def open_drawer(chat_hwnd: int) -> int | None:
     for attempt in range(3):
         print(f"    [서랍] 시도 {attempt+1}/3", flush=True)
         mark("open_drawer.click_menu", "before", {"xy": [menu_x, menu_y], "attempt": attempt})
-        # 매 시도 직전 TOPMOST + Foreground 강화
+
+        # 매 시도 직전 포커스 강제 (Alt 트릭 포함)
+        if not win32gui.IsWindow(chat_hwnd):
+            print(f"    [서랍] chat_hwnd 무효 — 중단", flush=True)
+            break
         try:
             import win32con
+            import ctypes as _ct
+            # Alt 트릭으로 포커스 권한 확보
+            _ct.windll.user32.keybd_event(0x12, 0, 0, 0)
+            time.sleep(0.03)
+            _ct.windll.user32.keybd_event(0x12, 0, 0x0002, 0)
+            time.sleep(0.05)
+            # TOPMOST + SetForeground
             SWP = 0x0002 | 0x0001 | 0x0040
             win32gui.SetWindowPos(chat_hwnd, -1, 0, 0, 0, 0, SWP)
             try:
                 win32gui.SetForegroundWindow(chat_hwnd)
             except Exception:
-                # 권한 문제면 Alt 트릭 (sendkey 로 입력 포커스 확보)
-                import win32com.client  # noqa: F401  # pywin32 shell 필요
-                pyautogui.press("alt")
-                time.sleep(0.05)
-                win32gui.SetForegroundWindow(chat_hwnd)
+                # fallback: BringWindowToTop + SetFocus
+                win32gui.BringWindowToTop(chat_hwnd)
         except Exception as e:
             print(f"    [서랍] foreground 실패: {e}", flush=True)
         time.sleep(0.4)
+
+        # 포커스 검증
+        try:
+            fg = win32gui.GetForegroundWindow()
+            if fg != chat_hwnd:
+                fg_title = win32gui.GetWindowText(fg) or ""
+                print(f"    [서랍] 포커스가 분리창 아님: {fg_title[:20]!r} (hwnd={fg}, expected={chat_hwnd})", flush=True)
+        except Exception:
+            pass
 
         # WindowFromPoint 로 클릭 대상 확인 (디버그) — 분리창이 아니면 경고
         click_target_is_chat = True
