@@ -491,12 +491,68 @@ def cmd_monitor(*, with_recorder: bool = False) -> int:
             cycle_nochange: list[str] = []
             cycle_skipped: list[str] = []
 
-            # ── 매 사이클 시작: 잔여 분리창 전부 닫기 + 팝업 정리 + 카톡 활성화 ──
+            # ── 매 사이클 시작: 정체 다이얼로그 처치 + 잔여 분리창 정리 + 팝업 정리 + 카톡 활성화 ──
             try:
+                # (0) "다른 이름으로 저장" 등 정체 다이얼로그 자동 처리
+                import win32gui as _w32
+                import win32con as _wc
+                stuck_dialogs = []
+                def _find_stuck(h, _):
+                    if not _w32.IsWindowVisible(h):
+                        return
+                    t = _w32.GetWindowText(h) or ""
+                    if any(k in t for k in ("다른 이름으로 저장", "Save As", "파일 저장")):
+                        r = _w32.GetWindowRect(h)
+                        if r[2] - r[0] > 300:  # 실제 다이얼로그 (큰 창)
+                            stuck_dialogs.append((h, t, r))
+                _w32.EnumWindows(_find_stuck, None)
+                if stuck_dialogs:
+                    print(f"[{cycle}] 정체 다이얼로그 {len(stuck_dialogs)}개 감지 → ESC/닫기", flush=True)
+                    import pyautogui as _pag
+                    for h, t, r in stuck_dialogs:
+                        try:
+                            _w32.SetForegroundWindow(h)
+                            time.sleep(0.2)
+                            _pag.press("escape")
+                            time.sleep(0.3)
+                            # 여전히 살아있으면 WM_CLOSE
+                            if _w32.IsWindow(h) and _w32.IsWindowVisible(h):
+                                _w32.PostMessage(h, _wc.WM_CLOSE, 0, 0)
+                                time.sleep(0.3)
+                        except Exception as e:
+                            print(f"[{cycle}] 다이얼로그 닫기 실패 ({t[:20]}): {e}", flush=True)
+                    time.sleep(0.5)
+
                 from core.message_extractor import close_all_chat_separators
                 n_closed = close_all_chat_separators()
                 if n_closed:
                     print(f"[{cycle}] 이전 분리창 {n_closed}개 정리", flush=True)
+
+                # 보강: selected_rooms 에 없는 분리창 (개인톡 등) 도 강제 정리
+                stray_seps = []
+                def _find_strays(h, _):
+                    if not _w32.IsWindowVisible(h):
+                        return
+                    t = _w32.GetWindowText(h) or ""
+                    if not t or t == "카카오톡":
+                        return
+                    cls = _w32.GetClassName(h) or ""
+                    if not cls.startswith("EVA_"):
+                        return
+                    r = _w32.GetWindowRect(h)
+                    w, hh = r[2]-r[0], r[3]-r[1]
+                    if 300 <= w <= 900 and 500 <= hh <= 1000:  # 분리창 크기
+                        stray_seps.append((h, t))
+                _w32.EnumWindows(_find_strays, None)
+                if stray_seps:
+                    print(f"[{cycle}] 잔여 분리창 강제 정리: {[t[:15] for _, t in stray_seps]}", flush=True)
+                    for h, t in stray_seps:
+                        try:
+                            _w32.PostMessage(h, _wc.WM_CLOSE, 0, 0)
+                        except Exception:
+                            pass
+                    time.sleep(0.5)
+
                 cleanup_popups()
                 window = focus_kakaotalk()
             except Exception as e:
