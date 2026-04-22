@@ -20,6 +20,15 @@ RED_MAX = (255, 100, 100)
 BADGE_X_RATIO_START = 0.70
 BADGE_X_RATIO_END = 0.95
 
+# ── 상위 N개 행만 보기 (광고는 하단 고정이므로 자연스레 제외) ──
+# 카톡은 신규 메시지 방을 항상 맨 위로 올리므로 상위 5~7개만 봐도 충분.
+TOP_ROWS = 9      # 페이지당 광고 제외 9행 (사용자 확정값)
+ROW_HEIGHT = 65   # 방 한 행의 평균 높이 (px) - 캡처 이미지 기준
+AD_BOTTOM_PX = 100  # 카톡 창 하단 N px = 광고 영역 (절대 클릭 금지)
+
+# (호환성용) 캡처 이미지에서 무시할 하단 비율 — 폴백
+BADGE_Y_MAX_RATIO = 0.88
+
 # 최소 빨간 픽셀 수 (노이즈 제거)
 MIN_RED_PIXELS_PER_CLUSTER = 15
 
@@ -36,12 +45,25 @@ def _is_red(r: int, g: int, b: int) -> bool:
     )
 
 
-def detect_badge_positions(image_path: Path) -> list[int]:
+def detect_badge_positions(
+    image_path: Path,
+    *,
+    y_max_ratio: float | None = None,
+    top_rows: int | None = None,
+    row_height: int | None = None,
+) -> list[int]:
     """
     방 리스트 캡처 이미지에서 빨간 뱃지의 y좌표 목록을 반환.
 
     Args:
         image_path: 방 리스트 영역 캡처 이미지
+        y_max_ratio: 스캔 영역 하한 비율 (폴백, BADGE_Y_MAX_RATIO=0.88)
+        top_rows: 상위 N개 행만 본다 (기본 TOP_ROWS=5)
+        row_height: 방 한 행의 평균 높이 (기본 ROW_HEIGHT=65)
+
+    상위 N개 행만 보는 이유:
+      - 카톡은 신규 메시지 방을 항상 맨 위로 올림
+      - 광고 배너는 항상 하단 고정 → 상위만 보면 절대 안 잡힘
 
     Returns:
         뱃지가 있는 y좌표 리스트 (이미지 내 상대 좌표, 위에서부터 순서)
@@ -54,9 +76,17 @@ def detect_badge_positions(image_path: Path) -> list[int]:
     x_start = int(width * BADGE_X_RATIO_START)
     x_end = int(width * BADGE_X_RATIO_END)
 
+    # ── 상위 N개 행 제한 (1차 우선 — 광고 영역 자연 배제) ──
+    n_rows = top_rows if top_rows is not None else TOP_ROWS
+    rh = row_height if row_height is not None else ROW_HEIGHT
+    rows_limit = n_rows * rh
+    # 비율 폴백
+    ratio_limit = int(height * (y_max_ratio if y_max_ratio is not None else BADGE_Y_MAX_RATIO))
+    y_limit = min(rows_limit, ratio_limit, height)
+
     # y좌표별 빨간 픽셀 카운트
     red_counts: dict[int, int] = {}
-    for y in range(height):
+    for y in range(y_limit):
         count = 0
         for x in range(x_start, x_end):
             r, g, b = pixels[x, y]

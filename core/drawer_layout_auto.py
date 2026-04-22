@@ -387,16 +387,23 @@ def extract_photos_from_chat_via_layout(
     time.sleep(0.5)
 
     try:
-        # 2. 사진 다운로드: layout 기반 체크박스 방식 먼저, 0건이면 더블클릭 묶음저장 폴백
-        _status(f"layout 체크박스 방식 시도")
-        files = download_n_from_drawer("photo", photo_count)
-        if files:
-            return files
+        # drawer_hwnd 유효성 체크 (하위 로직들이 이 hwnd를 써야 함)
+        if not win32gui.IsWindow(drawer_hwnd):
+            print(f"  [DRAWER-V2] drawer_hwnd 무효 → 재탐색", flush=True)
+            drawer_hwnd = find_drawer_hwnd()
+            if not drawer_hwnd:
+                print(f"  [DRAWER-V2] 서랍 창 찾기 실패", flush=True)
+                return []
 
-        # layout 방식 실패 → 기존 더블클릭 묶음저장 방식 (단일 사진 방에 효과적)
-        print(f"  [DRAWER-V2] layout 방식 0건 → 더블클릭 묶음저장 폴백", flush=True)
-        _status("더블클릭 묶음저장 폴백")
+        # 사진 다운로드: 더블클릭 묶음저장 방식이 안정적으로 검증됨.
+        # layout 체크박스 방식은 Z-order/포커스 이슈로 불안정 — 사용 안 함.
+        _status("더블클릭 묶음저장 방식")
+        print(f"  [DRAWER-V2] 더블클릭 묶음저장 (drawer_hwnd={drawer_hwnd})", flush=True)
         try:
+            # 서랍이 layout 위치에 있어야 더블클릭 좌표가 맞음
+            lock_drawer_to_layout()
+            time.sleep(0.5)
+
             from core.drawer_handler import download_photos_from_drawer
             files = download_photos_from_drawer(
                 drawer_hwnd,
@@ -404,9 +411,10 @@ def extract_photos_from_chat_via_layout(
                 verify_room=False,  # 이미 올바른 방 선택됨
                 max_bundles=max(photo_count, 3),
             )
+            print(f"  [DRAWER-V2] 더블클릭 결과: {len(files)}장", flush=True)
             return files
         except Exception as e:
-            print(f"  [DRAWER-V2] 더블클릭 폴백 예외: {e}", flush=True)
+            print(f"  [DRAWER-V2] 더블클릭 예외: {e}", flush=True)
             return []
     finally:
         # 5. 서랍 닫기 (ESC 2회: 서랍 → 카톡 본창)

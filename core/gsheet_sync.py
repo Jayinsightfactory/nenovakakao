@@ -19,11 +19,12 @@ import gspread
 from google.oauth2.service_account import Credentials
 from dotenv import load_dotenv
 
-load_dotenv(Path(__file__).parent.parent / ".env")
+load_dotenv(Path(__file__).parent.parent / ".env", override=True)
 
 CREDS_FILE = Path(__file__).parent.parent / "data" / "gsheet_credentials.json"
 SHEET_URL = os.getenv("GOOGLE_SHEET_URL", "")
 PIPELINE_CONFIG = Path(__file__).parent.parent / "data" / "pipeline_config.json"
+RULES_YAML = Path(__file__).parent.parent / "data" / "classification_rules.yaml"
 
 _client = None
 _sheet = None
@@ -116,14 +117,117 @@ SEQ_PATTERN = re.compile(r"(\d{1,3})[-/]?(\d{0,2})\s*차?")
 # 수량 패턴: 10단, 5송이, 3박스
 QTY_PATTERN = re.compile(r"(\d+)\s*(단|송이|박스|속|개|스팀|대)")
 
-# 불량 관련 키워드
-DEFECT_KEYWORDS = ["불량", "클레임", "파손", "마름", "습", "전량클레임", "겉잎제거"]
-ORDER_KEYWORDS = ["추가", "변경", "수정", "발주"]
-CANCEL_KEYWORDS = ["취소", "삭제"]
-SHIPMENT_KEYWORDS = ["출고", "배차", "배송", "톤"]
-ARRIVAL_KEYWORDS = ["입고", "도착", "항공편", "도착합니"]
-INQUIRY_KEYWORDS = ["확인", "수량", "재고"]
-DECISION_KEYWORDS = ["네 확인", "진행", "불가능", "어렵다", "감사합니다", "부탁드립니다"]
+# ─── 분류 규칙 로딩 (YAML 우선, 하드코딩 폴백) ───
+#
+# 관리자가 data/classification_rules.yaml을 수정하면 다음 실행부터 반영.
+# YAML 로드 실패 시 아래 하드코딩 기본값 사용.
+
+_FALLBACK_RULES = {
+    "priority": [
+        "LOGISTICS", "DEFECT", "CANCEL", "ORDER", "SHIPMENT", "ARRIVAL",
+        "INVENTORY", "FINANCE", "SYSTEM", "INQUIRY", "DECISION", "PHOTO",
+    ],
+    "event_types": {
+        "LOGISTICS": {"keywords": [
+            "검역증", "세관", "합격", "불합격", "소독", "통관", "ICA", "페킹리스트",
+        ]},
+        "DEFECT": {"keywords": [
+            "불량", "클레임", "파손", "마름", "전량클레임", "겉잎제거",
+            "검역차감", "차감건", "총체", "병해", "곰팡이",
+            "시들", "변색", "꺾임", "부패", "물러짐", "흑점",
+        ]},
+        "CANCEL": {
+            "keywords": ["취소", "삭제", "보류"],
+            "event_type": "ORDER_CHANGE", "direction": "-",
+        },
+        "ORDER": {
+            "keywords": [
+                "추가", "변경", "수정", "발주", "요청", "잔량",
+                "출고요청", "선출고", "미출고", "재출고", "대체",
+            ],
+            "event_type": "ORDER_CHANGE", "direction": "+",
+        },
+        "SHIPMENT": {"keywords": [
+            "출고", "배차", "배송", "톤", "출발합니다", "배송완료",
+            "경부선", "호남선", "양재동", "출고사진",
+        ]},
+        "ARRIVAL": {"keywords": [
+            "입고", "도착", "항공편", "도착합니", "입항",
+            "도착원가", "도착예정", "스케줄", "통관",
+        ]},
+        "INVENTORY": {"keywords": [
+            "재고", "잔량", "수량", "입고수량", "빌번호",
+            "이상없습니다", "물량표",
+        ]},
+        "FINANCE": {"keywords": [
+            "입금", "단가", "원가", "가격", "견적", "계산서",
+        ]},
+        "SYSTEM": {"keywords": ["전산", "등록", "수정했습니다", "업로드"]},
+        "INQUIRY": {"keywords": [
+            "확인 부탁", "문의", "가능여부", "가능한", "확인해주세요",
+        ]},
+        "DECISION": {"keywords": [
+            "네 확인", "불가능", "어렵다", "알겠습니다", "확인했습니다",
+        ]},
+        "PHOTO": {"keywords": ["[사진]", "사진"]},
+    },
+}
+
+_rules_cache: dict | None = None
+_rules_mtime: float = 0.0
+
+
+def _load_rules() -> dict:
+    """classification_rules.yaml 로드. mtime 변경 시 재로드."""
+    global _rules_cache, _rules_mtime
+    if not RULES_YAML.exists():
+        if _rules_cache is None:
+            _rules_cache = _FALLBACK_RULES
+        return _rules_cache
+    try:
+        mtime = RULES_YAML.stat().st_mtime
+        if _rules_cache is not None and mtime == _rules_mtime:
+            return _rules_cache
+        try:
+            import yaml  # type: ignore
+        except ImportError:
+            print("[RULES] PyYAML 미설치 - 하드코딩 규칙 사용", flush=True)
+            _rules_cache = _FALLBACK_RULES
+            return _rules_cache
+        with open(RULES_YAML, encoding="utf-8") as f:
+            data = yaml.safe_load(f)
+        if not isinstance(data, dict) or "event_types" not in data:
+            print("[RULES] YAML 형식 오류 - 하드코딩 규칙 사용", flush=True)
+            _rules_cache = _FALLBACK_RULES
+            return _rules_cache
+        _rules_cache = data
+        _rules_mtime = mtime
+        return _rules_cache
+    except Exception as e:
+        print(f"[RULES] YAML 로드 실패 ({e}) - 하드코딩 규칙 사용", flush=True)
+        _rules_cache = _FALLBACK_RULES
+        return _rules_cache
+
+
+def _keywords_for(key: str) -> list[str]:
+    rules = _load_rules()
+    et = rules.get("event_types", {}).get(key, {})
+    return et.get("keywords", [])
+
+
+# ─── 하위호환: 기존 코드가 전역 상수로 import하는 경우를 위한 래퍼 ───
+# 변경 반영은 주의 — 이 값들은 import 시점에 스냅샷됨.
+LOGISTICS_KEYWORDS = _keywords_for("LOGISTICS")
+DEFECT_KEYWORDS = _keywords_for("DEFECT")
+CANCEL_KEYWORDS = _keywords_for("CANCEL")
+ORDER_KEYWORDS = _keywords_for("ORDER")
+SHIPMENT_KEYWORDS = _keywords_for("SHIPMENT")
+ARRIVAL_KEYWORDS = _keywords_for("ARRIVAL")
+INVENTORY_KEYWORDS = _keywords_for("INVENTORY")
+FINANCE_KEYWORDS = _keywords_for("FINANCE")
+SYSTEM_KEYWORDS = _keywords_for("SYSTEM")
+INQUIRY_KEYWORDS = _keywords_for("INQUIRY")
+DECISION_KEYWORDS = _keywords_for("DECISION")
 
 
 def _load_known_products() -> dict[str, list[str]]:
@@ -156,25 +260,19 @@ def parse_message(text: str, room_name: str = "") -> dict:
         "summary": text[:100],
     }
 
-    # 이벤트 타입 분류 (우선순위: 불량 > 주문변경 > 주문취소 > 출고 > 입고)
-    if any(kw in text for kw in DEFECT_KEYWORDS):
-        result["event_type"] = "DEFECT"
-    elif any(kw in text for kw in CANCEL_KEYWORDS):
-        result["event_type"] = "ORDER_CHANGE"
-        result["direction"] = "-"
-    elif any(kw in text for kw in ORDER_KEYWORDS):
-        result["event_type"] = "ORDER_CHANGE"
-        result["direction"] = "+"
-    elif any(kw in text for kw in SHIPMENT_KEYWORDS):
-        result["event_type"] = "SHIPMENT"
-    elif any(kw in text for kw in ARRIVAL_KEYWORDS):
-        result["event_type"] = "ARRIVAL"
-    elif any(kw in text for kw in DECISION_KEYWORDS):
-        result["event_type"] = "DECISION"
-    elif any(kw in text for kw in INQUIRY_KEYWORDS):
-        result["event_type"] = "INQUIRY"
-    elif "[사진]" in text or "사진" in text:
-        result["event_type"] = "PHOTO"
+    # 이벤트 타입 분류: YAML 규칙 기반 (우선순위대로 순회).
+    # 규칙 키마다 keywords/event_type(alias)/direction 지정 가능.
+    rules = _load_rules()
+    priority = rules.get("priority", _FALLBACK_RULES["priority"])
+    et_map = rules.get("event_types", {})
+    for key in priority:
+        cfg = et_map.get(key, {})
+        kws = cfg.get("keywords", [])
+        if any(kw in text for kw in kws):
+            result["event_type"] = cfg.get("event_type", key)
+            if "direction" in cfg:
+                result["direction"] = cfg["direction"]
+            break
 
     # 차수 추출
     seq_m = SEQ_PATTERN.search(text)
@@ -240,14 +338,14 @@ def _make_event_id(parsed: dict, msg_id: str) -> str:
 
 # ─── 이슈 추적 ───
 
-_active_issues: dict[str, dict] = {}  # key=이슈 해시
+_active_issues: dict[str, dict] = {}  # key=이슈ID, 방별 최근 이슈 추적
 
 
 def _detect_issue(parsed: dict, sender: str, time_str: str, room: str) -> dict | None:
-    """불량/클레임 메시지에서 이슈 생성"""
-    if parsed["event_type"] not in ("DEFECT", "CLAIM"):
+    """불량/클레임/검역차감 메시지에서 이슈 생성"""
+    if parsed["event_type"] not in ("DEFECT",):
         return None
-    return {
+    issue = {
         "issue_id": hashlib.md5(
             f"{room}|{parsed['sequence']}|{parsed['product']}|{time_str}".encode()
         ).hexdigest()[:10],
@@ -255,19 +353,43 @@ def _detect_issue(parsed: dict, sender: str, time_str: str, room: str) -> dict |
         "room": room,
         "pipeline": _get_pipeline_stage(room),
         "content": parsed["summary"],
+        "reporter": sender,
         "responder": "",
         "response": "",
         "response_time": "",
         "duration_min": "",
         "result": "미해결",
     }
+    # 활성 이슈에 등록 (나중에 응답 매칭용)
+    _active_issues[room] = issue
+    return issue
 
 
-def _detect_response(parsed: dict, sender: str, content: str) -> bool:
-    """의사결정/응답 메시지 감지"""
-    return parsed["event_type"] == "DECISION" or any(
-        kw in content for kw in ["확인했습니다", "진행", "불가능", "감사합니다"]
-    )
+def _detect_response(parsed: dict, sender: str, content: str, room: str) -> dict | None:
+    """이슈에 대한 응답 감지 — 같은 방에서 다른 사람이 응답한 경우"""
+    if room not in _active_issues:
+        return None
+
+    issue = _active_issues[room]
+    # 같은 사람이면 추가 보고이지 응답이 아님
+    if sender == issue.get("reporter"):
+        return None
+
+    # 응답 키워드 체크
+    response_keywords = [
+        "확인했습니다", "확인합니다", "진행", "알겠습니다",
+        "불가능", "감사합니다", "완료", "네 확인",
+        "처리", "교체", "대체", "재출고", "차감",
+    ]
+    if parsed["event_type"] == "DECISION" or any(kw in content for kw in response_keywords):
+        issue["responder"] = sender
+        issue["response"] = content[:100]
+        issue["response_time"] = parsed.get("time", "")
+        issue["result"] = "대응완료"
+        del _active_issues[room]  # 이슈 해결
+        return issue
+
+    return None
 
 
 # ─── Layer 기록 함수 ───
@@ -351,10 +473,15 @@ def classify_and_log_delta(room_name: str, delta: str) -> int:
                 sender, parsed["summary"][:200], "", msg_id,
             ])
 
-        # Layer 3: 이슈 감지
+        # Layer 3: 이슈 감지 + 응답 매칭
         issue = _detect_issue(parsed, sender, time_str, room_name)
         if issue:
             issues.append(issue)
+        else:
+            # 기존 이슈에 대한 응답인지 체크
+            response = _detect_response(parsed, sender, content, room_name)
+            if response:
+                issues.append(response)  # 업데이트된 이슈 기록
 
     # 배치 기록
     try:

@@ -15,7 +15,7 @@ from google.oauth2.service_account import Credentials
 from googleapiclient.discovery import build
 from dotenv import load_dotenv
 
-load_dotenv(Path(__file__).parent.parent / ".env")
+load_dotenv(Path(__file__).parent.parent / ".env", override=True)
 
 CREDS_FILE = Path(__file__).parent.parent / "data" / "gsheet_credentials.json"
 PIPELINE_CONFIG = Path(__file__).parent.parent / "data" / "pipeline_config.json"

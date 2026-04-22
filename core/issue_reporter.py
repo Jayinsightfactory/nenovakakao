@@ -21,7 +21,7 @@ from tkinter import scrolledtext
 import requests
 from dotenv import load_dotenv
 
-load_dotenv(Path(__file__).parent.parent / ".env")
+load_dotenv(Path(__file__).parent.parent / ".env", override=True)
 
 DATA_DIR = Path(__file__).parent.parent / "data"
 ISSUE_ROOM_FILE = DATA_DIR / "issue_room.json"

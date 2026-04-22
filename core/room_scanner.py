@@ -16,7 +16,7 @@ from pathlib import Path
 from dotenv import load_dotenv
 
 # .env 로드
-load_dotenv(Path(__file__).parent.parent / ".env")
+load_dotenv(Path(__file__).parent.parent / ".env", override=True)
 
 CLAUDE_MODEL = "claude-sonnet-4-20250514"
 

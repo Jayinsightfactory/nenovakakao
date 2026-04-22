@@ -203,7 +203,7 @@ def fix_chat_window_position(
         # 분리창을 메인과 겹치지 않게 x=910 으로 두면 TOPMOST Z-order 충돌 회피.
         # Claude(1160+)/KakaoWork 등은 TOPMOST 아니므로 분리창 TOPMOST 가 이김.
         if x is None:
-            x = 910
+            x = 100
         if y is None:
             y = 50
 

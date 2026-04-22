@@ -108,11 +108,41 @@ def find_kakaotalk_window() -> KakaoWindow:
 def activate_kakaotalk() -> KakaoWindow:
     """
     카카오톡 창을 활성화(포커스)하고 정보를 반환한다.
-    최소화되어 있으면 복원한다.
+    최소화/트레이 숨김 상태도 복구 시도.
     """
+    import win32con
+    import win32gui
+
+    # 1) 가시 창 우선
     windows = gw.getWindowsWithTitle(KAKAOTALK_TITLE)
+
+    # 2) 가시 창 없음 → win32 EnumWindows로 hidden까지 포함해서 hwnd 탐색
     if not windows:
-        raise RuntimeError("카카오톡이 실행 중이지 않습니다.")
+        hidden_hwnds = []
+        def _enum(h, lst):
+            # IsWindow + 제목 매칭만 (visible 무관)
+            if win32gui.IsWindow(h) and win32gui.GetWindowText(h) == KAKAOTALK_TITLE:
+                lst.append(h)
+        win32gui.EnumWindows(_enum, hidden_hwnds)
+
+        if hidden_hwnds:
+            # 트레이 숨김 카톡을 강제로 다시 보이게
+            for h in hidden_hwnds:
+                try:
+                    win32gui.ShowWindow(h, win32con.SW_RESTORE)
+                    win32gui.ShowWindow(h, win32con.SW_SHOW)
+                    time.sleep(0.3)
+                    win32gui.SetForegroundWindow(h)
+                except Exception:
+                    pass
+            time.sleep(0.5)
+            # 재시도
+            windows = gw.getWindowsWithTitle(KAKAOTALK_TITLE)
+
+    if not windows:
+        raise RuntimeError(
+            "카카오톡 창을 찾을 수 없습니다. 트레이에서 카카오톡을 클릭해 띄워주세요."
+        )
 
     main = max(windows, key=lambda w: w.width * w.height)
 
@@ -144,25 +174,44 @@ def switch_to_chat_tab(window: KakaoWindow) -> None:
     time.sleep(0.5)
 
 
-def scroll_room_list(window: KakaoWindow, direction: int = -5) -> None:
+def scroll_room_list(window: KakaoWindow, direction: int = -5, *, focus_click: bool = True) -> None:
     """
     방 리스트 영역에서 마우스 스크롤.
-    direction: 음수 = 아래로, 양수 = 위로. 기본 -5 (아래로 5칸)
+    direction: 음수 = 아래로, 양수 = 위로.
+    focus_click: 첫 호출에서만 True. 연속 스크롤 시 False로 포커스 click 생략.
     """
+    left, top, right, bottom = window.room_list_bbox()
+    center_x = (left + right) // 2
+    center_y = (top + bottom) // 2
+    if focus_click:
+        pyautogui.click(center_x, center_y)
+        time.sleep(0.1)
+    pyautogui.scroll(direction, x=center_x, y=center_y)
+    time.sleep(0.2)
+
+
+def scroll_room_list_to_top(window: KakaoWindow) -> None:
+    """방 리스트를 맨 위로 스크롤 — Home 키 (즉시)."""
     left, top, right, bottom = window.room_list_bbox()
     center_x = (left + right) // 2
     center_y = (top + bottom) // 2
     pyautogui.click(center_x, center_y)
     time.sleep(0.1)
-    pyautogui.scroll(direction, x=center_x, y=center_y)
-    time.sleep(0.5)
-
-
-def scroll_room_list_to_top(window: KakaoWindow) -> None:
-    """방 리스트를 맨 위로 스크롤"""
-    for _ in range(30):
-        scroll_room_list(window, direction=10)
+    pyautogui.press("home")
     time.sleep(0.3)
+
+
+def scroll_room_list_one_page(window: KakaoWindow) -> None:
+    """방 리스트를 정확히 한 페이지(PgDn) 만큼 스크롤.
+    페이지 단위 → 페이지 간 겹침 없음 (무의미한 재처리 방지).
+    """
+    left, top, right, bottom = window.room_list_bbox()
+    center_x = (left + right) // 2
+    center_y = (top + bottom) // 2
+    pyautogui.click(center_x, center_y)
+    time.sleep(0.2)
+    pyautogui.press("pagedown")
+    time.sleep(0.5)
 
 
 def capture_full_window(window: KakaoWindow, save_path: Path) -> Path:

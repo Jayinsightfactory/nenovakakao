@@ -443,49 +443,59 @@ def _try_uia_inner_nav(popup_rect: tuple) -> bool:
         control_types=["MenuItem", "ListItem", "Button", "Text"],
     )
 
-    drawer_clicked_via = None  # "uia" | "vision"
+    drawer_clicked_via = None  # "uia" | "hardcoded" | "vision"
+    drawer_x = drawer_y = None
+
     if drawer_item is not None:
         print(f"    [UIA-NAV] '채팅방 서랍' UIA 발견: {drawer_item.element_info.name!r} → invoke", flush=True)
         if _invoke_safely(drawer_item, "open_drawer.uia_drawer_item"):
             drawer_clicked_via = "uia"
 
     if drawer_clicked_via is None:
-        # UIA 가 MenuItem 을 못 봄 (팝업도 DirectUI) → Vision OCR 로 좌표 찾기
-        try:
-            items = popup_win.descendants(control_type="MenuItem")
-            names = [(it.element_info.name or "")[:30] for it in items]
-            print(f"    [UIA-NAV] MenuItems 비어있음 ({names[:10]}) → Vision 폴백", flush=True)
-        except Exception:
-            print(f"    [UIA-NAV] MenuItems 조회 실패 → Vision 폴백", flush=True)
-
-        try:
-            from core.vision_clicker import find_and_click
-            # popup_rect_live = 실제 팝업 hwnd 의 rect (여백 포함)
-            # dry_run=True: 좌표만 받고 직접 hover/click 제어
-            v_result = find_and_click(
-                popup_rect_live,
-                "카카오톡 채팅방 메뉴 팝업에서 '채팅방 서랍' 또는 '서랍' 텍스트가 있는 메뉴 항목. "
-                "서랍 아이콘 옆에 표시됨. '대화 내용'이나 '톡캘린더'가 아님.",
-                tag="drawer.vision_find_drawer_item",
-                min_confidence=0.55,
-                dry_run=True,
-            )
-            if not v_result.found:
-                print(f"    [UIA-NAV] Vision '채팅방 서랍' 못 찾음 — 실패", flush=True)
-                return False
-
-            drawer_x, drawer_y = v_result.x, v_result.y
-            print(f"    [UIA-NAV] Vision '채팅방 서랍' 좌표: ({drawer_x},{drawer_y}) conf={v_result.confidence:.2f}", flush=True)
-
-            # 핵심: "채팅방 서랍"은 서브메뉴가 달린 항목 → HOVER 만으로 서브메뉴 출현.
-            # CLICK 하면 팝업이 닫힐 수 있음. moveTo 만 해서 hover 효과.
+        # 팝업이 표준 크기(225x324)에 EVA_Menu 클래스면 하드코딩 좌표 사용.
+        # E2E 검증: "채팅방 서랍" 은 팝업 top+95, center x 근처.
+        pw = popup_rect_live[2] - popup_rect_live[0]
+        ph = popup_rect_live[3] - popup_rect_live[1]
+        size_ok = 200 <= pw <= 260 and 300 <= ph <= 360
+        if size_ok:
+            drawer_x = (popup_rect_live[0] + popup_rect_live[2]) // 2
+            drawer_y = popup_rect_live[1] + 95
+            print(f"    [UIA-NAV] 하드코딩 '채팅방 서랍': ({drawer_x},{drawer_y}) [팝업 {pw}x{ph} 표준]", flush=True)
             import pyautogui as _pag
             _pag.moveTo(drawer_x, drawer_y, duration=0.2)
-            print(f"    [UIA-NAV] hover → 서브메뉴 대기", flush=True)
-            drawer_clicked_via = "vision_hover"
-        except Exception as e:
-            print(f"    [UIA-NAV] Vision 호출 에러: {e}", flush=True)
-            return False
+            drawer_clicked_via = "hardcoded_hover"
+        else:
+            # 비표준 크기 → Vision OCR
+            try:
+                items = popup_win.descendants(control_type="MenuItem")
+                names = [(it.element_info.name or "")[:30] for it in items]
+                print(f"    [UIA-NAV] MenuItems 비어있음 ({names[:10]}) + 비표준 팝업 → Vision 폴백", flush=True)
+            except Exception:
+                print(f"    [UIA-NAV] MenuItems 조회 실패 → Vision 폴백", flush=True)
+
+            try:
+                from core.vision_clicker import find_and_click
+                v_result = find_and_click(
+                    popup_rect_live,
+                    "카카오톡 채팅방 메뉴 팝업에서 '채팅방 서랍' 또는 '서랍' 텍스트가 있는 메뉴 항목. "
+                    "서랍 아이콘 옆에 표시됨. '대화 내용'이나 '톡캘린더'가 아님.",
+                    tag="drawer.vision_find_drawer_item",
+                    min_confidence=0.55,
+                    dry_run=True,
+                )
+                if not v_result.found:
+                    print(f"    [UIA-NAV] Vision '채팅방 서랍' 못 찾음 — 실패", flush=True)
+                    return False
+
+                drawer_x, drawer_y = v_result.x, v_result.y
+                print(f"    [UIA-NAV] Vision '채팅방 서랍' 좌표: ({drawer_x},{drawer_y}) conf={v_result.confidence:.2f}", flush=True)
+
+                import pyautogui as _pag
+                _pag.moveTo(drawer_x, drawer_y, duration=0.2)
+                drawer_clicked_via = "vision_hover"
+            except Exception as e:
+                print(f"    [UIA-NAV] Vision 호출 에러: {e}", flush=True)
+                return False
 
     # ── Step 3: 서브메뉴 찾기. 2단계 전략:
     #   (a) 1.5초 hover 대기 — hover 에 반응하는 경우 (일반적)
@@ -541,7 +551,7 @@ def _try_uia_inner_nav(popup_rect: tuple) -> bool:
         time.sleep(0.2)
 
     # (b) hover 실패 → 그 위치를 CLICK (일부 빌드는 클릭 필요)
-    if submenu_rect is None and drawer_clicked_via == "vision_hover":
+    if submenu_rect is None and drawer_clicked_via in ("vision_hover", "hardcoded_hover") and drawer_x is not None:
         print(f"    [UIA-NAV] hover 로 서브메뉴 안 뜸 → click 재시도", flush=True)
         import pyautogui as _pag
         _pag.click(drawer_x, drawer_y)
@@ -558,7 +568,27 @@ def _try_uia_inner_nav(popup_rect: tuple) -> bool:
         print(f"    [UIA-NAV] 서브메뉴 창 없음 (hover + click 모두 실패)", flush=True)
         return False
 
-    # ── Step 4: 서브메뉴에서 "사진/동영상" 클릭 (Vision) ──
+    # ── Step 4: 서브메뉴에서 "사진/동영상" 클릭 ──
+    # E2E 검증: 서브메뉴는 160x86 크기, "사진/동영상" 은 첫 번째 (y_offset ≈ 18)
+    sm_w = submenu_rect[2] - submenu_rect[0]
+    sm_h = submenu_rect[3] - submenu_rect[1]
+    if 140 <= sm_w <= 200 and 70 <= sm_h <= 140:
+        # 하드코딩: 서브메뉴 center x, top+18 (첫 번째 항목)
+        photo_x = (submenu_rect[0] + submenu_rect[2]) // 2
+        photo_y = submenu_rect[1] + 18
+        print(f"    [UIA-NAV] 하드코딩 '사진/동영상': ({photo_x},{photo_y}) [서브메뉴 {sm_w}x{sm_h} 표준]", flush=True)
+        try:
+            import pyautogui as _pag
+            _pag.click(photo_x, photo_y)
+            mark("open_drawer.submenu_detected", "after", {"method": "hardcoded"})
+            mark("open_drawer.photo_tab_clicked", "after", {"method": "hardcoded"})
+            time.sleep(2.5)
+            return True
+        except Exception as e:
+            print(f"    [UIA-NAV] 하드코딩 클릭 예외: {e}", flush=True)
+            return False
+
+    # 비표준 크기 → Vision
     try:
         from core.vision_clicker import find_and_click
         v_result = find_and_click(
@@ -605,54 +635,155 @@ def open_drawer(chat_hwnd: int) -> int | None:
 
     mark("open_drawer.focus", "before", {"chat_hwnd": chat_hwnd})
 
-    # 안전 위치로 이동 + TOPMOST (window_manager 활용)
+    # chat_hwnd 유효성 체크 (open_drawer_uia 등에서 무효화됐을 수 있음)
+    if not win32gui.IsWindow(chat_hwnd):
+        # 재탐색: 같은 방 제목의 유효한 hwnd 찾기
+        print(f"    [서랍] chat_hwnd={chat_hwnd} 무효 — 재탐색 시도", flush=True)
+        orig_title = ""
+        try:
+            # 저장해뒀던 이전 제목으로 찾기 — 없으면 그냥 첫 분리창
+            candidates = []
+            def _find(h, _):
+                if not win32gui.IsWindowVisible(h):
+                    return
+                t = win32gui.GetWindowText(h) or ""
+                if not t or t == "카카오톡":
+                    return
+                cls = win32gui.GetClassName(h) or ""
+                if not cls.startswith("EVA_"):
+                    return
+                r = win32gui.GetWindowRect(h)
+                w, hh = r[2]-r[0], r[3]-r[1]
+                if 300 <= w <= 900 and 500 <= hh <= 1000:
+                    candidates.append((h, t, r))
+            win32gui.EnumWindows(_find, None)
+            if candidates:
+                chat_hwnd = candidates[0][0]
+                print(f"    [서랍] 재탐색 성공: hwnd={chat_hwnd} title={candidates[0][1]!r}", flush=True)
+            else:
+                print(f"    [서랍] 유효한 분리창 없음 → 실패", flush=True)
+                return None
+        except Exception as e:
+            print(f"    [서랍] 재탐색 예외: {e}", flush=True)
+            return None
+
+    # 타겟 외 다른 카톡 분리창을 모두 최소화 (클릭 간섭 방지).
     try:
-        from core.window_manager import fix_chat_window_position
-        fix_chat_window_position(chat_hwnd)
+        import win32con as _wc
+        others_minimized = []
+        def _minimize_other_chats(h, _):
+            if h == chat_hwnd:
+                return
+            if not win32gui.IsWindowVisible(h):
+                return
+            if win32gui.IsIconic(h):  # 이미 최소화
+                return
+            t = win32gui.GetWindowText(h) or ""
+            if not t or t == "카카오톡":
+                return
+            cls = win32gui.GetClassName(h) or ""
+            if not cls.startswith("EVA_"):
+                return
+            r = win32gui.GetWindowRect(h)
+            w, hh = r[2]-r[0], r[3]-r[1]
+            if 300 <= w <= 900 and 500 <= hh <= 1000:
+                try:
+                    win32gui.ShowWindow(h, _wc.SW_MINIMIZE)
+                    others_minimized.append(t[:25])
+                except Exception:
+                    pass
+        win32gui.EnumWindows(_minimize_other_chats, None)
+        if others_minimized:
+            print(f"    [서랍] 다른 분리창 {len(others_minimized)}개 최소화: {others_minimized}", flush=True)
         time.sleep(0.3)
+    except Exception as e:
+        print(f"    [서랍] 다른 분리창 정리 실패 (무시): {e}", flush=True)
+
+    # chat_hwnd 재확인 (minimize 후)
+    if not win32gui.IsWindow(chat_hwnd):
+        print(f"    [서랍] 최소화 후 chat_hwnd 무효 → 실패", flush=True)
+        return None
+
+    # 분리창을 E2E 검증된 고정 크기 (910, 50, 600, 800) 로 강제.
+    try:
+        import win32con as _wc
+        # 혹시 최소화 상태면 복원
+        if win32gui.IsIconic(chat_hwnd):
+            win32gui.ShowWindow(chat_hwnd, _wc.SW_RESTORE)
+            time.sleep(0.3)
+        win32gui.MoveWindow(chat_hwnd, 100, 50, 600, 800, True)
+        time.sleep(0.3)
+        SWP = _wc.SWP_NOMOVE | _wc.SWP_NOSIZE | _wc.SWP_SHOWWINDOW
+        win32gui.SetWindowPos(chat_hwnd, -1, 0, 0, 0, 0, SWP)
+        time.sleep(0.2)
     except Exception as e:
         print(f"    [서랍] 창 위치 고정 실패 (무시): {e}", flush=True)
 
     _activate(chat_hwnd)
-    # 분리창 TOPMOST 강제 (Claude 등이 덮지 못하게)
-    try:
-        import win32con
-        SWP_NOMOVE = 0x0002
-        SWP_NOSIZE = 0x0001
-        SWP_SHOWWINDOW = 0x0040
-        HWND_TOPMOST = -1
-        win32gui.SetWindowPos(chat_hwnd, HWND_TOPMOST, 0, 0, 0, 0,
-                               SWP_NOMOVE | SWP_NOSIZE | SWP_SHOWWINDOW)
-        time.sleep(0.2)
-    except Exception as e:
-        print(f"    [서랍] 분리창 TOPMOST 실패: {e}", flush=True)
+    time.sleep(0.3)
+
+    if not win32gui.IsWindow(chat_hwnd):
+        print(f"    [서랍] _activate 후 chat_hwnd 무효 → 실패", flush=True)
+        return None
+
     rect = win32gui.GetWindowRect(chat_hwnd)
+    print(f"    [서랍] 분리창 rect={rect} size={rect[2]-rect[0]}x{rect[3]-rect[1]}", flush=True)
     mark("open_drawer.focus", "after", {"rect": rect})
 
-    # ── Vision-first: 분리창 크기가 다양해서 하드코딩 좌표가 자주 틀림.
-    # 매번 Vision OCR 로 ≡ 정확히 찾고 클릭. 실패 시 하드코딩 폴백.
+    # rect 가 기대값과 크게 다르면 경고 + 한 번 더 시도
+    expected_w = 600
+    expected_h = 800
+    actual_w = rect[2] - rect[0]
+    actual_h = rect[3] - rect[1]
+    if abs(actual_w - expected_w) > 20 or abs(actual_h - expected_h) > 20:
+        print(f"    [서랍] 크기 불일치 (기대 {expected_w}x{expected_h}) → 재시도", flush=True)
+        try:
+            import win32con as _wc
+            win32gui.MoveWindow(chat_hwnd, 100, 50, 600, 800, True)
+            time.sleep(0.5)
+            rect = win32gui.GetWindowRect(chat_hwnd)
+            print(f"    [서랍] 재시도 후 rect={rect}", flush=True)
+        except Exception as e:
+            print(f"    [서랍] 재시도 실패: {e}", flush=True)
+
+    # ── ≡ 좌표 결정: 분리창 600x800 고정 → 하드코딩 (1480, 105) 우선 사용.
+    # E2E 검증으로 이 위치가 정확함이 확인됨 (rect[2]-20, rect[1]+55).
+    # 분리창 크기가 확정되지 않거나 다른 빌드면 Vision 으로 폴백.
     menu_x = menu_y = None
-    try:
-        from core.vision_clicker import find_and_click
-        v = find_and_click(
-            (rect[0], rect[1], rect[2], rect[3]),
-            "카카오톡 채팅 분리창 상단 툴바의 햄버거 메뉴(≡) 아이콘. "
-            "방 제목 옆 오른쪽, 전화/영상/검색 아이콘들과 함께. "
-            "Windows 닫기(X) 버튼 아님.",
-            tag="drawer.menu_hamburger",
-            min_confidence=0.55,
-            dry_run=True,  # 좌표만 — 클릭은 아래에서 제어
-        )
-        if v.found:
-            menu_x, menu_y = v.x, v.y
-            print(f"    [서랍] Vision ≡ 좌표: ({menu_x}, {menu_y}) conf={v.confidence:.2f}", flush=True)
-    except Exception as e:
-        print(f"    [서랍] Vision ≡ 예외: {e}", flush=True)
+
+    # 크기가 600x800 에 가까우면 하드코딩 신뢰
+    size_ok = abs(actual_w - expected_w) <= 20 and abs(actual_h - expected_h) <= 20
+    if size_ok:
+        menu_x, menu_y = rect[2] - 20, rect[1] + 55
+        print(f"    [서랍] 하드코딩 ≡: ({menu_x}, {menu_y}) [600x800 확정]", flush=True)
+    else:
+        # 크기가 다르면 Vision 으로 찾기
+        try:
+            from core.vision_clicker import find_and_click
+            v = find_and_click(
+                (rect[0], rect[1], rect[2], rect[3]),
+                "카카오톡 채팅 분리창에서 방 제목이 표시된 줄의 오른쪽 끝에 있는 "
+                "햄버거 메뉴(≡, 가로 세 줄) 아이콘. "
+                "Windows 타이틀바의 최소화/최대화/닫기 버튼은 절대 아님. "
+                "방 제목 바로 옆, 전화/영상/검색 아이콘들과 같은 높이.",
+                tag="drawer.menu_hamburger",
+                min_confidence=0.55,
+                dry_run=True,
+            )
+            if v.found:
+                # Sanity: y 가 rect top 에서 35~90px 범위여야 함 (너무 위면 타이틀바)
+                y_offset = v.y - rect[1]
+                if 30 <= y_offset <= 90:
+                    menu_x, menu_y = v.x, v.y
+                    print(f"    [서랍] Vision ≡ 좌표: ({menu_x}, {menu_y}) y_offset={y_offset}", flush=True)
+                else:
+                    print(f"    [서랍] Vision ≡ 비정상 y_offset={y_offset} (기대 30~90) → 하드코딩", flush=True)
+        except Exception as e:
+            print(f"    [서랍] Vision ≡ 예외: {e}", flush=True)
 
     if menu_x is None:
-        # 하드코딩 폴백 (600x800 가정)
         menu_x, menu_y = rect[2] - 20, rect[1] + 55
-        print(f"    [서랍] Vision 실패 → 하드코딩 ≡: ({menu_x}, {menu_y})", flush=True)
+        print(f"    [서랍] 하드코딩 ≡ 사용: ({menu_x}, {menu_y})", flush=True)
 
     # 최대 3회 시도
     popup = None
@@ -677,21 +808,38 @@ def open_drawer(chat_hwnd: int) -> int | None:
         time.sleep(0.4)
 
         # WindowFromPoint 로 클릭 대상 확인 (디버그) — 분리창이 아니면 경고
+        click_target_is_chat = True
         try:
             target = win32gui.WindowFromPoint((menu_x, menu_y))
-            if target != chat_hwnd:
-                # 자식창일 수도, 부모 체인 확인
-                root = win32gui.GetAncestor(target, 2)  # GA_ROOT
+            root = win32gui.GetAncestor(target, 2)  # GA_ROOT
+            if root != chat_hwnd:
                 t_title = win32gui.GetWindowText(target) or ""
                 r_title = win32gui.GetWindowText(root) or ""
                 print(f"    [서랍] WindowFromPoint({menu_x},{menu_y})={target}({t_title!r}) root={root}({r_title!r}) expected={chat_hwnd}", flush=True)
+                click_target_is_chat = False
         except Exception:
             pass
 
-        # 클릭 직전 마우스 이동 → 실제 클릭 (moveTo + click 분리)
-        pyautogui.moveTo(menu_x, menu_y, duration=0.15)
-        time.sleep(0.2)
-        pyautogui.click(menu_x, menu_y)
+        if click_target_is_chat:
+            # 정상: pyautogui 클릭
+            pyautogui.moveTo(menu_x, menu_y, duration=0.15)
+            time.sleep(0.2)
+            pyautogui.click(menu_x, menu_y)
+        else:
+            # Z-order 문제로 다른 창이 받음 → PostMessage 로 직접 전송
+            print(f"    [서랍] PostMessage 로 ≡ 클릭 시도 (hwnd={chat_hwnd})", flush=True)
+            try:
+                import win32api as _wapi
+                import win32con as _wc
+                # 스크린 좌표 → 클라이언트 좌표 변환
+                client_x, client_y = win32gui.ScreenToClient(chat_hwnd, (menu_x, menu_y))
+                lparam = (client_y << 16) | (client_x & 0xFFFF)
+                win32gui.PostMessage(chat_hwnd, _wc.WM_LBUTTONDOWN, _wc.MK_LBUTTON, lparam)
+                time.sleep(0.05)
+                win32gui.PostMessage(chat_hwnd, _wc.WM_LBUTTONUP, 0, lparam)
+            except Exception as e:
+                print(f"    [서랍] PostMessage 실패 ({e}) → pyautogui 폴백", flush=True)
+                pyautogui.click(menu_x, menu_y)
         time.sleep(1.8)  # 팝업 뜰 시간
         mark("open_drawer.click_menu", "after", {"attempt": attempt})
 
