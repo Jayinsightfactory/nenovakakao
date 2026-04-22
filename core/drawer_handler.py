@@ -1058,50 +1058,98 @@ def _save_one_bundle(v_hwnd: int) -> bool:
     time.sleep(2.5)
     mark("download.batch_save_clicked", "after")
 
+    # 다이얼로그 감지: foreground 가 아닌 EnumWindows 로 "다른 이름으로 저장" 창 찾기
+    # (액션 로그 창이 포커스 탈취해도 다이얼로그 hwnd 는 별도로 존재)
+    def _find_save_dialog():
+        """visible + 제목에 '저장/Save/다른 이름' 포함 + 크기 > 300 → 저장 다이얼로그 hwnd."""
+        found = []
+        def _cb(h, _):
+            if not win32gui.IsWindowVisible(h):
+                return
+            t = win32gui.GetWindowText(h) or ""
+            if not any(k in t for k in ("다른 이름으로 저장", "Save As", "저장", "파일 저장")):
+                return
+            r = win32gui.GetWindowRect(h)
+            w, hh = r[2]-r[0], r[3]-r[1]
+            if w < 300 or hh < 200:  # 작은 창은 다이얼로그 아님
+                return
+            # "저장"은 너무 포괄적이라 클래스도 체크 (#32770 = Windows 표준 다이얼로그)
+            cls = win32gui.GetClassName(h) or ""
+            if cls == "#32770" or "다른 이름" in t or "Save As" in t:
+                found.append((h, t, r))
+        win32gui.EnumWindows(_cb, None)
+        return found[0] if found else None
+
+    # 저장 다이얼로그 대기 (최대 3초)
+    dialog_hwnd = None
+    dialog_title = ""
+    for _ in range(30):
+        dlg = _find_save_dialog()
+        if dlg:
+            dialog_hwnd, dialog_title, _ = dlg
+            break
+        time.sleep(0.1)
+
     fg = win32gui.GetForegroundWindow()
     ft = win32gui.GetWindowText(fg)
     dialog_opened = False
-    print(f"    [서랍] 묶음저장 후 foreground='{ft[:80]}'", flush=True)
-    if "저장" in ft or "Save" in ft or "다른 이름" in ft:
-        mark("download.save_dialog_opened", "after", {"title": ft})
+    print(f"    [서랍] 묶음저장 후 foreground='{ft[:60]}' / 다이얼로그 hwnd={dialog_hwnd} title={dialog_title!r}", flush=True)
+
+    if dialog_hwnd:
+        mark("download.save_dialog_opened", "after", {"title": dialog_title})
+        # 다이얼로그에 명시적 포커스 → Enter
+        try:
+            win32gui.SetForegroundWindow(dialog_hwnd)
+            time.sleep(0.2)
+        except Exception:
+            pass
         pyautogui.press("enter")
         time.sleep(1.0)
         mark("download.save_confirmed", "after")
         dialog_opened = True
 
-        # Enter 직후 1초 간격으로 8초간 foreground 추적
-        # 핵심: '다른 이름으로 저장 확인' 덮어쓰기 팝업의 기본 포커스는 '아니요'.
-        #       Enter 누르면 NO → 저장 취소. 반드시 Y(예)를 직접 눌러야 한다.
-        last_seen = ft
+        # Enter 후 덮어쓰기 확인 팝업 + 저장 완료 감시 (EnumWindows 기반)
         for sec in range(1, 9):
-            fg2 = win32gui.GetForegroundWindow()
-            ft2 = win32gui.GetWindowText(fg2)
-            if ft2 != last_seen:
-                print(f"    [서랍] Enter+{sec}s foreground='{ft2[:80]}'", flush=True)
-                last_seen = ft2
-            # 덮어쓰기 확인 팝업 — title이 "확인" 으로 끝나거나 키워드 포함
-            is_overwrite = (
-                "확인" in ft2 and "저장" in ft2
-                or any(k in ft2 for k in ["바꾸", "교체"])
-                or "있습니다" in ft2
-                or "Replace" in ft2 or "Confirm Save" in ft2
-            )
-            if is_overwrite:
+            # 덮어쓰기 확인 팝업 체크
+            overwrite_hwnd = None
+            def _cb_ovr(h, _):
+                nonlocal overwrite_hwnd
+                if overwrite_hwnd or not win32gui.IsWindowVisible(h):
+                    return
+                t = win32gui.GetWindowText(h) or ""
+                if any(k in t for k in ("확인", "바꾸", "교체", "있습니다", "Replace", "Confirm Save")):
+                    cls = win32gui.GetClassName(h) or ""
+                    if cls == "#32770":
+                        overwrite_hwnd = h
+            win32gui.EnumWindows(_cb_ovr, None)
+            if overwrite_hwnd:
                 print(f"    [서랍] Enter+{sec}s 덮어쓰기 팝업 → 'Y' 입력", flush=True)
+                try:
+                    win32gui.SetForegroundWindow(overwrite_hwnd)
+                    time.sleep(0.2)
+                except Exception:
+                    pass
                 pyautogui.press("y")
                 time.sleep(0.5)
-            elif ft2 == "다른 이름으로 저장" or ft2.endswith("저장") or "Save As" in ft2:
-                # 저장 다이얼로그가 안 닫힘 → 한 번 더 Enter
+                continue
+
+            # 원 다이얼로그 아직 살아있는지
+            if dialog_hwnd and win32gui.IsWindow(dialog_hwnd) and win32gui.IsWindowVisible(dialog_hwnd):
                 if sec >= 2:
                     print(f"    [서랍] Enter+{sec}s 다이얼로그 잔존 → 추가 Enter", flush=True)
+                    try:
+                        win32gui.SetForegroundWindow(dialog_hwnd)
+                        time.sleep(0.2)
+                    except Exception:
+                        pass
                     pyautogui.press("enter")
-                time.sleep(1.0)
+                    time.sleep(1.0)
             else:
                 # 다이얼로그 닫힘
                 break
     else:
         mark("download.save_dialog_opened", "fail", {"title": ft})
-        print(f"    [서랍] 저장 다이얼로그 미감지", flush=True)
+        print(f"    [서랍] 저장 다이얼로그 미감지 (EnumWindows 스캔 3초 결과 없음)", flush=True)
 
     # 호출자가 파일 스냅샷으로 확정 판정
     return dialog_opened
