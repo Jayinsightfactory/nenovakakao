@@ -1181,24 +1181,29 @@ def _save_one_bundle(v_hwnd: int) -> bool:
     time.sleep(2.5)
     mark("download.batch_save_clicked", "after")
 
-    # 다이얼로그 감지: foreground 가 아닌 EnumWindows 로 "다른 이름으로 저장" 창 찾기
-    # (액션 로그 창이 포커스 탈취해도 다이얼로그 hwnd 는 별도로 존재)
+    # 다이얼로그 감지: foreground 가 아닌 EnumWindows 로 저장/폴더선택 창 찾기
+    # 유형: "다른 이름으로 저장"(파일명 입력), "폴더 선택"(묶음저장), "Save As", "Select Folder"
+    DIALOG_TITLE_KEYS = (
+        "다른 이름으로 저장", "Save As",
+        "폴더 선택", "Select Folder", "Browse For Folder",
+        "파일 저장",
+    )
     def _find_save_dialog():
-        """visible + 제목에 '저장/Save/다른 이름' 포함 + 크기 > 300 → 저장 다이얼로그 hwnd."""
+        """visible + 제목에 저장/폴더 선택 포함 + 크기 > 300 → 다이얼로그 hwnd."""
         found = []
         def _cb(h, _):
             if not win32gui.IsWindowVisible(h):
                 return
             t = win32gui.GetWindowText(h) or ""
-            if not any(k in t for k in ("다른 이름으로 저장", "Save As", "저장", "파일 저장")):
+            if not any(k in t for k in DIALOG_TITLE_KEYS):
                 return
             r = win32gui.GetWindowRect(h)
             w, hh = r[2]-r[0], r[3]-r[1]
-            if w < 300 or hh < 200:  # 작은 창은 다이얼로그 아님
+            if w < 300 or hh < 200:
                 return
-            # "저장"은 너무 포괄적이라 클래스도 체크 (#32770 = Windows 표준 다이얼로그)
             cls = win32gui.GetClassName(h) or ""
-            if cls == "#32770" or "다른 이름" in t or "Save As" in t:
+            if cls == "#32770" or any(specific in t for specific in
+                                       ("다른 이름", "Save As", "폴더 선택", "Select Folder")):
                 found.append((h, t, r))
         win32gui.EnumWindows(_cb, None)
         return found[0] if found else None
