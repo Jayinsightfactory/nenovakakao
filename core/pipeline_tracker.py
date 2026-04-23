@@ -109,23 +109,25 @@ class ChainTracker:
             pass
 
     def _enqueue_pending_order(self, chain: dict):
-        """신규 트리거(ORDER_CHANGE) 체인을 ERP 제안 큐에 추가.
-        data/pending_orders.json 에 누적. 관리자 검토 후 core/order_pipeline 에서 커밋.
+        """신규 트리거(ORDER_CHANGE) 체인을 제안 큐에 추가.
+        기존 data/pending_orders.json 포맷(list)와 충돌 방지 위해
+        별도 파일 data/pending_chains.json 에 저장.
         """
         try:
-            pending_path = ROOT / "data" / "pending_orders.json"
+            pending_path = ROOT / "data" / "pending_chains.json"
             pending_path.parent.mkdir(parents=True, exist_ok=True)
-            data = {"pending": []}
+            data: list = []
             if pending_path.exists():
                 try:
-                    data = json.loads(pending_path.read_text(encoding="utf-8"))
+                    loaded = json.loads(pending_path.read_text(encoding="utf-8"))
+                    if isinstance(loaded, list):
+                        data = loaded
                 except Exception:
-                    data = {"pending": []}
-            # 중복 방지 (체인ID)
-            existing = {p.get("chain_id") for p in data.get("pending", [])}
-            if chain["chain_id"] in existing:
+                    data = []
+            existing_ids = {p.get("chain_id") for p in data}
+            if chain["chain_id"] in existing_ids:
                 return
-            data.setdefault("pending", []).append({
+            data.append({
                 "chain_id": chain["chain_id"],
                 "sequence": chain.get("sequence", ""),
                 "product": chain.get("product", ""),
@@ -134,13 +136,13 @@ class ChainTracker:
                 "trigger_sender": chain.get("trigger_sender", ""),
                 "trigger_time": chain.get("trigger_time", ""),
                 "trigger_summary": (chain.get("events") or [{}])[0].get("summary", ""),
-                "status": "PROPOSED",  # PROPOSED → REVIEWED → COMMITTED / REJECTED
+                "status": "PROPOSED",
             })
             pending_path.write_text(
                 json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8"
             )
         except Exception as e:
-            print(f"  [TRACKER] pending_orders 추가 실패 (무시): {e}", flush=True)
+            print(f"  [TRACKER] pending_chains 추가 실패 (무시): {e}", flush=True)
 
     def on_event(
         self,
