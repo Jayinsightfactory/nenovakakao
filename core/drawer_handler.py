@@ -1094,7 +1094,19 @@ def _save_one_bundle(v_hwnd: int) -> bool:
     except Exception as e:
         print(f"    [서랍] Vision ↓ 예외: {e} → 하드코딩", flush=True)
 
-    # ↓ 드롭다운 클릭 + 메뉴 출현 확인 (EVA_Menu). 안 뜨면 최대 3회 재시도.
+    # GIF/동영상은 ↓ 드롭다운 구조 다름 → 스킵
+    # 뷰어 제목에 "Grb", "mp4", "mov", "gif" 포함하면 묶음저장 지원 안 함
+    try:
+        import os as _os
+        v_title = win32gui.GetWindowText(v_hwnd) or ""
+        _title_lower = v_title.lower()
+        if any(k in _title_lower for k in ("grb", ".mp4", ".mov", ".gif")):
+            print(f"    [서랍] 비(非)사진 뷰어 스킵: {v_title!r}", flush=True)
+            return False
+    except Exception:
+        pass
+
+    # ↓ 드롭다운 클릭 + 메뉴 출현 확인 (EVA_Menu). 안 뜨면 최대 2회 재시도.
     def _find_dropdown_menu():
         """↓ 클릭 후 나타나는 EVA_Menu 팝업 찾기 (작은 크기 + 뷰어 근처)."""
         found = []
@@ -1120,21 +1132,21 @@ def _save_one_bundle(v_hwnd: int) -> bool:
         return found[0] if found else None
 
     dropdown_hwnd = None
-    for retry in range(3):
+    for retry in range(2):
         mark("download.dropdown_clicked", "before", {"xy": [dl_x, dl_y], "retry": retry})
         pyautogui.click(dl_x, dl_y)
-        time.sleep(1.2)
+        time.sleep(1.0)
         mark("download.dropdown_clicked", "after")
         dd = _find_dropdown_menu()
         if dd:
             dropdown_hwnd, dd_rect = dd
-            print(f"    [서랍] ↓ 드롭다운 메뉴 감지: hwnd={dropdown_hwnd} rect={dd_rect}", flush=True)
+            print(f"    [서랍] ↓ 드롭다운 감지: hwnd={dropdown_hwnd} rect={dd_rect}", flush=True)
             break
-        if retry < 2:
-            print(f"    [서랍] ↓ 클릭 후 메뉴 미출현 (retry {retry+1}/3)", flush=True)
-            time.sleep(0.5)
+        if retry < 1:
+            print(f"    [서랍] ↓ 메뉴 미출현 — 재시도", flush=True)
+            time.sleep(0.3)
     if not dropdown_hwnd:
-        print(f"    [서랍] ↓ 메뉴 출현 실패 (3회) — 묶음저장 스킵", flush=True)
+        print(f"    [서랍] ↓ 메뉴 출현 실패 — 스킵", flush=True)
         return False
 
     # 드롭다운 메뉴에서 "묶음사진 전체저장" 찾기 (Vision, 실패 시 하드코딩 하단 항목)
