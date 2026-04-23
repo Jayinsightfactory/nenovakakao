@@ -549,6 +549,14 @@ def classify_and_log_delta(room_name: str, delta: str) -> int:
                 sender, parsed["summary"][:200], "", msg_id,
             ])
 
+        # Layer 4: 업무 체인 트래커 훅 (차수+품목/거래처 기반)
+        try:
+            from core.pipeline_tracker import tracker
+            tracker.on_event(parsed, room_name, sender, timestamp=time_str)
+        except Exception as e:
+            # 트래커 실패는 로그만 — 메인 파이프라인 영향 금지
+            print(f"  [TRACKER] on_event 예외 (무시): {e}", flush=True)
+
         # Layer 3: 이슈 감지 + 응답 매칭
         issue = _detect_issue(parsed, sender, time_str, room_name)
         if issue:
