@@ -229,13 +229,32 @@ class StatusOverlay:
 
 
 # 싱글톤
-_overlay: Optional[StatusOverlay] = None
+_overlay: Optional["StatusOverlay"] = None
 
 
-def get_overlay() -> StatusOverlay:
-    """전역 오버레이 인스턴스 (최초 호출 시 자동 시작)"""
+class _NoOverlay:
+    """NENOVA_NO_OVERLAY=1 시 사용되는 더미. tk 창 안 띄움 + stop 버튼 오클릭 방지."""
+    should_stop = False
+    def start(self): pass
+    def stop(self): pass
+    def set_idle(self): pass
+    def set_working(self, *a, **kw): pass
+    def set_issue(self, *a, **kw): pass
+    def set_status(self, *a, **kw): pass
+    def reset_stop(self): pass
+
+
+def get_overlay():
+    """전역 오버레이 인스턴스. NENOVA_NO_OVERLAY=1 이면 no-op stub.
+    (자동화 클릭이 우하단 중지 버튼을 실수로 눌러서 프로세스가 os._exit 되는 문제 방지)
+    """
     global _overlay
+    import os as _os
     if _overlay is None:
-        _overlay = StatusOverlay()
-        _overlay.start()
+        if _os.getenv("NENOVA_NO_OVERLAY") == "1":
+            _overlay = _NoOverlay()
+            print("[OVERLAY] NENOVA_NO_OVERLAY=1 → stub (tk 창 생략)", flush=True)
+        else:
+            _overlay = StatusOverlay()
+            _overlay.start()
     return _overlay
