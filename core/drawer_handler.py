@@ -1184,14 +1184,40 @@ def _save_one_bundle(v_hwnd: int) -> bool:
         except Exception:
             pass
 
-        # WindowFromPoint 로 실제 ↓ 위치 대상 창 확인
+        # WindowFromPoint 로 ↓ 위치 대상 창 확인 — 뷰어 아니면 그 창 강제 닫기 후 재검증
         try:
+            import win32con as _wc2
             target = win32gui.WindowFromPoint((dl_x, dl_y))
             root = win32gui.GetAncestor(target, 2)  # GA_ROOT
             if root != v_hwnd:
-                t_title = win32gui.GetWindowText(target) or ""
                 r_title = win32gui.GetWindowText(root) or ""
-                print(f"    [서랍] ↓ 좌표 ({dl_x},{dl_y}) 대상 root={r_title[:30]!r} != 뷰어 — 클릭 유실 위험", flush=True)
+                print(f"    [서랍] ↓ 좌표 ({dl_x},{dl_y}) 대상 root={r_title[:30]!r} != 뷰어 — 방해 창 강제 닫기", flush=True)
+                # 그 root 창을 Enter 로 처리 (다른 이름으로 저장 / 폴더 선택이면 Enter로 저장됨)
+                try:
+                    win32gui.SetForegroundWindow(root)
+                    time.sleep(0.2)
+                    if any(k in r_title for k in ("다른 이름으로 저장", "Save As",
+                                                    "폴더 선택", "Select Folder")):
+                        pyautogui.press("enter")  # 저장 확정
+                        time.sleep(1.0)
+                        # 덮어쓰기 Y
+                        pyautogui.press("y")
+                        time.sleep(0.5)
+                    else:
+                        pyautogui.press("escape")
+                        time.sleep(0.3)
+                        if win32gui.IsWindow(root) and win32gui.IsWindowVisible(root):
+                            win32gui.PostMessage(root, _wc2.WM_CLOSE, 0, 0)
+                            time.sleep(0.3)
+                except Exception as e:
+                    print(f"    [서랍] 방해 창 닫기 실패: {e}", flush=True)
+                # 뷰어 포커스 재확보
+                try:
+                    win32gui.SetWindowPos(v_hwnd, -1, 0, 0, 0, 0, SWP)
+                    win32gui.SetForegroundWindow(v_hwnd)
+                    time.sleep(0.3)
+                except Exception:
+                    pass
         except Exception:
             pass
 
