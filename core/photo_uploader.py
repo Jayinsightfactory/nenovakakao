@@ -61,10 +61,12 @@ def _get_session() -> Optional[requests.Session]:
         return None
 
 
-def _resize_if_too_large(file_path: Path, max_bytes: int = 5_000_000,
-                         max_dim: int = 2048) -> Path:
+def _resize_if_too_large(file_path: Path, max_bytes: int = 900_000,
+                         max_dim: int = 1600) -> Path:
     """파일이 너무 크면 리사이즈한 임시 파일 경로 반환. 아니면 원본 반환.
-    nenovaweb HTTP 413 방지. max: 5MB 또는 2048px 긴변.
+    nenovaweb HTTP 413 방지. 실전 측정: 서버 한도 < 1MB.
+    따라서 900KB 초과 또는 1600px 긴변이면 무조건 리사이즈 + JPEG quality 조정.
+    크기 못 맞추면 quality 더 낮춰 재시도 (최대 3회).
     """
     try:
         size = file_path.stat().st_size
@@ -73,19 +75,23 @@ def _resize_if_too_large(file_path: Path, max_bytes: int = 5_000_000,
         from PIL import Image
         img = Image.open(file_path)
         w, h = img.size
-        scale = max_dim / max(w, h)
-        if scale >= 1.0 and size <= max_bytes * 2:
-            return file_path
-        scale = min(scale, 1.0)
+        scale = min(max_dim / max(w, h), 1.0)
         nw, nh = int(w * scale), int(h * scale)
-        img = img.resize((nw, nh), Image.LANCZOS)
-        resized_path = file_path.parent / f".resized_{file_path.name}"
-        # JPEG 로 저장 (크기 추가 감소)
-        if img.mode in ("RGBA", "P"):
-            img = img.convert("RGB")
-        img.save(resized_path, "JPEG", quality=85, optimize=True)
-        new_size = resized_path.stat().st_size
-        print(f"  [NENOVAWEB] 리사이즈 {w}x{h}/{size//1024}KB → {nw}x{nh}/{new_size//1024}KB", flush=True)
+        resized = img.resize((nw, nh), Image.LANCZOS) if scale < 1.0 else img
+        if resized.mode in ("RGBA", "P"):
+            resized = resized.convert("RGB")
+        resized_path = file_path.parent / f".resized_{file_path.stem}.jpg"
+
+        # quality 85 → 70 → 55 로 단계 축소
+        for quality in (85, 70, 55):
+            resized.save(resized_path, "JPEG", quality=quality, optimize=True)
+            new_size = resized_path.stat().st_size
+            if new_size <= max_bytes:
+                print(f"  [NENOVAWEB] 리사이즈 {w}x{h}/{size//1024}KB → "
+                      f"{nw}x{nh}/{new_size//1024}KB (q={quality})", flush=True)
+                return resized_path
+        # 최악 케이스 — 어쨌든 원본보단 작음
+        print(f"  [NENOVAWEB] 리사이즈 한도 초과 — 최종 {new_size//1024}KB (원본 {size//1024}KB)", flush=True)
         return resized_path
     except Exception as e:
         print(f"  [NENOVAWEB] 리사이즈 실패 (원본 그대로): {e}", flush=True)
