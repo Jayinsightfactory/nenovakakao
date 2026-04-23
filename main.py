@@ -824,6 +824,30 @@ def cmd_monitor(*, with_recorder: bool = False) -> int:
                 except Exception as e:
                     print(f"[LEARN] 피드백 체크 실패: {e}")
 
+            # ── STALLED 체인 경보 (매 5사이클마다) ──
+            if cycle % 5 == 0:
+                try:
+                    from core.pipeline_tracker import tracker
+                    stalled = tracker.get_stalled(hours=4)
+                    if stalled:
+                        print(f"\n[STALLED] {len(stalled)}개 업무 4시간+ 미완결:", flush=True)
+                        lines = ["⚠️ 미완결 업무 경보 (4시간+ 무반응):"]
+                        for ch in stalled[:10]:
+                            line = (f"  • {ch['chain_id']} "
+                                    f"[{ch.get('trigger_event','?')}] "
+                                    f"{ch.get('trigger_room','?')} "
+                                    f"by {ch.get('trigger_sender','?')} "
+                                    f"({ch.get('stalled_hours','?')}h 경과)")
+                            print(line, flush=True)
+                            lines.append(line)
+                        # 이슈방 전송
+                        try:
+                            report_issue("미완결 업무 경보", "\n".join(lines))
+                        except Exception as _e:
+                            print(f"[STALLED] 이슈방 전송 실패 (무시): {_e}")
+                except Exception as e:
+                    print(f"[STALLED] 체크 실패: {e}")
+
             try:
                 cleanup_popups()
                 focus_kakaotalk()

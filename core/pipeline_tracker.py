@@ -79,6 +79,69 @@ class ChainTracker:
             return None
         return f"{sequence}::{key2}"
 
+    def _sync_chain_to_sheet(self, chain: dict):
+        """체인 한 개를 구글시트 '업무체인' 탭에 upsert (실패 무시)."""
+        try:
+            from core.gsheet_sync import _get_sheet, _ensure_worksheets
+            _ensure_worksheets()
+            sh = _get_sheet()
+            ws = sh.worksheet("업무체인")
+            # 기존 행 검색 (체인ID로)
+            cid = chain["chain_id"]
+            events = chain.get("events", [])
+            last = events[-1] if events else {}
+            summary_tail = " → ".join(
+                f"[{e.get('event_type','?')}]{e.get('room','?')[:8]}"
+                for e in events[-5:]
+            )
+            row = [
+                cid, chain.get("sequence", ""), chain.get("product", ""),
+                chain.get("supplier", ""), chain.get("status", ""),
+                chain.get("trigger_event", ""), chain.get("trigger_room", ""),
+                chain.get("trigger_time", ""), chain.get("trigger_sender", ""),
+                len(events), last.get("time", ""), last.get("room", ""),
+                last.get("event_type", ""), summary_tail[:500],
+            ]
+            # 간단히 append (중복은 시트에서 pivot/쿼리로 관리)
+            ws.append_row(row, value_input_option="USER_ENTERED")
+        except Exception as e:
+            # 시트 쓰기 실패는 체인 추적 영향 안 줌
+            pass
+
+    def _enqueue_pending_order(self, chain: dict):
+        """신규 트리거(ORDER_CHANGE) 체인을 ERP 제안 큐에 추가.
+        data/pending_orders.json 에 누적. 관리자 검토 후 core/order_pipeline 에서 커밋.
+        """
+        try:
+            pending_path = ROOT / "data" / "pending_orders.json"
+            pending_path.parent.mkdir(parents=True, exist_ok=True)
+            data = {"pending": []}
+            if pending_path.exists():
+                try:
+                    data = json.loads(pending_path.read_text(encoding="utf-8"))
+                except Exception:
+                    data = {"pending": []}
+            # 중복 방지 (체인ID)
+            existing = {p.get("chain_id") for p in data.get("pending", [])}
+            if chain["chain_id"] in existing:
+                return
+            data.setdefault("pending", []).append({
+                "chain_id": chain["chain_id"],
+                "sequence": chain.get("sequence", ""),
+                "product": chain.get("product", ""),
+                "supplier": chain.get("supplier", ""),
+                "trigger_room": chain.get("trigger_room", ""),
+                "trigger_sender": chain.get("trigger_sender", ""),
+                "trigger_time": chain.get("trigger_time", ""),
+                "trigger_summary": (chain.get("events") or [{}])[0].get("summary", ""),
+                "status": "PROPOSED",  # PROPOSED → REVIEWED → COMMITTED / REJECTED
+            })
+            pending_path.write_text(
+                json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8"
+            )
+        except Exception as e:
+            print(f"  [TRACKER] pending_orders 추가 실패 (무시): {e}", flush=True)
+
     def on_event(
         self,
         parsed: dict,
@@ -144,6 +207,17 @@ class ChainTracker:
                 print(f"  [TRACKER] +event: {cid} [{event_type}] ({chain['status']}) #{len(chain['events'])}", flush=True)
 
             self._save()
+
+            # 2차: 구글시트 업무체인 탭 upsert (비동기 성격, 실패 무시)
+            try:
+                self._sync_chain_to_sheet(chain)
+            except Exception:
+                pass
+
+            # 4차: 신규 ORDER_CHANGE 트리거면 ERP pending_orders 제안 큐에 추가
+            if (len(chain["events"]) == 1
+                 and chain.get("trigger_event") == "ORDER_CHANGE"):
+                self._enqueue_pending_order(chain)
         return cid
 
     def get_stalled(self, hours: int = STALLED_HOURS) -> list[dict]:
