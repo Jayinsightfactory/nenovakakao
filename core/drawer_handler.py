@@ -1271,56 +1271,87 @@ def download_photos_from_drawer(
     bundles_done = 0
     seen_viewers: set[str] = set()  # 같은 뷰어 제목이면 같은 묶음 → 스킵
 
-    for idx, (px, py) in enumerate(positions[:max_bundles]):
-        before = _snapshot_downloads()
+    # 서랍 스크롤 반복으로 max_bundles 한도 내 최대한 묶음 수집.
+    # 9 셀 처리 후 스크롤 다운 → 새 묶음 있으면 계속, 없으면 종료.
+    MAX_BATCHES = 6  # 최대 6배치 = 54 셀 (대량 방 대비)
+    # 그리드 영역 중앙에서 스크롤
+    scroll_cx = dr[0] + grid_x0 + cell_dx  # col 1 center
+    scroll_cy = dr[1] + grid_y0 + cell_dy  # row 1 center
 
-        mark("download.photo_dblclick", "before", {"xy": [px, py], "cell": idx, "room": room_key})
-        pyautogui.doubleClick(px, py)
-        time.sleep(2.5)
-        mark("download.photo_dblclick", "after")
+    idx_global = 0
+    for batch in range(MAX_BATCHES):
+        batch_added_before = len(all_new)
+        batch_new_viewers = 0
+        for (px, py) in positions:
+            if len(all_new) >= max_bundles:
+                break
+            idx_global += 1
+            before = _snapshot_downloads()
 
-        viewer = _find_viewer()
-        if not viewer:
-            continue  # 빈 셀
+            mark("download.photo_dblclick", "before", {"xy": [px, py], "cell": idx_global, "batch": batch, "room": room_key})
+            pyautogui.doubleClick(px, py)
+            time.sleep(2.5)
+            mark("download.photo_dblclick", "after")
 
-        v_hwnd, v_title, _ = viewer
+            viewer = _find_viewer()
+            if not viewer:
+                continue  # 빈 셀
 
-        # 같은 뷰어 제목 = 같은 묶음의 다른 사진 → 이미 저장했으니 스킵
-        if v_title in seen_viewers:
+            v_hwnd, v_title, _ = viewer
+
+            if v_title in seen_viewers:
+                pyautogui.press("escape")
+                time.sleep(0.3)
+                continue
+            seen_viewers.add(v_title)
+            batch_new_viewers += 1
+
+            mark("download.viewer_detected", "after", {"title": v_title, "cell": idx_global})
+            print(f"    [서랍] [b{batch+1}/{idx_global}] 뷰어: {v_title}", flush=True)
+
+            dialog_ok = _save_one_bundle(v_hwnd)
+            bundles_done += 1
+
             pyautogui.press("escape")
-            time.sleep(0.3)
-            continue
-        seen_viewers.add(v_title)
+            time.sleep(0.5)
 
-        mark("download.viewer_detected", "after", {"title": v_title, "cell": idx})
-        print(f"    [서랍] [{idx+1}] 뷰어: {v_title}", flush=True)
+            cell_new: list[Path] = []
+            if dialog_ok:
+                for _ in range(8):
+                    after = _snapshot_downloads()
+                    cell_new = sorted(
+                        [Path(f) for f in (after - before)],
+                        key=lambda p: p.stat().st_mtime,
+                    )
+                    if cell_new:
+                        break
+                    time.sleep(1.0)
+            all_new.extend(cell_new)
+            if cell_new:
+                print(f"    [서랍] [b{batch+1}/{idx_global}] +{len(cell_new)}장 (누적 {len(all_new)})", flush=True)
+            else:
+                reason = "다이얼로그 미감지" if not dialog_ok else "저장 후 새 파일 없음"
+                print(f"    [서랍] [b{batch+1}/{idx_global}] 실패 ({reason})", flush=True)
 
-        # 묶음저장
-        dialog_ok = _save_one_bundle(v_hwnd)
-        bundles_done += 1
+        if len(all_new) >= max_bundles:
+            print(f"    [서랍] max_bundles={max_bundles} 도달 → 종료", flush=True)
+            break
+        if batch_new_viewers == 0:
+            print(f"    [서랍] 배치 {batch+1} 신규 뷰어 0개 → 종료", flush=True)
+            break
 
-        # 뷰어 닫기
-        pyautogui.press("escape")
-        time.sleep(0.5)
-
-        # 이번 셀에서 새로 받은 파일 (최대 8초 폴링 — 묶음/대용량 대비)
-        cell_new: list[Path] = []
-        if dialog_ok:
-            for _ in range(8):
-                after = _snapshot_downloads()
-                cell_new = sorted(
-                    [Path(f) for f in (after - before)],
-                    key=lambda p: p.stat().st_mtime,
-                )
-                if cell_new:
-                    break
-                time.sleep(1.0)
-        all_new.extend(cell_new)
-        if cell_new:
-            print(f"    [서랍] [{idx+1}] +{len(cell_new)}장 (누적 {len(all_new)})", flush=True)
-        else:
-            reason = "다이얼로그 미감지" if not dialog_ok else "저장 후 새 파일 없음 (폴링 8초)"
-            print(f"    [서랍] [{idx+1}] 다운로드 실패 ({reason})", flush=True)
+        # 다음 배치 — 그리드 영역에서 스크롤 다운 (3행만큼)
+        if batch < MAX_BATCHES - 1:
+            print(f"    [서랍] 배치 {batch+1} 완료 (누적 {len(all_new)}장), 스크롤 다운", flush=True)
+            try:
+                pyautogui.moveTo(scroll_cx, scroll_cy, duration=0.1)
+                # 3행(약 400px) 스크롤
+                for _ in range(4):
+                    pyautogui.scroll(-5, x=scroll_cx, y=scroll_cy)
+                    time.sleep(0.15)
+                time.sleep(0.6)
+            except Exception as e:
+                print(f"    [서랍] 스크롤 예외 (무시): {e}", flush=True)
 
     # ★ 유니크 파일명으로 즉시 rename
     renamed: list[Path] = []
