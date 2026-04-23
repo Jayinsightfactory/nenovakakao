@@ -1094,18 +1094,55 @@ def _save_one_bundle(v_hwnd: int) -> bool:
     except Exception as e:
         print(f"    [서랍] Vision ↓ 예외: {e} → 하드코딩", flush=True)
 
-    mark("download.dropdown_clicked", "before", {"xy": [dl_x, dl_y]})
-    pyautogui.click(dl_x, dl_y)
-    time.sleep(1.5)
-    mark("download.dropdown_clicked", "after")
+    # ↓ 드롭다운 클릭 + 메뉴 출현 확인 (EVA_Menu). 안 뜨면 최대 3회 재시도.
+    def _find_dropdown_menu():
+        """↓ 클릭 후 나타나는 EVA_Menu 팝업 찾기 (작은 크기 + 뷰어 근처)."""
+        found = []
+        def _cb(h, _):
+            if not win32gui.IsWindowVisible(h):
+                return
+            if win32gui.GetWindowText(h):
+                return
+            cls = win32gui.GetClassName(h) or ""
+            if "EVA_Menu" not in cls:
+                return
+            r = win32gui.GetWindowRect(h)
+            w, hh = r[2]-r[0], r[3]-r[1]
+            # 드롭다운은 작은 메뉴 (80~250 x 60~200)
+            if not (80 <= w <= 300 and 50 <= hh <= 250):
+                return
+            # 뷰어 근처 (↓ 클릭 위치 기준 ±200px)
+            cx = (r[0]+r[2])//2
+            cy = (r[1]+r[3])//2
+            if abs(cx - dl_x) < 250 and abs(cy - dl_y) < 250:
+                found.append((h, r))
+        win32gui.EnumWindows(_cb, None)
+        return found[0] if found else None
 
-    # "묶음사진 전체저장" 메뉴도 Vision 으로 찾기 (드롭다운 위에 나타난 메뉴)
-    save_x = dl_x - 30  # 하드코딩 폴백
+    dropdown_hwnd = None
+    for retry in range(3):
+        mark("download.dropdown_clicked", "before", {"xy": [dl_x, dl_y], "retry": retry})
+        pyautogui.click(dl_x, dl_y)
+        time.sleep(1.2)
+        mark("download.dropdown_clicked", "after")
+        dd = _find_dropdown_menu()
+        if dd:
+            dropdown_hwnd, dd_rect = dd
+            print(f"    [서랍] ↓ 드롭다운 메뉴 감지: hwnd={dropdown_hwnd} rect={dd_rect}", flush=True)
+            break
+        if retry < 2:
+            print(f"    [서랍] ↓ 클릭 후 메뉴 미출현 (retry {retry+1}/3)", flush=True)
+            time.sleep(0.5)
+    if not dropdown_hwnd:
+        print(f"    [서랍] ↓ 메뉴 출현 실패 (3회) — 묶음저장 스킵", flush=True)
+        return False
+
+    # 드롭다운 메뉴에서 "묶음사진 전체저장" 찾기 (Vision, 실패 시 하드코딩 하단 항목)
+    save_x = dl_x - 30
     save_y = dl_y - 55
     try:
         from core.vision_clicker import find_and_click
-        # 드롭다운 메뉴 예상 영역: ↓ 위쪽 150x100 정도
-        menu_bbox = (dl_x - 160, dl_y - 150, dl_x + 20, dl_y - 10)
+        menu_bbox = (dd_rect[0], dd_rect[1], dd_rect[2], dd_rect[3])
         v2 = find_and_click(
             menu_bbox,
             "'묶음사진 전체저장' 또는 '전체 저장' 또는 '모두 저장' 텍스트 메뉴 항목. "
@@ -1117,8 +1154,15 @@ def _save_one_bundle(v_hwnd: int) -> bool:
         if v2.found:
             save_x, save_y = v2.x, v2.y
             print(f"    [서랍] Vision 묶음저장 좌표: ({save_x}, {save_y}) conf={v2.confidence:.2f}", flush=True)
+        else:
+            # 하드코딩: 드롭다운 메뉴 마지막 항목 (y = rect 하단 - 20)
+            save_x = (dd_rect[0] + dd_rect[2]) // 2
+            save_y = dd_rect[3] - 20
+            print(f"    [서랍] Vision 실패 → 메뉴 마지막 항목 ({save_x}, {save_y})", flush=True)
     except Exception as e:
-        print(f"    [서랍] Vision 묶음저장 예외: {e} → 하드코딩", flush=True)
+        print(f"    [서랍] Vision 묶음저장 예외: {e} → 메뉴 마지막 항목", flush=True)
+        save_x = (dd_rect[0] + dd_rect[2]) // 2
+        save_y = dd_rect[3] - 20
 
     mark("download.batch_save_clicked", "before", {"xy": [save_x, save_y]})
     pyautogui.click(save_x, save_y)
