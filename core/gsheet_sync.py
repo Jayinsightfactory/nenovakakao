@@ -39,12 +39,60 @@ def _load_pipeline_config() -> dict:
     return {}
 
 
+def _infer_stage_from_name(room_name: str) -> str | None:
+    """방 이름 패턴으로 파이프라인 단계 자동 추론.
+    pipeline_config.json 에 명시 매핑 없을 때 사용.
+    """
+    if not room_name:
+        return None
+    n = room_name
+    # QC / 불량 최우선
+    if any(k in n for k in ("불량", "클레임", "검수", "QC")):
+        return "QC"
+    # 재고/입고 수량 관리
+    if any(k in n for k in ("발번호", "빌번호", "입고수량", "물량")):
+        return "INVENTORY"
+    # 방역 등 FIELD
+    if "방역" in n or "소독" in n:
+        return "FIELD"
+    # 전산/테스트
+    if any(k in n for k in ("전산", "테스트팀", "개발")):
+        return "SYSTEM"
+    # 현장/출고/분배 — "영업/현장"은 포함되므로 현장 먼저
+    if any(k in n for k in ("현장", "출고", "배차", "분배")):
+        return "DISTRIBUTE"
+    # 견적/영업지원/발주
+    if any(k in n for k in ("견적", "영업지원", "발주", "추가", "취소")):
+        return "ORDER"
+    # 수입 전용 방
+    if "수입" in n and "영업" not in n:
+        return "IMPORT"
+    # 영업 (수입영업 같이 쓰인 것 포함)
+    if "영업" in n:
+        return "ORDER"
+    # 거래처 방 패턴: 네노바 + 기호(+/&) → 거래처-네노바 방
+    if "네노바" in n and any(c in n for c in "+&"):
+        return "ORDER"
+    # 이름에 "원예", "화훼", "플라워", "농원", "농장" 포함 → 거래처 발주방 가능성
+    if any(k in n for k in ("원예", "화훼", "플라워", "농원", "농장", "원")):
+        return "ORDER"
+    return None
+
+
 def _get_pipeline_stage(room_name: str) -> str:
-    """방 이름 → 파이프라인 단계 반환"""
+    """방 이름 → 파이프라인 단계 반환.
+    1. pipeline_config.json 명시 매핑 우선
+    2. 없으면 이름 패턴 자동 추론 (_infer_stage_from_name)
+    3. 그래도 없으면 UNKNOWN
+    """
     config = _load_pipeline_config()
     for stage_key, stage_info in config.get("pipeline_stages", {}).items():
         if room_name in stage_info.get("rooms", []):
             return stage_key
+    # 자동 추론
+    inferred = _infer_stage_from_name(room_name)
+    if inferred:
+        return inferred
     return "UNKNOWN"
 
 
