@@ -967,23 +967,50 @@ def send_delta_interleaved(
                 stats["text_failed"] += 1
             time.sleep(delay)
 
-    # 남은 사진 (파싱이 놓친 경우) — 꼬리 배치로 한 번에 업로드
+    # 남은 사진 (파싱이 놓친 경우) — nenovaweb 업로드 + image_link
+    # GUI 업로드 경로는 Vision 실패 빈발 → nenovaweb 경로로 통일.
     remaining = list(photo_iter)
     if remaining:
-        w = _ensure_app_window()
-        if w is not None:
-            _send_single(conv_id, "\u2063")  # invisible bump
-            time.sleep(1.0)
-            if _click_and_verify(w, kakaotalk_name):
-                for f in remaining:
-                    if _upload_one(f, w):
-                        stats["trailing_uploaded"] += 1
-                        stats["photos_uploaded"] += 1
-                    else:
-                        stats["photos_missing"] += 1
-            else:
-                print(f"  [ABORT] 꼬리 사진 {len(remaining)}장 vision 검증 실패 - 중단", flush=True)
-                stats["photos_missing"] += len(remaining)
+        try:
+            from core.photo_uploader import upload_many as _nw_um
+            from core.photo_uploader import delete_from_nenovaweb as _nw_del
+            from core.photo_uploader import _get_client_id as _nw_ok
+        except Exception as e:
+            _nw_ok = None
+            print(f"  [NENOVAWEB] 꼬리 업로더 import 실패: {e}", flush=True)
+
+        if _nw_ok and _nw_ok():
+            print(f"  [꼬리] {len(remaining)}장 nenovaweb 경로", flush=True)
+            urls = _nw_um(remaining, room=kakaotalk_name)
+            for f, url in zip(remaining, urls):
+                if url and send_image_block(conv_id, url):
+                    stats["trailing_uploaded"] += 1
+                    stats["photos_uploaded"] += 1
+                    try:
+                        _nw_del(url)
+                    except Exception:
+                        pass
+                    time.sleep(delay)
+                else:
+                    _send_single(conv_id, f"[꼬리 사진 업로드 실패: {f.name}]")
+                    stats["photos_missing"] += 1
+                    time.sleep(delay)
+        else:
+            # 자격증명 없을 때만 GUI 폴백 (거의 발생 안 함)
+            w = _ensure_app_window()
+            if w is not None:
+                _send_single(conv_id, "\u2063")
+                time.sleep(1.0)
+                if _click_and_verify(w, kakaotalk_name):
+                    for f in remaining:
+                        if _upload_one(f, w):
+                            stats["trailing_uploaded"] += 1
+                            stats["photos_uploaded"] += 1
+                        else:
+                            stats["photos_missing"] += 1
+                else:
+                    print(f"  [ABORT] 꼬리 사진 {len(remaining)}장 vision 검증 실패 - 중단", flush=True)
+                    stats["photos_missing"] += len(remaining)
 
     return stats
 

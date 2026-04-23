@@ -101,14 +101,18 @@ def upload_to_nenovaweb(file_path: Path, room: str = "") -> Optional[str]:
     # 캐시 체크
     key = _cache_key(file_path)
     if key in _cache:
+        print(f"  [NENOVAWEB] {file_path.name} → 캐시 히트 {_cache[key]}", flush=True)
         return _cache[key]
 
     session = _get_session()
     if session is None:
+        print(f"  [NENOVAWEB] {file_path.name} → 세션 없음 (자격증명 미설정)", flush=True)
         return None
 
     # 크기 체크 + 필요 시 리사이즈
     upload_path = _resize_if_too_large(file_path)
+    up_size = upload_path.stat().st_size if upload_path.exists() else 0
+    print(f"  [NENOVAWEB] {file_path.name} 업로드 시작 ({up_size//1024}KB, attempt 1/{_MAX_RETRIES})", flush=True)
 
     for attempt in range(1, _MAX_RETRIES + 1):
         try:
@@ -122,46 +126,63 @@ def upload_to_nenovaweb(file_path: Path, room: str = "") -> Optional[str]:
                     timeout=_TIMEOUT,
                 )
             if resp.status_code == 200:
-                j = resp.json()
+                try:
+                    j = resp.json()
+                except Exception as e:
+                    print(f"  [NENOVAWEB] 200 but JSON 파싱 실패: {e} / body={resp.text[:200]}", flush=True)
+                    return None
                 url = j.get("url")
                 if url:
                     _cache[key] = url
                     print(f"  [NENOVAWEB] {file_path.name} -> {url}", flush=True)
                     return url
-                print(f"  [NENOVAWEB] 응답에 url 없음: {j}", flush=True)
+                print(f"  [NENOVAWEB] {file_path.name} 응답에 url 없음: {j}", flush=True)
+                return None
             elif resp.status_code == 401:
-                print(f"  [NENOVAWEB] 401 인증 실패 - 재로그인 필요", flush=True)
-                # 토큰 초기화 후 재시도
+                print(f"  [NENOVAWEB] {file_path.name} 401 인증 실패 - 재로그인 (시도 {attempt}/{_MAX_RETRIES})", flush=True)
                 try:
                     from core.erp_bridge import ERPBridge
                     b = ERPBridge()
                     b._token = None
                     b._ensure_auth()
                     session = b.session
-                except Exception:
-                    pass
+                except Exception as e:
+                    print(f"  [NENOVAWEB] 재로그인 실패: {e}", flush=True)
                 continue
             elif resp.status_code == 404:
-                print(f"  [NENOVAWEB] 404 — {UPLOAD_ENDPOINT} 엔드포인트 미구현 "
-                      f"(관리자가 서버에 추가 필요)", flush=True)
+                print(f"  [NENOVAWEB] {file_path.name} 404 — {UPLOAD_ENDPOINT} 엔드포인트 미구현", flush=True)
+                return None
+            elif resp.status_code == 413:
+                print(f"  [NENOVAWEB] {file_path.name} 413 크기 초과 ({up_size//1024}KB) — 리사이즈도 부족. 스킵", flush=True)
                 return None
             else:
-                print(f"  [NENOVAWEB] HTTP {resp.status_code}: {resp.text[:200]}", flush=True)
+                print(f"  [NENOVAWEB] {file_path.name} HTTP {resp.status_code}: {resp.text[:200]}", flush=True)
         except requests.exceptions.RequestException as e:
-            print(f"  [NENOVAWEB] 요청 실패 (시도 {attempt}/{_MAX_RETRIES}): {e}", flush=True)
+            print(f"  [NENOVAWEB] {file_path.name} 요청 실패 (시도 {attempt}/{_MAX_RETRIES}): {e}", flush=True)
+            if attempt < _MAX_RETRIES:
+                time.sleep(_RETRY_DELAY)
+                continue
+        except Exception as e:
+            print(f"  [NENOVAWEB] {file_path.name} 예외 (시도 {attempt}/{_MAX_RETRIES}): {type(e).__name__}: {e}", flush=True)
             if attempt < _MAX_RETRIES:
                 time.sleep(_RETRY_DELAY)
                 continue
 
+    print(f"  [NENOVAWEB] {file_path.name} 업로드 최종 실패 (모든 {_MAX_RETRIES} 시도)", flush=True)
     return None
 
 
 def upload_many(file_paths: list[Path], room: str = "") -> list[Optional[str]]:
     """여러 파일 순차 업로드. 입력과 같은 순서, 실패는 None."""
     urls: list[Optional[str]] = []
-    for p in file_paths:
+    total = len(file_paths)
+    print(f"  [NENOVAWEB] 일괄 업로드 시작: {total}장 (room={room})", flush=True)
+    for i, p in enumerate(file_paths, 1):
+        print(f"  [NENOVAWEB] [{i}/{total}] {p.name}", flush=True)
         url = upload_to_nenovaweb(p, room=room)
         urls.append(url)
+    ok = sum(1 for u in urls if u)
+    print(f"  [NENOVAWEB] 일괄 업로드 완료: {ok}/{total} 성공", flush=True)
     return urls
 
 
