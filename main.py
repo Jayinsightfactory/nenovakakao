@@ -97,7 +97,8 @@ def _process_room_result(
 
     room_name = result["room_name"]
     delta = result["delta"]
-    print(f"     → {room_name}: 신규 {len(delta)}자 수집")
+    # 작업 시작 배너
+    print(f"\n  ┌─ 🔧 작업방: [{room_name}] 신규 {len(delta)}자 ─")
 
     # ── [사진] 감지 시 서랍에서 다운로드 ──
     # 실제 메시지 경계 기반 카운트 (substring 카운트 아님).
@@ -256,6 +257,7 @@ def _process_room_result(
     # 각 사진 직전에 "[발신자] [시각] [사진]" 헤더를 Bot API로 선전송 →
     # 도착시간·발신자·첨부파일이 실제 카톡 순서대로 미러 방에 표시됨.
     from core.kakaowork_router import send_delta_interleaved
+    r = None
     try:
         if downloaded_files:
             focus_kakaowork()
@@ -273,6 +275,16 @@ def _process_room_result(
     finally:
         if downloaded_files:
             return_to_kakaotalk()
+
+    # 작업 완료 배너 — 한 줄 요약
+    if r:
+        status = "✅" if r['photos_missing'] == 0 else "⚠️"
+        print(
+            f"  └─ {status} [{room_name}] 감지:{photo_count} 다운:{len(downloaded_files)} "
+            f"워크텍스트:{r['text_sent']} 워크사진:{r['photos_uploaded']} 누락:{r['photos_missing']}\n"
+        )
+    else:
+        print(f"  └─ ❌ [{room_name}] 워크 전송 실패\n")
 
     return room_name
 
@@ -381,6 +393,13 @@ def cmd_monitor(*, with_recorder: bool = False) -> int:
     print("[MONITOR] 네노바 AI 에이전트 v2.1 감시 모드 시작")
     print(f"          폴링 간격: {POLL_INTERVAL}초 / 전체 스윕: 매 {SWEEP_EVERY}사이클")
     print(f"          감시 대상: {len(selected_names)}개 방")
+    # 방 목록 명시적 출력
+    print(f"\n{'='*60}")
+    print(f"[작업 대상 방 {len(selected_names)}개]")
+    print(f"{'='*60}")
+    for i, name in enumerate(sorted(selected_names), 1):
+        print(f"  {i:>2}. {name}")
+    print(f"{'='*60}\n")
 
     # 초기화: 잔여 창 정리 → 카톡 활성화
     try:
