@@ -429,17 +429,19 @@ def _send_single(conv_id: str, text: str) -> bool:
 
 def send_image_block(conv_id: str, image_url: str) -> bool:
     """
-    Block Kit으로 이미지만 전송. 파일명/캡션 없이 이미지 썸네일만 표시.
+    Block Kit 이미지 + 원본 보기 링크 병기 전송.
+
+    이유: image_link 블록은 카카오워크에서 클릭 시 '일정 등록' 등의 공유 UX 로 이동.
+    원본 이미지 확대를 위해 text 필드에 URL을 넣어 텍스트 링크 병기.
+    사용자는 썸네일 아래 URL 텍스트를 클릭 → 브라우저에서 원본 이미지 확대.
 
     Args:
         conv_id: 대상 방 conversation_id
         image_url: 공개 접근 가능한 이미지 URL
     """
-    # API가 text 필수로 요구 — 최소한의 invisible 문자 사용
-    # U+2063 (INVISIBLE SEPARATOR): 화면에 렌더링 안 되는 유니코드 문자
     payload = {
         "conversation_id": conv_id,
-        "text": "\u2063",
+        "text": f"🔗 원본 보기 (클릭): {image_url}",
         "blocks": [
             {"type": "image_link", "url": image_url},
         ],
