@@ -283,6 +283,28 @@ def _load_known_products() -> dict[str, list[str]]:
     return config.get("product_categories", {})
 
 
+def _extract_supplier_from_room(room_name: str) -> str:
+    """방 이름에서 거래처 추출 (거래처 방 패턴).
+    예: '네노바 + 꽃샘원예' → '꽃샘원예'
+        '경부선 늘봄&네노바' → '경부선 늘봄'
+        '구백의천사 + 네노바' → '구백의천사'
+    네노바 단독 방이나 일반 방은 빈 문자열 반환.
+    """
+    if not room_name or "네노바" not in room_name:
+        return ""
+    # + 또는 & 구분자로 분리
+    import re as _re
+    parts = _re.split(r"\s*[+&]\s*", room_name)
+    parts = [p.strip() for p in parts if p.strip()]
+    # "네노바"/"네노바 xxx" 제거 (단, "네노바 + 영업" 같이 역할이 붙은 건 유지 안 함)
+    non_nenova = [p for p in parts if p != "네노바"
+                   and not p.startswith("네노바 ")
+                   and "네노바" not in p]
+    if len(non_nenova) == 1:
+        return non_nenova[0]
+    return ""
+
+
 def _load_known_suppliers() -> list[str]:
     config = _load_pipeline_config()
     return config.get("suppliers", [])
@@ -346,12 +368,18 @@ def parse_message(text: str, room_name: str = "") -> dict:
         result["quantity"] = qty_m.group(1)
         result["unit"] = qty_m.group(2)
 
-    # 거래처 추출
+    # 거래처 추출: (1) known suppliers 에서 문자열 매칭
     suppliers = _load_known_suppliers()
     for s in suppliers:
         if s in text:
             result["supplier"] = s
             break
+
+    # (2) 메시지에서 못 찾았고 방 이름이 거래처 방이면 → 방 이름 거래처를 기본값
+    if not result["supplier"] and room_name:
+        room_supplier = _extract_supplier_from_room(room_name)
+        if room_supplier:
+            result["supplier"] = room_supplier
 
     # 요약 생성
     parts = []
