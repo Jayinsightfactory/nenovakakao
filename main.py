@@ -708,7 +708,9 @@ def cmd_monitor(*, with_recorder: bool = False) -> int:
                     # 9행 처리 — 아래(row 9, y=614) → 위(row 1, y=134)
                     # 매 행마다 리스트 리셋되므로 재스크롤 필수
                     row_ys = [_tp + 35 + i * SWEEP_ROW_HEIGHT for i in range(ROWS_PER_PAGE)]
-                    rows_desc = list(reversed(row_ys))  # 아래→위
+                    # 위→아래 순회: 안읽음 방이 적을 때 상위 방부터 처리
+                    # (이전: 하위부터 → 빈 영역 3회 스킵 → 실제 방 못 건드림)
+                    rows_desc = row_ys  # 위→아래
 
                     # 연속 미열림 카운터 — N회 연속이면 페이지 나머지 스킵 (빈 행 낭비 제거)
                     consecutive_misses = 0
