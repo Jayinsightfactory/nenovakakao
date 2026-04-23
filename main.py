@@ -390,6 +390,16 @@ def cmd_monitor(*, with_recorder: bool = False) -> int:
         print(f"[ERROR] 초기화 실패: {e}")
         return 1
 
+    # 안읽음 탭 강제 클릭: 방 리스트를 안읽은 방으로만 축소 → 스크롤 효율↑
+    # 900x900 화면 기준 "안읽음" 필터 버튼 위치 (캡처로 확인: (190, 96) 근처)
+    try:
+        import pyautogui as _pag
+        _pag.click(window.left + 190, window.top + 96)
+        time.sleep(0.5)
+        print(f"[MONITOR] '안읽음' 탭 클릭 (190, 96) — 안 읽은 방만 표시")
+    except Exception as e:
+        print(f"[MONITOR] 안읽음 탭 클릭 실패 (무시): {e}")
+
     print(f"          창 위치: ({window.left},{window.top}) {window.width}x{window.height}")
     print("[MONITOR] 감시 시작... (중단: Ctrl+C 또는 마우스를 화면 모서리로)")
     print()
@@ -469,11 +479,10 @@ def cmd_monitor(*, with_recorder: bool = False) -> int:
     PAGE_SCROLL = 277    # 한 페이지 = 한 행(60px) × ~4.6배 wheel notches
     ROWS_PER_PAGE = 9
     SWEEP_ROW_HEIGHT = 60
-    # 10 페이지 세분화: -2493(맨 아래) → -2216 → -1939 → -1662 → -1385
-    #                  → -1108 → -831 → -554 → -277 → 0 (맨 위)
-    # 한 페이지 = 277 wheel notches ≈ 리스트 1~2행 이동 정도
-    # 10 페이지 × 9 행 = 90 슬롯 (재정렬 영향 있어도 대부분 커버)
-    PAGES = [9, 8, 7, 6, 5, 4, 3, 2, 1, 0]  # bottom → top
+    # 안읽음 195개 리스트에서 대부분 커버하도록 20 페이지까지 확장.
+    # 20 × 277 = 5540 wheel notches ≈ ~90 rows 이동.
+    # 맨 아래(p19) → 맨 위(p0).
+    PAGES = list(range(19, -1, -1))  # [19, 18, ..., 0]
 
     try:
         while True:
