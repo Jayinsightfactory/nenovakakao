@@ -498,10 +498,9 @@ def cmd_monitor(*, with_recorder: bool = False) -> int:
     PAGE_SCROLL = 277    # 한 페이지 = 한 행(60px) × ~4.6배 wheel notches
     ROWS_PER_PAGE = 9
     SWEEP_ROW_HEIGHT = 60
-    # 안읽음 195개 리스트에서 대부분 커버하도록 20 페이지까지 확장.
-    # 20 × 277 = 5540 wheel notches ≈ ~90 rows 이동.
-    # 맨 아래(p19) → 맨 위(p0).
-    PAGES = list(range(19, -1, -1))  # [19, 18, ..., 0]
+    # 페이지 0 (맨 위) 부터 점점 아래로. 안읽음 방이 5개뿐이어도 p0 에서 바로 성공.
+    # 이전 [19→0] 순서는 안읽음 방 적을 때 빈 영역 헛클릭 반복했음.
+    PAGES = list(range(0, 20))  # [0, 1, ..., 19] — 맨 위부터
 
     try:
         while True:
