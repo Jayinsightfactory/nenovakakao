@@ -1040,6 +1040,44 @@ def open_drawer(chat_hwnd: int) -> int | None:
 
 def _save_one_bundle(v_hwnd: int) -> bool:
     """뷰어가 열린 상태에서 묶음저장 1회 실행. 성공 여부 반환."""
+    # 0) 이전 사이클의 잔여 다이얼로그 강제 정리.
+    # '다른 이름으로 저장', '폴더 선택' 등이 ESC로 안 닫히고 남아 있으면
+    # 다음 뷰어의 ↓ 클릭이 다이얼로그에 먹힘 → 연속 실패.
+    try:
+        import win32con as _wc_pre
+        stray_dialogs = []
+        DLG_KEYS_PRE = ("다른 이름으로 저장", "Save As", "폴더 선택",
+                         "Select Folder", "Browse For Folder")
+        def _find_stray_dialogs(h, _):
+            if not win32gui.IsWindowVisible(h):
+                return
+            t = win32gui.GetWindowText(h) or ""
+            if not any(k in t for k in DLG_KEYS_PRE):
+                return
+            r = win32gui.GetWindowRect(h)
+            w, hh = r[2]-r[0], r[3]-r[1]
+            if w < 300 or hh < 200:
+                return
+            stray_dialogs.append((h, t))
+        win32gui.EnumWindows(_find_stray_dialogs, None)
+        if stray_dialogs:
+            print(f"    [서랍] 잔여 다이얼로그 {len(stray_dialogs)}개 정리: {[t for _, t in stray_dialogs]}", flush=True)
+            for h, t in stray_dialogs:
+                try:
+                    # ESC 시도
+                    win32gui.SetForegroundWindow(h)
+                    time.sleep(0.15)
+                    pyautogui.press("escape")
+                    time.sleep(0.3)
+                    # 여전히 있으면 WM_CLOSE
+                    if win32gui.IsWindow(h) and win32gui.IsWindowVisible(h):
+                        win32gui.PostMessage(h, _wc_pre.WM_CLOSE, 0, 0)
+                        time.sleep(0.2)
+                except Exception:
+                    pass
+    except Exception as e:
+        print(f"    [서랍] 잔여 다이얼로그 정리 예외 (무시): {e}", flush=True)
+
     # 뷰어를 안전 위치로 이동 + TOPMOST (액션 로그/Claude 등 가림 방지)
     try:
         import win32con as _wc
