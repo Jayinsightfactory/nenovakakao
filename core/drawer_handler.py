@@ -1132,21 +1132,48 @@ def _save_one_bundle(v_hwnd: int) -> bool:
         return found[0] if found else None
 
     dropdown_hwnd = None
-    for retry in range(2):
+    for retry in range(3):
+        # 매 시도 직전 뷰어 포커스 강제 + TOPMOST
+        try:
+            import win32con as _wc
+            SWP = _wc.SWP_NOMOVE | _wc.SWP_NOSIZE | _wc.SWP_SHOWWINDOW
+            win32gui.SetWindowPos(v_hwnd, -1, 0, 0, 0, 0, SWP)
+            try:
+                win32gui.SetForegroundWindow(v_hwnd)
+            except Exception:
+                pass
+            time.sleep(0.2)
+        except Exception:
+            pass
+
+        # WindowFromPoint 로 실제 ↓ 위치 대상 창 확인
+        try:
+            target = win32gui.WindowFromPoint((dl_x, dl_y))
+            root = win32gui.GetAncestor(target, 2)  # GA_ROOT
+            if root != v_hwnd:
+                t_title = win32gui.GetWindowText(target) or ""
+                r_title = win32gui.GetWindowText(root) or ""
+                print(f"    [서랍] ↓ 좌표 ({dl_x},{dl_y}) 대상 root={r_title[:30]!r} != 뷰어 — 클릭 유실 위험", flush=True)
+        except Exception:
+            pass
+
         mark("download.dropdown_clicked", "before", {"xy": [dl_x, dl_y], "retry": retry})
+        # moveTo + click 분리 (WM_MOUSEMOVE 보장)
+        pyautogui.moveTo(dl_x, dl_y, duration=0.1)
+        time.sleep(0.15)
         pyautogui.click(dl_x, dl_y)
-        time.sleep(1.0)
+        time.sleep(1.5)  # 1.0 → 1.5 대기 연장
         mark("download.dropdown_clicked", "after")
         dd = _find_dropdown_menu()
         if dd:
             dropdown_hwnd, dd_rect = dd
-            print(f"    [서랍] ↓ 드롭다운 감지: hwnd={dropdown_hwnd} rect={dd_rect}", flush=True)
+            print(f"    [서랍] ↓ 드롭다운 감지 (retry {retry}): hwnd={dropdown_hwnd} rect={dd_rect}", flush=True)
             break
-        if retry < 1:
-            print(f"    [서랍] ↓ 메뉴 미출현 — 재시도", flush=True)
-            time.sleep(0.3)
+        if retry < 2:
+            print(f"    [서랍] ↓ 메뉴 미출현 — 재시도 (retry {retry+1}/3)", flush=True)
+            time.sleep(0.4)
     if not dropdown_hwnd:
-        print(f"    [서랍] ↓ 메뉴 출현 실패 — 스킵", flush=True)
+        print(f"    [서랍] ↓ 메뉴 출현 실패 (3회) — 스킵", flush=True)
         return False
 
     # 드롭다운 메뉴에서 "묶음사진 전체저장" 찾기 (Vision, 실패 시 하드코딩 하단 항목)
