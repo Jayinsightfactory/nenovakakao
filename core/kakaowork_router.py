@@ -429,11 +429,11 @@ def _send_single(conv_id: str, text: str) -> bool:
 
 def send_image_block(conv_id: str, image_url: str) -> bool:
     """
-    Block Kit 이미지 + 원본 보기 링크 병기 전송.
+    이미지 URL 단순 전송 → 카카오워크 자동 link preview 카드.
 
-    이유: image_link 블록은 카카오워크에서 클릭 시 '일정 등록' 등의 공유 UX 로 이동.
-    원본 이미지 확대를 위해 text 필드에 URL을 넣어 텍스트 링크 병기.
-    사용자는 썸네일 아래 URL 텍스트를 클릭 → 브라우저에서 원본 이미지 확대.
+    이전 시도 (image_link 블록) 는 클릭 시 '일정 등록' 공유 UX 로 빠지거나
+    렌더 자체가 미미함. text 에 URL 단독으로 보내면 카카오워크가 자동
+    link preview 카드 생성 + 큰 이미지 미리보기 + 클릭 시 브라우저 원본 열림.
 
     Args:
         conv_id: 대상 방 conversation_id
@@ -441,10 +441,7 @@ def send_image_block(conv_id: str, image_url: str) -> bool:
     """
     payload = {
         "conversation_id": conv_id,
-        "text": f"🔗 원본 보기 (클릭): {image_url}",
-        "blocks": [
-            {"type": "image_link", "url": image_url},
-        ],
+        "text": image_url,  # URL 단독 → 워크 자동 카드
     }
     try:
         resp = requests.post(
