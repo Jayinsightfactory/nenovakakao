@@ -19,6 +19,8 @@ import gspread
 from google.oauth2.service_account import Credentials
 from dotenv import load_dotenv
 
+from core.room_types import classify_room_type
+
 load_dotenv(Path(__file__).parent.parent / ".env", override=True)
 
 CREDS_FILE = Path(__file__).parent.parent / "data" / "gsheet_credentials.json"
@@ -127,7 +129,7 @@ def _ensure_worksheets():
         "이벤트로그": ["시각", "방이름", "파이프라인", "발신자", "원문", "메시지ID"],
         "비즈니스이벤트": [
             "이벤트ID", "시각", "이벤트타입", "차수", "품목", "품종",
-            "수량", "단위", "방향", "거래처", "방이름", "파이프라인",
+            "수량", "단위", "방향", "거래처", "방이름", "방타입", "파이프라인",
             "발신자", "원문요약", "연관이벤트ID", "트리거메시지ID",
         ],
         "의사결정추적": [
@@ -148,6 +150,10 @@ def _ensure_worksheets():
             "체인ID", "차수", "품목", "거래처", "상태", "트리거이벤트",
             "트리거방", "트리거시각", "트리거발신자", "단계수",
             "마지막시각", "마지막방", "마지막이벤트", "단계이력요약",
+        ],
+        "차수흐름요약": [
+            "차수", "이벤트수", "첫등장", "마지막", "기간",
+            "방문순서", "방별이벤트수", "주요발신자", "이벤트분포",
         ],
     }
 
@@ -315,13 +321,22 @@ def _load_known_suppliers() -> list[str]:
     return config.get("suppliers", [])
 
 
+def _apply_type_override(event_type: str, room_type: str, rules: dict) -> str:
+    """방타입별 event_type 오버라이드. YAML type_overrides 섹션 참조."""
+    overrides = rules.get("type_overrides", {}) or {}
+    mapped = overrides.get(room_type, {}).get(event_type)
+    if mapped:
+        return mapped
+    return overrides.get("default", {}).get(event_type, event_type)
+
+
 def parse_message(text: str, room_name: str = "") -> dict:
     """
     메시지를 구조화된 비즈니스 이벤트로 파싱.
 
     Returns:
         {event_type, sequence, product, variety, quantity, unit,
-         direction, supplier, summary}
+         direction, supplier, summary, room_type}
     """
     result = {
         "event_type": "INFO",
@@ -333,21 +348,42 @@ def parse_message(text: str, room_name: str = "") -> dict:
         "direction": "",
         "supplier": "",
         "summary": text[:100],
+        "room_type": classify_room_type(room_name),
     }
 
-    # 이벤트 타입 분류: YAML 규칙 기반 (우선순위대로 순회).
-    # 규칙 키마다 keywords/event_type(alias)/direction 지정 가능.
+    # 이벤트 타입 분류: regex_rules (pattern_library 승격) 우선 → keywords 폴백.
     rules = _load_rules()
-    priority = rules.get("priority", _FALLBACK_RULES["priority"])
-    et_map = rules.get("event_types", {})
-    for key in priority:
-        cfg = et_map.get(key, {})
-        kws = cfg.get("keywords", [])
-        if any(kw in text for kw in kws):
-            result["event_type"] = cfg.get("event_type", key)
-            if "direction" in cfg:
-                result["direction"] = cfg["direction"]
-            break
+    matched = False
+    for rule in rules.get("regex_rules", []) or []:
+        pat = rule.get("pattern", "")
+        if not pat:
+            continue
+        try:
+            if re.search(pat, text):
+                result["event_type"] = rule.get("event_type", result["event_type"])
+                if "direction" in rule:
+                    result["direction"] = rule["direction"]
+                matched = True
+                break
+        except re.error:
+            continue
+
+    if not matched:
+        priority = rules.get("priority", _FALLBACK_RULES["priority"])
+        et_map = rules.get("event_types", {})
+        for key in priority:
+            cfg = et_map.get(key, {})
+            kws = cfg.get("keywords", [])
+            if any(kw in text for kw in kws):
+                result["event_type"] = cfg.get("event_type", key)
+                if "direction" in cfg:
+                    result["direction"] = cfg["direction"]
+                break
+
+    # 방 타입 오버라이드: 같은 키워드도 방 성격에 따라 의미가 다름
+    result["event_type"] = _apply_type_override(
+        result["event_type"], result["room_type"], rules
+    )
 
     # 차수 추출
     seq_m = SEQ_PATTERN.search(text)
@@ -550,7 +586,7 @@ def classify_and_log_delta(room_name: str, delta: str) -> int:
                 evt_id, time_str, parsed["event_type"],
                 parsed["sequence"], parsed["product"], parsed["variety"],
                 parsed["quantity"], parsed["unit"], parsed["direction"],
-                parsed["supplier"], room_name, stage_name,
+                parsed["supplier"], room_name, parsed["room_type"], stage_name,
                 sender, parsed["summary"][:200], "", msg_id,
             ])
 

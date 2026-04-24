@@ -1,0 +1,2159 @@
+{
+  "_meta": {
+    "총타입": 5,
+    "타입별_방수": {
+      "INTERNAL_BACKBONE": 9,
+      "PARTNER_CHANNEL": 2,
+      "SUPPLIER_CHANNEL": 16,
+      "INTERNAL_PRIVATE": 3,
+      "MISC": 9
+    },
+    "타입별_방리스트": {
+      "INTERNAL_BACKBONE": [
+        "견적방",
+        "네노바 수입(불량 공유방)",
+        "네노바 수입/영업/현장",
+        "네노바 영업",
+        "네노바 영업/현장",
+        "빌번호및 입고수량확인방",
+        "수입방",
+        "전산테스트팀",
+        "현장 추가취소방"
+      ],
+      "PARTNER_CHANNEL": [
+        "네노바&선율",
+        "한국방역"
+      ],
+      "SUPPLIER_CHANNEL": [
+        "경부 중앙화훼",
+        "경부선 늘봄& 네노바",
+        "경부선 일신 &네노바",
+        "구백의천사 + 네노바",
+        "네노바 + 꽃샘원예",
+        "네노바 + 다원",
+        "네노바 + 대지",
+        "네노바 + 청화원예",
+        "네노바&수아레",
+        "란스 발주방",
+        "수경원예+네노바",
+        "수연원예+네노바",
+        "엘리아리+네노바",
+        "영림원예+네노바",
+        "참좋은 &네노바",
+        "태광 + 네노바"
+      ],
+      "INTERNAL_PRIVATE": [
+        "김다혜, 전정식, 홍현진, Sam, 이진수, ...",
+        "김인석, 설연주, 정재훈, 조현욱, 김원영차장, ...",
+        "조현욱, 박성빈, 김원영차장, 변진형과장"
+      ],
+      "MISC": [
+        "NH농협카드 알림톡",
+        "김원영차장",
+        "네노바",
+        "변진형과장",
+        "아이엠뱅크",
+        "임재용대리",
+        "정재훈",
+        "정재훈대리",
+        "주님방"
+      ]
+    }
+  },
+  "타입별_총메시지": {
+    "INTERNAL_BACKBONE": 28574,
+    "SUPPLIER_CHANNEL": 426,
+    "INTERNAL_PRIVATE": 349,
+    "PARTNER_CHANNEL": 66,
+    "MISC": 55
+  },
+  "타입별_이벤트분포": {
+    "INTERNAL_BACKBONE": [
+      {
+        "type": "INFO",
+        "count": 10099,
+        "pct": 35.3
+      },
+      {
+        "type": "ORDER_CHANGE",
+        "count": 8875,
+        "pct": 31.1
+      },
+      {
+        "type": "PHOTO",
+        "count": 5580,
+        "pct": 19.5
+      },
+      {
+        "type": "FINANCE",
+        "count": 783,
+        "pct": 2.7
+      },
+      {
+        "type": "ARRIVAL",
+        "count": 686,
+        "pct": 2.4
+      },
+      {
+        "type": "SHIPMENT",
+        "count": 671,
+        "pct": 2.3
+      },
+      {
+        "type": "INVENTORY",
+        "count": 455,
+        "pct": 1.6
+      },
+      {
+        "type": "INQUIRY",
+        "count": 398,
+        "pct": 1.4
+      },
+      {
+        "type": "DEFECT",
+        "count": 393,
+        "pct": 1.4
+      },
+      {
+        "type": "DECISION",
+        "count": 299,
+        "pct": 1.0
+      },
+      {
+        "type": "SYSTEM",
+        "count": 281,
+        "pct": 1.0
+      },
+      {
+        "type": "LOGISTICS",
+        "count": 54,
+        "pct": 0.2
+      }
+    ],
+    "PARTNER_CHANNEL": [
+      {
+        "type": "INFO",
+        "count": 34,
+        "pct": 51.5
+      },
+      {
+        "type": "LOGISTICS",
+        "count": 15,
+        "pct": 22.7
+      },
+      {
+        "type": "ARRIVAL",
+        "count": 9,
+        "pct": 13.6
+      },
+      {
+        "type": "PHOTO",
+        "count": 5,
+        "pct": 7.6
+      },
+      {
+        "type": "ORDER_CHANGE",
+        "count": 2,
+        "pct": 3.0
+      },
+      {
+        "type": "DECISION",
+        "count": 1,
+        "pct": 1.5
+      }
+    ],
+    "SUPPLIER_CHANNEL": [
+      {
+        "type": "INFO",
+        "count": 156,
+        "pct": 36.6
+      },
+      {
+        "type": "PHOTO",
+        "count": 99,
+        "pct": 23.2
+      },
+      {
+        "type": "ORDER_CHANGE",
+        "count": 67,
+        "pct": 15.7
+      },
+      {
+        "type": "SHIPMENT",
+        "count": 36,
+        "pct": 8.5
+      },
+      {
+        "type": "DEFECT",
+        "count": 13,
+        "pct": 3.1
+      },
+      {
+        "type": "FINANCE",
+        "count": 13,
+        "pct": 3.1
+      },
+      {
+        "type": "DECISION",
+        "count": 12,
+        "pct": 2.8
+      },
+      {
+        "type": "INQUIRY",
+        "count": 10,
+        "pct": 2.3
+      },
+      {
+        "type": "ARRIVAL",
+        "count": 9,
+        "pct": 2.1
+      },
+      {
+        "type": "LOGISTICS",
+        "count": 6,
+        "pct": 1.4
+      },
+      {
+        "type": "INVENTORY",
+        "count": 5,
+        "pct": 1.2
+      }
+    ],
+    "INTERNAL_PRIVATE": [
+      {
+        "type": "INFO",
+        "count": 112,
+        "pct": 32.1
+      },
+      {
+        "type": "PHOTO",
+        "count": 78,
+        "pct": 22.3
+      },
+      {
+        "type": "ORDER_CHANGE",
+        "count": 51,
+        "pct": 14.6
+      },
+      {
+        "type": "ARRIVAL",
+        "count": 36,
+        "pct": 10.3
+      },
+      {
+        "type": "SHIPMENT",
+        "count": 28,
+        "pct": 8.0
+      },
+      {
+        "type": "LOGISTICS",
+        "count": 15,
+        "pct": 4.3
+      },
+      {
+        "type": "FINANCE",
+        "count": 12,
+        "pct": 3.4
+      },
+      {
+        "type": "INVENTORY",
+        "count": 10,
+        "pct": 2.9
+      },
+      {
+        "type": "DECISION",
+        "count": 3,
+        "pct": 0.9
+      },
+      {
+        "type": "SYSTEM",
+        "count": 3,
+        "pct": 0.9
+      },
+      {
+        "type": "INQUIRY",
+        "count": 1,
+        "pct": 0.3
+      }
+    ],
+    "MISC": [
+      {
+        "type": "PHOTO",
+        "count": 20,
+        "pct": 36.4
+      },
+      {
+        "type": "INFO",
+        "count": 17,
+        "pct": 30.9
+      },
+      {
+        "type": "LOGISTICS",
+        "count": 6,
+        "pct": 10.9
+      },
+      {
+        "type": "ORDER_CHANGE",
+        "count": 5,
+        "pct": 9.1
+      },
+      {
+        "type": "SHIPMENT",
+        "count": 4,
+        "pct": 7.3
+      },
+      {
+        "type": "ARRIVAL",
+        "count": 2,
+        "pct": 3.6
+      },
+      {
+        "type": "DECISION",
+        "count": 1,
+        "pct": 1.8
+      }
+    ]
+  },
+  "키워드_타입별_분류": {
+    "불량": {
+      "INTERNAL_BACKBONE": {
+        "총건수": 135,
+        "분포": [
+          {
+            "type": "DEFECT",
+            "count": 135,
+            "pct": 100.0
+          }
+        ]
+      },
+      "SUPPLIER_CHANNEL": {
+        "총건수": 8,
+        "분포": [
+          {
+            "type": "DEFECT",
+            "count": 8,
+            "pct": 100.0
+          }
+        ]
+      }
+    },
+    "차감": {
+      "INTERNAL_BACKBONE": {
+        "총건수": 126,
+        "분포": [
+          {
+            "type": "DEFECT",
+            "count": 107,
+            "pct": 84.9
+          },
+          {
+            "type": "INFO",
+            "count": 14,
+            "pct": 11.1
+          },
+          {
+            "type": "LOGISTICS",
+            "count": 3,
+            "pct": 2.4
+          },
+          {
+            "type": "ORDER_CHANGE",
+            "count": 2,
+            "pct": 1.6
+          }
+        ]
+      },
+      "SUPPLIER_CHANNEL": {
+        "총건수": 2,
+        "분포": [
+          {
+            "type": "DEFECT",
+            "count": 1,
+            "pct": 50.0
+          },
+          {
+            "type": "INFO",
+            "count": 1,
+            "pct": 50.0
+          }
+        ]
+      }
+    },
+    "추가": {
+      "INTERNAL_BACKBONE": {
+        "총건수": 3738,
+        "분포": [
+          {
+            "type": "ORDER_CHANGE",
+            "count": 3703,
+            "pct": 99.1
+          },
+          {
+            "type": "DEFECT",
+            "count": 33,
+            "pct": 0.9
+          },
+          {
+            "type": "LOGISTICS",
+            "count": 2,
+            "pct": 0.1
+          }
+        ]
+      },
+      "PARTNER_CHANNEL": {
+        "총건수": 1,
+        "분포": [
+          {
+            "type": "ORDER_CHANGE",
+            "count": 1,
+            "pct": 100.0
+          }
+        ]
+      },
+      "INTERNAL_PRIVATE": {
+        "총건수": 26,
+        "분포": [
+          {
+            "type": "ORDER_CHANGE",
+            "count": 26,
+            "pct": 100.0
+          }
+        ]
+      },
+      "SUPPLIER_CHANNEL": {
+        "총건수": 25,
+        "분포": [
+          {
+            "type": "ORDER_CHANGE",
+            "count": 21,
+            "pct": 84.0
+          },
+          {
+            "type": "DEFECT",
+            "count": 3,
+            "pct": 12.0
+          },
+          {
+            "type": "LOGISTICS",
+            "count": 1,
+            "pct": 4.0
+          }
+        ]
+      },
+      "MISC": {
+        "총건수": 1,
+        "분포": [
+          {
+            "type": "ORDER_CHANGE",
+            "count": 1,
+            "pct": 100.0
+          }
+        ]
+      }
+    },
+    "취소": {
+      "INTERNAL_BACKBONE": {
+        "총건수": 1205,
+        "분포": [
+          {
+            "type": "ORDER_CHANGE",
+            "count": 1178,
+            "pct": 97.8
+          },
+          {
+            "type": "DEFECT",
+            "count": 23,
+            "pct": 1.9
+          },
+          {
+            "type": "LOGISTICS",
+            "count": 4,
+            "pct": 0.3
+          }
+        ]
+      },
+      "INTERNAL_PRIVATE": {
+        "총건수": 4,
+        "분포": [
+          {
+            "type": "ORDER_CHANGE",
+            "count": 2,
+            "pct": 50.0
+          },
+          {
+            "type": "LOGISTICS",
+            "count": 2,
+            "pct": 50.0
+          }
+        ]
+      }
+    },
+    "확인": {
+      "INTERNAL_BACKBONE": {
+        "총건수": 2450,
+        "분포": [
+          {
+            "type": "ORDER_CHANGE",
+            "count": 1196,
+            "pct": 48.8
+          },
+          {
+            "type": "INFO",
+            "count": 577,
+            "pct": 23.6
+          },
+          {
+            "type": "INQUIRY",
+            "count": 213,
+            "pct": 8.7
+          },
+          {
+            "type": "ARRIVAL",
+            "count": 145,
+            "pct": 5.9
+          },
+          {
+            "type": "FINANCE",
+            "count": 68,
+            "pct": 2.8
+          },
+          {
+            "type": "DEFECT",
+            "count": 62,
+            "pct": 2.5
+          },
+          {
+            "type": "PHOTO",
+            "count": 52,
+            "pct": 2.1
+          },
+          {
+            "type": "INVENTORY",
+            "count": 46,
+            "pct": 1.9
+          },
+          {
+            "type": "SHIPMENT",
+            "count": 36,
+            "pct": 1.5
+          },
+          {
+            "type": "DECISION",
+            "count": 31,
+            "pct": 1.3
+          },
+          {
+            "type": "LOGISTICS",
+            "count": 13,
+            "pct": 0.5
+          },
+          {
+            "type": "SYSTEM",
+            "count": 11,
+            "pct": 0.4
+          }
+        ]
+      },
+      "PARTNER_CHANNEL": {
+        "총건수": 4,
+        "분포": [
+          {
+            "type": "LOGISTICS",
+            "count": 2,
+            "pct": 50.0
+          },
+          {
+            "type": "INFO",
+            "count": 1,
+            "pct": 25.0
+          },
+          {
+            "type": "ARRIVAL",
+            "count": 1,
+            "pct": 25.0
+          }
+        ]
+      },
+      "INTERNAL_PRIVATE": {
+        "총건수": 17,
+        "분포": [
+          {
+            "type": "ARRIVAL",
+            "count": 5,
+            "pct": 29.4
+          },
+          {
+            "type": "ORDER_CHANGE",
+            "count": 5,
+            "pct": 29.4
+          },
+          {
+            "type": "INFO",
+            "count": 3,
+            "pct": 17.6
+          },
+          {
+            "type": "SHIPMENT",
+            "count": 2,
+            "pct": 11.8
+          },
+          {
+            "type": "FINANCE",
+            "count": 1,
+            "pct": 5.9
+          },
+          {
+            "type": "DECISION",
+            "count": 1,
+            "pct": 5.9
+          }
+        ]
+      },
+      "MISC": {
+        "총건수": 2,
+        "분포": [
+          {
+            "type": "ORDER_CHANGE",
+            "count": 2,
+            "pct": 100.0
+          }
+        ]
+      },
+      "SUPPLIER_CHANNEL": {
+        "총건수": 52,
+        "분포": [
+          {
+            "type": "SHIPMENT",
+            "count": 22,
+            "pct": 42.3
+          },
+          {
+            "type": "ORDER_CHANGE",
+            "count": 8,
+            "pct": 15.4
+          },
+          {
+            "type": "INQUIRY",
+            "count": 8,
+            "pct": 15.4
+          },
+          {
+            "type": "FINANCE",
+            "count": 5,
+            "pct": 9.6
+          },
+          {
+            "type": "DECISION",
+            "count": 4,
+            "pct": 7.7
+          },
+          {
+            "type": "INFO",
+            "count": 3,
+            "pct": 5.8
+          },
+          {
+            "type": "DEFECT",
+            "count": 1,
+            "pct": 1.9
+          },
+          {
+            "type": "INVENTORY",
+            "count": 1,
+            "pct": 1.9
+          }
+        ]
+      }
+    },
+    "부탁": {
+      "INTERNAL_BACKBONE": {
+        "총건수": 2761,
+        "분포": [
+          {
+            "type": "ORDER_CHANGE",
+            "count": 1684,
+            "pct": 61.0
+          },
+          {
+            "type": "INFO",
+            "count": 385,
+            "pct": 13.9
+          },
+          {
+            "type": "INQUIRY",
+            "count": 181,
+            "pct": 6.6
+          },
+          {
+            "type": "PHOTO",
+            "count": 112,
+            "pct": 4.1
+          },
+          {
+            "type": "INVENTORY",
+            "count": 76,
+            "pct": 2.8
+          },
+          {
+            "type": "DEFECT",
+            "count": 70,
+            "pct": 2.5
+          },
+          {
+            "type": "SYSTEM",
+            "count": 69,
+            "pct": 2.5
+          },
+          {
+            "type": "ARRIVAL",
+            "count": 59,
+            "pct": 2.1
+          },
+          {
+            "type": "FINANCE",
+            "count": 58,
+            "pct": 2.1
+          },
+          {
+            "type": "SHIPMENT",
+            "count": 50,
+            "pct": 1.8
+          },
+          {
+            "type": "LOGISTICS",
+            "count": 15,
+            "pct": 0.5
+          },
+          {
+            "type": "DECISION",
+            "count": 2,
+            "pct": 0.1
+          }
+        ]
+      },
+      "PARTNER_CHANNEL": {
+        "총건수": 3,
+        "분포": [
+          {
+            "type": "INFO",
+            "count": 2,
+            "pct": 66.7
+          },
+          {
+            "type": "LOGISTICS",
+            "count": 1,
+            "pct": 33.3
+          }
+        ]
+      },
+      "SUPPLIER_CHANNEL": {
+        "총건수": 66,
+        "분포": [
+          {
+            "type": "SHIPMENT",
+            "count": 23,
+            "pct": 34.8
+          },
+          {
+            "type": "ORDER_CHANGE",
+            "count": 13,
+            "pct": 19.7
+          },
+          {
+            "type": "INQUIRY",
+            "count": 8,
+            "pct": 12.1
+          },
+          {
+            "type": "INFO",
+            "count": 7,
+            "pct": 10.6
+          },
+          {
+            "type": "LOGISTICS",
+            "count": 5,
+            "pct": 7.6
+          },
+          {
+            "type": "FINANCE",
+            "count": 5,
+            "pct": 7.6
+          },
+          {
+            "type": "DEFECT",
+            "count": 3,
+            "pct": 4.5
+          },
+          {
+            "type": "ARRIVAL",
+            "count": 1,
+            "pct": 1.5
+          },
+          {
+            "type": "PHOTO",
+            "count": 1,
+            "pct": 1.5
+          }
+        ]
+      },
+      "INTERNAL_PRIVATE": {
+        "총건수": 33,
+        "분포": [
+          {
+            "type": "ORDER_CHANGE",
+            "count": 11,
+            "pct": 33.3
+          },
+          {
+            "type": "ARRIVAL",
+            "count": 11,
+            "pct": 33.3
+          },
+          {
+            "type": "SHIPMENT",
+            "count": 4,
+            "pct": 12.1
+          },
+          {
+            "type": "INFO",
+            "count": 3,
+            "pct": 9.1
+          },
+          {
+            "type": "LOGISTICS",
+            "count": 3,
+            "pct": 9.1
+          },
+          {
+            "type": "FINANCE",
+            "count": 1,
+            "pct": 3.0
+          }
+        ]
+      },
+      "MISC": {
+        "총건수": 3,
+        "분포": [
+          {
+            "type": "SHIPMENT",
+            "count": 2,
+            "pct": 66.7
+          },
+          {
+            "type": "ORDER_CHANGE",
+            "count": 1,
+            "pct": 33.3
+          }
+        ]
+      }
+    },
+    "사진": {
+      "INTERNAL_BACKBONE": {
+        "총건수": 6215,
+        "분포": [
+          {
+            "type": "PHOTO",
+            "count": 5580,
+            "pct": 89.8
+          },
+          {
+            "type": "ORDER_CHANGE",
+            "count": 270,
+            "pct": 4.3
+          },
+          {
+            "type": "SHIPMENT",
+            "count": 226,
+            "pct": 3.6
+          },
+          {
+            "type": "DEFECT",
+            "count": 44,
+            "pct": 0.7
+          },
+          {
+            "type": "ARRIVAL",
+            "count": 43,
+            "pct": 0.7
+          },
+          {
+            "type": "INQUIRY",
+            "count": 42,
+            "pct": 0.7
+          },
+          {
+            "type": "FINANCE",
+            "count": 8,
+            "pct": 0.1
+          },
+          {
+            "type": "SYSTEM",
+            "count": 1,
+            "pct": 0.0
+          },
+          {
+            "type": "INVENTORY",
+            "count": 1,
+            "pct": 0.0
+          }
+        ]
+      },
+      "PARTNER_CHANNEL": {
+        "총건수": 5,
+        "분포": [
+          {
+            "type": "PHOTO",
+            "count": 5,
+            "pct": 100.0
+          }
+        ]
+      },
+      "SUPPLIER_CHANNEL": {
+        "총건수": 107,
+        "분포": [
+          {
+            "type": "PHOTO",
+            "count": 99,
+            "pct": 92.5
+          },
+          {
+            "type": "DEFECT",
+            "count": 7,
+            "pct": 6.5
+          },
+          {
+            "type": "ORDER_CHANGE",
+            "count": 1,
+            "pct": 0.9
+          }
+        ]
+      },
+      "INTERNAL_PRIVATE": {
+        "총건수": 82,
+        "분포": [
+          {
+            "type": "PHOTO",
+            "count": 78,
+            "pct": 95.1
+          },
+          {
+            "type": "LOGISTICS",
+            "count": 3,
+            "pct": 3.7
+          },
+          {
+            "type": "ARRIVAL",
+            "count": 1,
+            "pct": 1.2
+          }
+        ]
+      },
+      "MISC": {
+        "총건수": 20,
+        "분포": [
+          {
+            "type": "PHOTO",
+            "count": 20,
+            "pct": 100.0
+          }
+        ]
+      }
+    },
+    "불가능": {
+      "INTERNAL_BACKBONE": {
+        "총건수": 113,
+        "분포": [
+          {
+            "type": "ORDER_CHANGE",
+            "count": 73,
+            "pct": 64.6
+          },
+          {
+            "type": "DECISION",
+            "count": 15,
+            "pct": 13.3
+          },
+          {
+            "type": "ARRIVAL",
+            "count": 14,
+            "pct": 12.4
+          },
+          {
+            "type": "INQUIRY",
+            "count": 6,
+            "pct": 5.3
+          },
+          {
+            "type": "DEFECT",
+            "count": 2,
+            "pct": 1.8
+          },
+          {
+            "type": "SHIPMENT",
+            "count": 1,
+            "pct": 0.9
+          },
+          {
+            "type": "INVENTORY",
+            "count": 1,
+            "pct": 0.9
+          },
+          {
+            "type": "LOGISTICS",
+            "count": 1,
+            "pct": 0.9
+          }
+        ]
+      },
+      "MISC": {
+        "총건수": 1,
+        "분포": [
+          {
+            "type": "SHIPMENT",
+            "count": 1,
+            "pct": 100.0
+          }
+        ]
+      }
+    },
+    "검역": {
+      "PARTNER_CHANNEL": {
+        "총건수": 8,
+        "분포": [
+          {
+            "type": "INFO",
+            "count": 3,
+            "pct": 37.5
+          },
+          {
+            "type": "ARRIVAL",
+            "count": 3,
+            "pct": 37.5
+          },
+          {
+            "type": "LOGISTICS",
+            "count": 1,
+            "pct": 12.5
+          },
+          {
+            "type": "ORDER_CHANGE",
+            "count": 1,
+            "pct": 12.5
+          }
+        ]
+      },
+      "INTERNAL_BACKBONE": {
+        "총건수": 208,
+        "분포": [
+          {
+            "type": "DEFECT",
+            "count": 105,
+            "pct": 50.5
+          },
+          {
+            "type": "INFO",
+            "count": 40,
+            "pct": 19.2
+          },
+          {
+            "type": "ORDER_CHANGE",
+            "count": 37,
+            "pct": 17.8
+          },
+          {
+            "type": "LOGISTICS",
+            "count": 12,
+            "pct": 5.8
+          },
+          {
+            "type": "ARRIVAL",
+            "count": 9,
+            "pct": 4.3
+          },
+          {
+            "type": "SHIPMENT",
+            "count": 3,
+            "pct": 1.4
+          },
+          {
+            "type": "INQUIRY",
+            "count": 2,
+            "pct": 1.0
+          }
+        ]
+      },
+      "MISC": {
+        "총건수": 1,
+        "분포": [
+          {
+            "type": "SHIPMENT",
+            "count": 1,
+            "pct": 100.0
+          }
+        ]
+      },
+      "INTERNAL_PRIVATE": {
+        "총건수": 6,
+        "분포": [
+          {
+            "type": "ARRIVAL",
+            "count": 4,
+            "pct": 66.7
+          },
+          {
+            "type": "INFO",
+            "count": 1,
+            "pct": 16.7
+          },
+          {
+            "type": "ORDER_CHANGE",
+            "count": 1,
+            "pct": 16.7
+          }
+        ]
+      },
+      "SUPPLIER_CHANNEL": {
+        "총건수": 3,
+        "분포": [
+          {
+            "type": "ARRIVAL",
+            "count": 1,
+            "pct": 33.3
+          },
+          {
+            "type": "ORDER_CHANGE",
+            "count": 1,
+            "pct": 33.3
+          },
+          {
+            "type": "DEFECT",
+            "count": 1,
+            "pct": 33.3
+          }
+        ]
+      }
+    }
+  },
+  "키워드_타입별_샘플": {
+    "불량": {
+      "INTERNAL_BACKBONE": [
+        {
+          "room": "네노바 수입(불량 공유방)",
+          "sender": "네노바조",
+          "event_type": "DEFECT",
+          "excerpt": "14-1 콜 수국 |  | 경부청화 |  | 화이트 3송이 불량"
+        },
+        {
+          "room": "네노바 수입(불량 공유방)",
+          "sender": "가브리엘",
+          "event_type": "DEFECT",
+          "excerpt": "불량 차감 파일에 없어요."
+        },
+        {
+          "room": "네노바 수입(불량 공유방)",
+          "sender": "네노바김원영차장님",
+          "event_type": "DEFECT",
+          "excerpt": "13차 수국 불량 | 주광 | 연핑크 1박스"
+        },
+        {
+          "room": "네노바 수입(불량 공유방)",
+          "sender": "네노바김원영차장님",
+          "event_type": "DEFECT",
+          "excerpt": "13차 장미 불량 | 주광 | 핑크몬디알 5단"
+        },
+        {
+          "room": "네노바 수입(불량 공유방)",
+          "sender": "네노바 변진형 과장님",
+          "event_type": "DEFECT",
+          "excerpt": "14차 카네이션 불량 |  | 레바논꽃방 | 지오지아 6단"
+        },
+        {
+          "room": "네노바 수입(불량 공유방)",
+          "sender": "네노바 변진형 과장님",
+          "event_type": "DEFECT",
+          "excerpt": "14차 카네이션 불량 |  | 상희원예 |  | 문라이트 2단 | 스프레이카네이션 화이트 6단 | 스프레이카네이션 연핑크 5단"
+        }
+      ],
+      "SUPPLIER_CHANNEL": [
+        {
+          "room": "네노바 + 청화원예",
+          "sender": "조현욱",
+          "event_type": "DEFECT",
+          "excerpt": "안녕하세요 사장님 |  | 품질에 더 신경 써보도록 하겠습니다.. | 불량 나오신 카네이션의 수량과 사진 부탁드리겠습니다"
+        },
+        {
+          "room": "네노바 + 청화원예",
+          "sender": "조현욱",
+          "event_type": "DEFECT",
+          "excerpt": "안녕하세요 사장님 확인해본 결과 입고 되는 농장에서 이슈가 발생하는 것 같습니다..품질 이슈 발생한 문라이트 불량 사진과 해당 품목이 들어있던 박스 앞면 사진 부탁드리겠습니다 사진이 없으시다면 기억 나시는대로 박스 "
+        },
+        {
+          "room": "네노바 + 청화원예",
+          "sender": "조현욱",
+          "event_type": "DEFECT",
+          "excerpt": "넵 조금 더 신경 쓰도록 하겠습니다 불량 추가 사진 있으시다면, 조금 더 보내주시면 감사드리겠습니다"
+        },
+        {
+          "room": "네노바 + 대지",
+          "sender": "조현욱",
+          "event_type": "DEFECT",
+          "excerpt": "대지 4/19일 불량 |  | 크리미아 13단 | 사파리 7단 | 노비아 3단"
+        },
+        {
+          "room": "네노바 + 대지",
+          "sender": "조현욱",
+          "event_type": "DEFECT",
+          "excerpt": "안녕하세요 사장님 |  | 불량 사진 부탁드리겠습니다."
+        },
+        {
+          "room": "네노바 + 대지",
+          "sender": "조현욱",
+          "event_type": "DEFECT",
+          "excerpt": "수량 알려주시면 감사하겠습니다! |  | 몇몇 사진은 지난 주 불량 사진과 같은 사진 같습니다 사장님 ㅠㅠ | 다른 사진은 없으실까요??"
+        }
+      ]
+    },
+    "차감": {
+      "INTERNAL_BACKBONE": [
+        {
+          "room": "네노바 수입(불량 공유방)",
+          "sender": "가브리엘",
+          "event_type": "DEFECT",
+          "excerpt": "불량 차감 파일에 없어요."
+        },
+        {
+          "room": "네노바 수입(불량 공유방)",
+          "sender": "네노바 변진형 과장님",
+          "event_type": "DEFECT",
+          "excerpt": "14차 불량차감 |  | 양주태광 | 문라이트 2박스 불량 |  | 원당태광 | 문라이트 1박스 | 돈셀 1박스"
+        },
+        {
+          "room": "수입방",
+          "sender": "가브리엘",
+          "event_type": "ORDER_CHANGE",
+          "excerpt": "어쩔 수 없는 상황에서 2차로 안개 10단만 주문하신 점은 이해합니다. | 다만 CL2에서 안개 발주가 없는 상태에서 안개 10단만 주문할 경우, 검역 차감으로 2단이 빠지면 실제 납품 수량은 7단이 됩니다. 그럼에"
+        },
+        {
+          "room": "수입방",
+          "sender": "가브리엘",
+          "event_type": "ORDER_CHANGE",
+          "excerpt": "해석 (정리된 의미): |  | 선율에서 전달된 공지 내용입니다. |  | 소량으로 주문하는 경우에는 절대 진행하면 안 됩니다. | 예를 들어, “중국 2차에 안개꽃 10단만 진행할까?” 같은 주문은 피해야 합니다."
+        },
+        {
+          "room": "네노바 영업",
+          "sender": "정재훈대리",
+          "event_type": "DEFECT",
+          "excerpt": "16-1 카네이션 변경사항 |  | 양주태광 | 캐롤라인 4단 취소 |  | 꽃동산 | 캐롤라인 4단 추가 |  | -> 현장 요청완료 |    (견적만 반영해주세요 , 검역차감으로 표기 완료 )"
+        },
+        {
+          "room": "네노바 영업",
+          "sender": "정재훈",
+          "event_type": "DEFECT",
+          "excerpt": "16-1 콜 장미 변경사항 |  | 태림 | 퀵샌드 3단 취소 |  | 영남소재 | 퀵샌드 3단 추가 |  | -> 현장 요청완료 |    (견적만 반영해주세요 , 검역차감으로 표기 완료 )"
+        }
+      ],
+      "SUPPLIER_CHANNEL": [
+        {
+          "room": "수경원예+네노바",
+          "sender": "변진형과장",
+          "event_type": "DEFECT",
+          "excerpt": "애플티, 헤르메스오렌지, 문라이트 불량 차감 했습니다"
+        },
+        {
+          "room": "태광 + 네노바",
+          "sender": "변진형과장",
+          "event_type": "INFO",
+          "excerpt": "알스트로 이제 확인 하였습니다 | 농장 측 전달하고 다음주 차감 처리 진행 하겠습니다."
+        }
+      ]
+    },
+    "추가": {
+      "INTERNAL_BACKBONE": [
+        {
+          "room": "네노바 수입(불량 공유방)",
+          "sender": "네노바조",
+          "event_type": "DEFECT",
+          "excerpt": "추가 사진입니다 |  | 노비아 6단 불량"
+        },
+        {
+          "room": "네노바 수입(불량 공유방)",
+          "sender": "네노바박성수친구",
+          "event_type": "ORDER_CHANGE",
+          "excerpt": "아래 추가사진 합 6단"
+        },
+        {
+          "room": "네노바 수입(불량 공유방)",
+          "sender": "네노바조",
+          "event_type": "ORDER_CHANGE",
+          "excerpt": "지오지아 추가 사진입니다"
+        },
+        {
+          "room": "네노바 수입(불량 공유방)",
+          "sender": "네노바박성수친구",
+          "event_type": "ORDER_CHANGE",
+          "excerpt": "추가사진도 있습니다"
+        },
+        {
+          "room": "견적방",
+          "sender": "네노바 정재훈님",
+          "event_type": "ORDER_CHANGE",
+          "excerpt": "부산인터넷꽃도매(원협가빈) | 4월 세금계산서 선발행 요청 | >3월31일자로 동일하게 발행 추가요청 |  | 59,894,000(vat포함) |  | 선발행 부탁드립니다."
+        },
+        {
+          "room": "수입방",
+          "sender": "네노바연주",
+          "event_type": "ORDER_CHANGE",
+          "excerpt": "41-2차 네덜란드 발주 추가 |  | CL2 | 수국 글로잉알프스핑크 30스팀"
+        }
+      ],
+      "PARTNER_CHANNEL": [
+        {
+          "room": "네노바&선율",
+          "sender": "심동욱",
+          "event_type": "ORDER_CHANGE",
+          "excerpt": "나머지 2품목은 아직 결과가 안나왔습니다 | 추가있으면 따로 전달 드리겠습니다"
+        }
+      ],
+      "INTERNAL_PRIVATE": [
+        {
+          "room": "조현욱, 박성빈, 김원영차장, 변진형과장",
+          "sender": "박성빈",
+          "event_type": "ORDER_CHANGE",
+          "excerpt": "솔레미오랑 추가분 좀 더 있을겁니다"
+        },
+        {
+          "room": "조현욱, 박성빈, 김원영차장, 변진형과장",
+          "sender": "박성빈",
+          "event_type": "ORDER_CHANGE",
+          "excerpt": "26일/28일 콜롬비아 스프레이 카네이션 추가 | 하마다 1 | 노랑 1 | 화이트버니 1 | 아라곤 1 | 아테네 2 (연핑크) | 핑크피제온 1 (일반핑크) | 피제온 1 (핫핑크) | 까림보 1 | 리나 1 |"
+        },
+        {
+          "room": "조현욱, 박성빈, 김원영차장, 변진형과장",
+          "sender": "박성빈",
+          "event_type": "ORDER_CHANGE",
+          "excerpt": "중국 솔로미오 추가 | Scn | 3번 핑크 ㅡ 2박스 | 6번 노랑 ㅡ 2박스 | 7번 striple fly(스트로베리)ㅡ 4박스 | 8번 클리프 ㅡ 4박스 | 11번 Fen(스왐) ㅡ 3박스 |  | 카다로그 없"
+        },
+        {
+          "room": "조현욱, 박성빈, 김원영차장, 변진형과장",
+          "sender": "박성빈",
+          "event_type": "ORDER_CHANGE",
+          "excerpt": "주문한 수국 화이트 14박스는 기본으로 잡고, 추가한 15박스 가급적 맞춰주세요."
+        },
+        {
+          "room": "조현욱, 박성빈, 김원영차장, 변진형과장",
+          "sender": "변진형과장",
+          "event_type": "ORDER_CHANGE",
+          "excerpt": "어버이날 주간 카네이션 추가는 어려울 것 같습니다"
+        },
+        {
+          "room": "조현욱, 박성빈, 김원영차장, 변진형과장",
+          "sender": "변진형과장",
+          "event_type": "ORDER_CHANGE",
+          "excerpt": "어버이날 물량은 추가 취소가 지금 많이 어려운 상황입니다 |  | 그래도 추가 요청은 해보겠습니다. |  | 현재 | 아테나 2 | 버니 대신 아틱 1 | 하마다 1 |  | 이렇게 되어있습니다"
+        }
+      ],
+      "SUPPLIER_CHANNEL": [
+        {
+          "room": "네노바 + 청화원예",
+          "sender": "조현욱",
+          "event_type": "DEFECT",
+          "excerpt": "넵 조금 더 신경 쓰도록 하겠습니다 불량 추가 사진 있으시다면, 조금 더 보내주시면 감사드리겠습니다"
+        },
+        {
+          "room": "네노바 + 청화원예",
+          "sender": "조현욱",
+          "event_type": "LOGISTICS",
+          "excerpt": "5월 1일, 5월 5일 휴뮤인 관계로 통관이 매우 늦어지는 것을 감안하여 5/3 발주도 미리 진행하고 있습니다. 이때도 백수국 한박스 추가 하면 될까요?"
+        },
+        {
+          "room": "네노바 + 청화원예",
+          "sender": "변진형과장",
+          "event_type": "ORDER_CHANGE",
+          "excerpt": "카네이션 발주도 진행은 가능하지만 컨펌률은 매우 낮을 수 있습니다. | 이 주까지 어버이날 물량으로 진행되기 때문에 물량이 많이 부족한 상태이긴 합니다. |  | 어떤 품목들이 추가로 필요하실까요?"
+        },
+        {
+          "room": "경부선 일신 &네노바",
+          "sender": "조현욱",
+          "event_type": "ORDER_CHANGE",
+          "excerpt": "안녕하세요 사장님 |  | 어버이날 수량을 맞추려고 하다보니, 많이 부족한 상황입니다.. |  | 현지에서 체리오 대체 품목인 사파리로 입고가 되었다고 합니다. 추가 발주는 해두었지만 컨펌 확률이 매우 낮습니다. |"
+        },
+        {
+          "room": "참좋은 &네노바",
+          "sender": "변진형과장",
+          "event_type": "ORDER_CHANGE",
+          "excerpt": "사장님 주말에는 출고물건을 추가하기가 어렵습니다 | 죄송합니다~"
+        },
+        {
+          "room": "경부선 일신 &네노바",
+          "sender": "일신원예",
+          "event_type": "DEFECT",
+          "excerpt": "파손에 |  | 만다라 5 | 코랄리프 2 |  | 추가하겠습니다 컴플레인이 너무 많이 들어오네요"
+        }
+      ],
+      "MISC": [
+        {
+          "room": "주님방",
+          "sender": "김원영차장",
+          "event_type": "ORDER_CHANGE",
+          "excerpt": "플라야블랑카 30단 추가 |  | 오늘 출고 부탁드립니다. |  | 오늘 총 90단 출고 입니다. |  | 화요일 출고 20단으로 변경됩니다. |  | 참고 부탁드립니다."
+        }
+      ]
+    },
+    "취소": {
+      "INTERNAL_BACKBONE": [
+        {
+          "room": "수입방",
+          "sender": "네노바 정영민과장",
+          "event_type": "ORDER_CHANGE",
+          "excerpt": "[43-1차 콜 수국 취소 및 추가] |  | [취소] | 화이트 50박스 | 블루 2박스 | 연핑크 10박스 | 라벤더 5박스 | 피치 5박스 |  | 총 72박스 취소 |  | [추가] | 진그린 1박스 | 로즈"
+        },
+        {
+          "room": "수입방",
+          "sender": "네노바 송희님",
+          "event_type": "ORDER_CHANGE",
+          "excerpt": "43-01 콜롬비아 장미 발주 취소. 추가 등 변경 있을예정입니다,  @Teresa"
+        },
+        {
+          "room": "수입방",
+          "sender": "네노바 정재훈님",
+          "event_type": "ORDER_CHANGE",
+          "excerpt": "취소 부탁드립니다."
+        },
+        {
+          "room": "수입방",
+          "sender": "네노바 정영민과장",
+          "event_type": "ORDER_CHANGE",
+          "excerpt": "41-1차 중국 리시안셔스 관련 요청사항 |  | -사진에서 앞쪽에 4장은 카달로그 사진과 중국에서 보내준 샘플사진입니다. | -뒤쪽 6장은 어제 출고된 사진입니다. |  | >1단에 600g으로 알고 진행했는데 |"
+        },
+        {
+          "room": "수입방",
+          "sender": "네노바연주",
+          "event_type": "ORDER_CHANGE",
+          "excerpt": "42-1차 네덜란드 발주 취소 |  | CL3 | 스키미아 그린 150스팀 취소 (50단)"
+        },
+        {
+          "room": "수입방",
+          "sender": "가브리엘",
+          "event_type": "ORDER_CHANGE",
+          "excerpt": "전산과 동일한데 어제 재훈님이 1차에 품질 때문에 취소되었던 포풀루스 그레인 10단 추가해서 진행했습니다. | 참고"
+        }
+      ],
+      "INTERNAL_PRIVATE": [
+        {
+          "room": "조현욱, 박성빈, 김원영차장, 변진형과장",
+          "sender": "변진형과장",
+          "event_type": "ORDER_CHANGE",
+          "excerpt": "어버이날 물량은 추가 취소가 지금 많이 어려운 상황입니다 |  | 그래도 추가 요청은 해보겠습니다. |  | 현재 | 아테나 2 | 버니 대신 아틱 1 | 하마다 1 |  | 이렇게 되어있습니다"
+        },
+        {
+          "room": "조현욱, 박성빈, 김원영차장, 변진형과장",
+          "sender": "박성빈",
+          "event_type": "ORDER_CHANGE",
+          "excerpt": "이거 중국 레드 너무 어둡다고 콜롬비아걸로 해야될거같은데, 중국 레드 추가한 2박스는 취소해주시고, 26일~28일 나올 수 있는 콜롬비아 프리덤 구해줄 수 있으면 구해주세요"
+        },
+        {
+          "room": "김다혜, 전정식, 홍현진, Sam, 이진수, ...",
+          "sender": "김다혜",
+          "event_type": "LOGISTICS",
+          "excerpt": "오후 소독건 취소되었다고 하는데 맞을까요?"
+        },
+        {
+          "room": "김다혜, 전정식, 홍현진, Sam, 이진수, ...",
+          "sender": "김인석",
+          "event_type": "LOGISTICS",
+          "excerpt": "네 맞습니다. | 소독 취소되었고, 결과 보고 진행여부 결정한다고 합니다."
+        }
+      ]
+    },
+    "확인": {
+      "INTERNAL_BACKBONE": [
+        {
+          "room": "네노바 수입(불량 공유방)",
+          "sender": "네노바 정재훈님",
+          "event_type": "DECISION",
+          "excerpt": "네 확인했습니다"
+        },
+        {
+          "room": "네노바 수입(불량 공유방)",
+          "sender": "네노바조",
+          "event_type": "PHOTO",
+          "excerpt": "박스 사진 다시 확인해서 올리겠습니다"
+        },
+        {
+          "room": "네노바 수입(불량 공유방)",
+          "sender": "가브리엘",
+          "event_type": "INFO",
+          "excerpt": "13차로 확인 됩니다"
+        },
+        {
+          "room": "네노바 수입(불량 공유방)",
+          "sender": "네노바 정재훈님",
+          "event_type": "DEFECT",
+          "excerpt": "14-1 콜 수국 불량 |  | 농장 확인해주세요 | 원협가빈 | 화이트 30송이 전량 클레임"
+        },
+        {
+          "room": "네노바 수입(불량 공유방)",
+          "sender": "아드리아나",
+          "event_type": "DEFECT",
+          "excerpt": "Super Fresh 담당자는 당사 보관 과정을 직접 방문하여 확인할 필요가 있다고 생각하고 있습니다. 일부는 저온 피해(cold burn), 일부는 고온 피해(hot burn)가 발생하는 이유에 대해 의문을 가지고"
+        },
+        {
+          "room": "견적방",
+          "sender": "네노바 정재훈님",
+          "event_type": "SHIPMENT",
+          "excerpt": "보온차지방 온실차 배차 기사님 발행된 계산서 입니다. | 확인 부탁드리겠습니다. 감사합니다."
+        }
+      ],
+      "PARTNER_CHANNEL": [
+        {
+          "room": "네노바&선율",
+          "sender": "심동욱",
+          "event_type": "LOGISTICS",
+          "excerpt": "오후 소독 입니다 | 박스 번호 및 수량 확인 바랍니다"
+        },
+        {
+          "room": "네노바&선율",
+          "sender": "심동욱",
+          "event_type": "LOGISTICS",
+          "excerpt": "15-1차 클라우드랜드 | 유칼립투스-4박스(25~26,29,48번) | 사육 나왔습니다 | 오후 소독 진행하겠습니다 | 수량 및 박스 번호 확인 바랍니다"
+        },
+        {
+          "room": "네노바&선율",
+          "sender": "김원빈",
+          "event_type": "INFO",
+          "excerpt": "ZH631 (16:45) 편으로 적하떴고, | 익일 오전검역건으로 확인하겠습니다"
+        },
+        {
+          "room": "네노바&선율",
+          "sender": "가브리엘",
+          "event_type": "ARRIVAL",
+          "excerpt": "<주말 스케줄 공유 > |  | [15-2차 네덜란드 홀렉스] (Korean Air) | 04월 12일  (일) 16:40 도착 예정 | -> 기타정보 및 서류는 확인되는대로 공유드리겠습니다 |  | [15-1차 태"
+        }
+      ],
+      "INTERNAL_PRIVATE": [
+        {
+          "room": "김인석, 설연주, 정재훈, 조현욱, 김원영차장, ...",
+          "sender": "강명훈",
+          "event_type": "FINANCE",
+          "excerpt": "인터넷공판장 선발행 59,894,000 | 4월 1차(14,15차) 금액: 20,471,050 | 잔액: 39,422,950 |  | 인터넷공판장 입금 확인 부탁드립니다."
+        },
+        {
+          "room": "김인석, 설연주, 정재훈, 조현욱, 김원영차장, ...",
+          "sender": "정재훈",
+          "event_type": "SHIPMENT",
+          "excerpt": "보온차지방 온실차 배차 기사님 발행된 계산서 입니다. | 확인 부탁드리겠습니다. 감사합니다."
+        },
+        {
+          "room": "조현욱, 박성빈, 김원영차장, 변진형과장",
+          "sender": "변진형과장",
+          "event_type": "ARRIVAL",
+          "excerpt": "그렇게 나눠주시면 비행 스케줄 확인해서 최대한 맞추겠습니다"
+        },
+        {
+          "room": "김다혜, 전정식, 홍현진, Sam, 이진수, ...",
+          "sender": "Grb",
+          "event_type": "ARRIVAL",
+          "excerpt": "<주말 스케줄 공유 > |  | [16-2차 네덜란드 홀렉스] (Korean Air) | 04월 19일  (일) 16:40 도착 예정 | -> 기타정보 및 서류는 확인되는대로 공유드리겠습니다 |  | [16-1차 태"
+        },
+        {
+          "room": "김다혜, 전정식, 홍현진, Sam, 이진수, ...",
+          "sender": "윤영",
+          "event_type": "ORDER_CHANGE",
+          "excerpt": "아 네네 그럼 문의드린 빌번호는 변경되어 들어온것으로 확인하고 서류는 폐기하겠습니다"
+        },
+        {
+          "room": "김인석, 설연주, 정재훈, 조현욱, 김원영차장, ...",
+          "sender": "정재훈",
+          "event_type": "SHIPMENT",
+          "excerpt": "보온차지방 온실차 배차 기사님 발행된 계산서 입니다. | 확인 부탁드리겠습니다. 감사합니다."
+        }
+      ],
+      "MISC": [
+        {
+          "room": "주님방",
+          "sender": "김원영차장",
+          "event_type": "ORDER_CHANGE",
+          "excerpt": "* 주광농원 4월 19일(일요일) 출고건 정리 | (선출고건 및 보관분을 제외한 실제 출고수량 기준입니다.) |  | 1. 카네이션 총 58박스(주광농원 37박스+부산윌슨 21박스) |  | 2. 장미 33박스 (총"
+        },
+        {
+          "room": "주님방",
+          "sender": "김원영차장",
+          "event_type": "ORDER_CHANGE",
+          "excerpt": "* 주광농원 4월 26일(일요일) 출고건 정리 | (선출고건 및 보관분을 제외한 실제 출고수량 기준입니다.) |  | 1. 카네이션 총 277박스 | (주광농원 116박스+대구티케 33박스+대전현 61박스+원주중앙)"
+        }
+      ],
+      "SUPPLIER_CHANNEL": [
+        {
+          "room": "영림원예+네노바",
+          "sender": "조현욱",
+          "event_type": "ORDER_CHANGE",
+          "excerpt": "4/28 영림원예 수국 발주입니다 |  | 화이트 34박스 | 연핑크 3박스 | 피치 2박스 | 블루 2박스 |  | 확인 부탁드리겠습니다"
+        },
+        {
+          "room": "네노바 + 청화원예",
+          "sender": "조현욱",
+          "event_type": "DEFECT",
+          "excerpt": "안녕하세요 사장님 확인해본 결과 입고 되는 농장에서 이슈가 발생하는 것 같습니다..품질 이슈 발생한 문라이트 불량 사진과 해당 품목이 들어있던 박스 앞면 사진 부탁드리겠습니다 사진이 없으시다면 기억 나시는대로 박스 "
+        },
+        {
+          "room": "경부선 일신 &네노바",
+          "sender": "변진형과장",
+          "event_type": "INQUIRY",
+          "excerpt": "현재까지의 컨펌 확인 부탁드립니다."
+        },
+        {
+          "room": "네노바 + 청화원예",
+          "sender": "조현욱",
+          "event_type": "SHIPMENT",
+          "excerpt": "일요일 출고 내역서입니다 확인 부탁드리겠습니다."
+        },
+        {
+          "room": "경부선 일신 &네노바",
+          "sender": "조현욱",
+          "event_type": "SHIPMENT",
+          "excerpt": "일요일 출고 내역서 확인 부탁드리겠습니다."
+        },
+        {
+          "room": "수경원예+네노바",
+          "sender": "조현욱",
+          "event_type": "SHIPMENT",
+          "excerpt": "안녕하세요 사장님 |  | 일요일 출고 내역서 확인 부탁드리겠습니다."
+        }
+      ]
+    },
+    "부탁": {
+      "INTERNAL_BACKBONE": [
+        {
+          "room": "네노바 수입(불량 공유방)",
+          "sender": "김원빈",
+          "event_type": "ORDER_CHANGE",
+          "excerpt": "박스 사진 부탁드립니다. 농장은 이디거인가요? 수랴량이랑 요청드립니다"
+        },
+        {
+          "room": "네노바 수입(불량 공유방)",
+          "sender": "네노바박성수친구",
+          "event_type": "INVENTORY",
+          "excerpt": "믹스 화 8 핑 22 |  | 수량좀 맞춰서 부탁해요"
+        },
+        {
+          "room": "네노바 수입(불량 공유방)",
+          "sender": "네노바 정재훈님",
+          "event_type": "DEFECT",
+          "excerpt": "14-1 중국 불량 |  | 친구플라워 | 멜로디 | 블랙잭 10단 전량클레임 |  | 멜로디에서 클레임이 어렵겠지만. | 15-1차 박스를 써서라도 좀..부탁드리겠습니다🙏"
+        },
+        {
+          "room": "전산테스트팀",
+          "sender": "네노바연주",
+          "event_type": "SYSTEM",
+          "excerpt": "중국 카네이션 미니카네이션 꽃종류 합칠게요 |  | 콜롬비아 처럼 미니카네이션도 카네이션으로 등록부탁드립니다."
+        },
+        {
+          "room": "전산테스트팀",
+          "sender": "네노바연주",
+          "event_type": "INFO",
+          "excerpt": "asparagus 미디오 프리져브드 품목생성 부탁드려요"
+        },
+        {
+          "room": "견적방",
+          "sender": "네노바 정재훈님",
+          "event_type": "SHIPMENT",
+          "excerpt": "보온차지방 온실차 배차 기사님 발행된 계산서 입니다. | 확인 부탁드리겠습니다. 감사합니다."
+        }
+      ],
+      "PARTNER_CHANNEL": [
+        {
+          "room": "네노바&선율",
+          "sender": "네노바김영삼과장님",
+          "event_type": "INFO",
+          "excerpt": "선임님. | 진행상황 공유부탁드립니다."
+        },
+        {
+          "room": "네노바&선율",
+          "sender": "가브리엘",
+          "event_type": "LOGISTICS",
+          "excerpt": "해당건 세관 신고 내일오후나 목요일 아침에 할게요. 일단 검역 진행 내일 아침에 부탁드립니다."
+        },
+        {
+          "room": "네노바&선율",
+          "sender": "심동욱",
+          "event_type": "INFO",
+          "excerpt": "상기 건 서류 부탁 드립니다"
+        }
+      ],
+      "SUPPLIER_CHANNEL": [
+        {
+          "room": "네노바 + 청화원예",
+          "sender": "조현욱",
+          "event_type": "DEFECT",
+          "excerpt": "안녕하세요 사장님 |  | 품질에 더 신경 써보도록 하겠습니다.. | 불량 나오신 카네이션의 수량과 사진 부탁드리겠습니다"
+        },
+        {
+          "room": "구백의천사 + 네노바",
+          "sender": "변진형과장",
+          "event_type": "ORDER_CHANGE",
+          "excerpt": "5/15 카네이션 발주 한번 부탁드리겠습니다. | 아니면 이 수량대로 진행을 해도 될까요?"
+        },
+        {
+          "room": "구백의천사 + 네노바",
+          "sender": "변진형과장",
+          "event_type": "INFO",
+          "excerpt": "네 부탁드리겠습니다"
+        },
+        {
+          "room": "구백의천사 + 네노바",
+          "sender": "최성익",
+          "event_type": "ORDER_CHANGE",
+          "excerpt": "카네이션 발주 | 문라이트3 | 돈셀4 | 마루치2 | 지오지아1 | 노비아2 | 헤르메스 오렌지 | 캐롤라인골드1 | 카오리1 | 폴림니아2 | 로다스1 | 유카리체리1 | 유카리오스큐로1 | 마리포사1 | 체리오"
+        },
+        {
+          "room": "구백의천사 + 네노바",
+          "sender": "변진형과장",
+          "event_type": "ORDER_CHANGE",
+          "excerpt": "이번 입고된 장미 잔량입니다. | 필요하신 품목 있으시면 말씀 부탁드리겠습니다. |  | 캔들라이트 20단 | 프리덤 10단 | 프리덤 60cm 40 | 만달라 30단 | 몬디알 화이트 10단 | 레드팬서 20단 |"
+        },
+        {
+          "room": "영림원예+네노바",
+          "sender": "조현욱",
+          "event_type": "ORDER_CHANGE",
+          "excerpt": "4/28 영림원예 수국 발주입니다 |  | 화이트 34박스 | 연핑크 3박스 | 피치 2박스 | 블루 2박스 |  | 확인 부탁드리겠습니다"
+        }
+      ],
+      "INTERNAL_PRIVATE": [
+        {
+          "room": "조현욱, 박성빈, 김원영차장, 변진형과장",
+          "sender": "변진형과장",
+          "event_type": "ORDER_CHANGE",
+          "excerpt": "사장님 26일 중국발주 부탁드립니다"
+        },
+        {
+          "room": "조현욱, 박성빈, 김원영차장, 변진형과장",
+          "sender": "변진형과장",
+          "event_type": "SHIPMENT",
+          "excerpt": "콜롬비아 중국 출고 구분 부탁드립니다."
+        },
+        {
+          "room": "김인석, 설연주, 정재훈, 조현욱, 김원영차장, ...",
+          "sender": "강명훈",
+          "event_type": "FINANCE",
+          "excerpt": "인터넷공판장 선발행 59,894,000 | 4월 1차(14,15차) 금액: 20,471,050 | 잔액: 39,422,950 |  | 인터넷공판장 입금 확인 부탁드립니다."
+        },
+        {
+          "room": "김다혜, 전정식, 홍현진, Sam, 이진수, ...",
+          "sender": "이지은",
+          "event_type": "ARRIVAL",
+          "excerpt": "입항 빌 받으신거 있으시면 전달 부탁드립니다"
+        },
+        {
+          "room": "김다혜, 전정식, 홍현진, Sam, 이진수, ...",
+          "sender": "이슬비",
+          "event_type": "ARRIVAL",
+          "excerpt": "식사 하시고 오후에 주말 입항서류 있으면 전달 부탁드립니다 ~!"
+        },
+        {
+          "room": "김인석, 설연주, 정재훈, 조현욱, 김원영차장, ...",
+          "sender": "정재훈",
+          "event_type": "SHIPMENT",
+          "excerpt": "보온차지방 온실차 배차 기사님 발행된 계산서 입니다. | 확인 부탁드리겠습니다. 감사합니다."
+        }
+      ],
+      "MISC": [
+        {
+          "room": "주님방",
+          "sender": "김원영차장",
+          "event_type": "SHIPMENT",
+          "excerpt": "출고되는 아무곳에서 빼고 검역처리 부탁합니다"
+        },
+        {
+          "room": "주님방",
+          "sender": "김원영차장",
+          "event_type": "ORDER_CHANGE",
+          "excerpt": "플라야블랑카 30단 추가 |  | 오늘 출고 부탁드립니다. |  | 오늘 총 90단 출고 입니다. |  | 화요일 출고 20단으로 변경됩니다. |  | 참고 부탁드립니다."
+        },
+        {
+          "room": "주님방",
+          "sender": "김원영차장",
+          "event_type": "SHIPMENT",
+          "excerpt": "네덜란드 제외 나머지 품목 4시에 경부선 도착 할수 있도록 부탁드립니다. 시간적으로 중국 캐서린도 불가능하면 네덜란드랑 같이 보내주세요."
+        }
+      ]
+    },
+    "사진": {
+      "INTERNAL_BACKBONE": [
+        {
+          "room": "네노바 수입(불량 공유방)",
+          "sender": "네노바조",
+          "event_type": "PHOTO",
+          "excerpt": "사진"
+        },
+        {
+          "room": "네노바 수입(불량 공유방)",
+          "sender": "네노바조",
+          "event_type": "PHOTO",
+          "excerpt": "사진 3장"
+        },
+        {
+          "room": "네노바 수입(불량 공유방)",
+          "sender": "네노바조",
+          "event_type": "PHOTO",
+          "excerpt": "박스 사진 다시 확인해서 올리겠습니다"
+        },
+        {
+          "room": "네노바 수입(불량 공유방)",
+          "sender": "네노바조",
+          "event_type": "PHOTO",
+          "excerpt": "사진"
+        },
+        {
+          "room": "네노바 수입(불량 공유방)",
+          "sender": "네노바김원영차장님",
+          "event_type": "PHOTO",
+          "excerpt": "사진 17장"
+        },
+        {
+          "room": "네노바 수입(불량 공유방)",
+          "sender": "네노바김원영차장님",
+          "event_type": "PHOTO",
+          "excerpt": "사진 4장"
+        }
+      ],
+      "PARTNER_CHANNEL": [
+        {
+          "room": "한국방역",
+          "sender": "네노바규하",
+          "event_type": "PHOTO",
+          "excerpt": "사진"
+        },
+        {
+          "room": "한국방역",
+          "sender": "네노바규하",
+          "event_type": "PHOTO",
+          "excerpt": "사진"
+        },
+        {
+          "room": "한국방역",
+          "sender": "네노바규하",
+          "event_type": "PHOTO",
+          "excerpt": "사진"
+        },
+        {
+          "room": "한국방역",
+          "sender": "정지훈",
+          "event_type": "PHOTO",
+          "excerpt": "사진"
+        },
+        {
+          "room": "한국방역",
+          "sender": "정지훈",
+          "event_type": "PHOTO",
+          "excerpt": "사진"
+        }
+      ],
+      "SUPPLIER_CHANNEL": [
+        {
+          "room": "네노바 + 청화원예",
+          "sender": "남건희 청화원예",
+          "event_type": "PHOTO",
+          "excerpt": "사진 6장"
+        },
+        {
+          "room": "네노바 + 청화원예",
+          "sender": "조현욱",
+          "event_type": "DEFECT",
+          "excerpt": "안녕하세요 사장님 |  | 품질에 더 신경 써보도록 하겠습니다.. | 불량 나오신 카네이션의 수량과 사진 부탁드리겠습니다"
+        },
+        {
+          "room": "네노바 + 대지",
+          "sender": "김민규",
+          "event_type": "PHOTO",
+          "excerpt": "사진 7장"
+        },
+        {
+          "room": "수연원예+네노바",
+          "sender": "변진형과장",
+          "event_type": "PHOTO",
+          "excerpt": "사진"
+        },
+        {
+          "room": "수연원예+네노바",
+          "sender": "변진형과장",
+          "event_type": "PHOTO",
+          "excerpt": "사진"
+        },
+        {
+          "room": "수연원예+네노바",
+          "sender": "변진형과장",
+          "event_type": "PHOTO",
+          "excerpt": "사진"
+        }
+      ],
+      "INTERNAL_PRIVATE": [
+        {
+          "room": "조현욱, 박성빈, 김원영차장, 변진형과장",
+          "sender": "변진형과장",
+          "event_type": "PHOTO",
+          "excerpt": "사진 2장"
+        },
+        {
+          "room": "조현욱, 박성빈, 김원영차장, 변진형과장",
+          "sender": "변진형과장",
+          "event_type": "PHOTO",
+          "excerpt": "사진"
+        },
+        {
+          "room": "조현욱, 박성빈, 김원영차장, 변진형과장",
+          "sender": "박성빈",
+          "event_type": "PHOTO",
+          "excerpt": "사진"
+        },
+        {
+          "room": "조현욱, 박성빈, 김원영차장, 변진형과장",
+          "sender": "변진형과장",
+          "event_type": "PHOTO",
+          "excerpt": "사진"
+        },
+        {
+          "room": "조현욱, 박성빈, 김원영차장, 변진형과장",
+          "sender": "박성빈",
+          "event_type": "PHOTO",
+          "excerpt": "사진"
+        },
+        {
+          "room": "조현욱, 박성빈, 김원영차장, 변진형과장",
+          "sender": "박성빈",
+          "event_type": "PHOTO",
+          "excerpt": "사진"
+        }
+      ],
+      "MISC": [
+        {
+          "room": "주님방",
+          "sender": "동혁",
+          "event_type": "PHOTO",
+          "excerpt": "사진 3장"
+        },
+        {
+          "room": "주님방",
+          "sender": "동혁",
+          "event_type": "PHOTO",
+          "excerpt": "지오지아 사진입니다 @김원영차장"
+        },
+        {
+          "room": "주님방",
+          "sender": "김원영차장",
+          "event_type": "PHOTO",
+          "excerpt": "사진"
+        },
+        {
+          "room": "주님방",
+          "sender": "김원영차장",
+          "event_type": "PHOTO",
+          "excerpt": "사진"
+        },
+        {
+          "room": "주님방",
+          "sender": "김원영차장",
+          "event_type": "PHOTO",
+          "excerpt": "사진"
+        },
+        {
+          "room": "주님방",
+          "sender": "김원영차장",
+          "event_type": "PHOTO",
+          "excerpt": "사진"
+        }
+      ]
+    },
+    "불가능": {
+      "INTERNAL_BACKBONE": [
+        {
+          "room": "네노바 수입(불량 공유방)",
+          "sender": "가브리엘",
+          "event_type": "DEFECT",
+          "excerpt": "해서 클레임 불가능해요"
+        },
+        {
+          "room": "수입방",
+          "sender": "아드리아나",
+          "event_type": "DECISION",
+          "excerpt": "50 스템만 불가능 합니다"
+        },
+        {
+          "room": "수입방",
+          "sender": "가브리엘",
+          "event_type": "ORDER_CHANGE",
+          "excerpt": "물론 일단 관심 있는 품목들 먼저 봐야 발주 이루어질 수 있다고ㅠ했고 설득하려고 했지만, 오늘 발주 진행하기가 불가능하다고 이미ㅜ갖고 있는 꽃 다 팔았다고 합니다"
+        },
+        {
+          "room": "수입방",
+          "sender": "네노바김원영차장님",
+          "event_type": "DECISION",
+          "excerpt": "43-1차도 두품목 불가능할까요?"
+        },
+        {
+          "room": "수입방",
+          "sender": "가브리엘",
+          "event_type": "ORDER_CHANGE",
+          "excerpt": "중국 44-1차.   참고 상황. |  리모니움 미스티 불루 발주하는 업체가 매우 늘어나고 있어 예도님과 리모니움 블루 불가능할 경우에 대체할 만한 제품 있는지 찾아봐달라고 했습니다. | 그렇지만 아직까지는 리모니움"
+        },
+        {
+          "room": "수입방",
+          "sender": "가브리엘",
+          "event_type": "DECISION",
+          "excerpt": "불가능할 수도 있습니다 농장과 소통 후 알려드리겠습니다"
+        }
+      ],
+      "MISC": [
+        {
+          "room": "주님방",
+          "sender": "김원영차장",
+          "event_type": "SHIPMENT",
+          "excerpt": "네덜란드 제외 나머지 품목 4시에 경부선 도착 할수 있도록 부탁드립니다. 시간적으로 중국 캐서린도 불가능하면 네덜란드랑 같이 보내주세요."
+        }
+      ]
+    },
+    "검역": {
+      "PARTNER_CHANNEL": [
+        {
+          "room": "네노바&선율",
+          "sender": "강현우",
+          "event_type": "INFO",
+          "excerpt": "안녕하세요. | 검역품목 전달드립니다. |  | [태국] | 수퍼프레시 모카라 오렌지피치 xl | 수퍼프레시 빅화이트 xl | 수퍼프레시 아란쥴링 xl"
+        },
+        {
+          "room": "네노바&선율",
+          "sender": "네노바연주",
+          "event_type": "INFO",
+          "excerpt": "안녕하세요 | 검역품목 전달드립니다 |  | [홀렉스] | 나르시스 노랑 cl2 | 스키미아 그린 cl4 | 아가판서스 화이트 cl3 | 아마릴리스 심포니 화이트 cl11 | 아스틸베 화이트 cl2 | 안시리움 레드"
+        },
+        {
+          "room": "네노바&선율",
+          "sender": "가브리엘",
+          "event_type": "LOGISTICS",
+          "excerpt": "해당건 세관 신고 내일오후나 목요일 아침에 할게요. 일단 검역 진행 내일 아침에 부탁드립니다."
+        },
+        {
+          "room": "네노바&선율",
+          "sender": "심동욱",
+          "event_type": "ORDER_CHANGE",
+          "excerpt": "오늘 오후 검역진행했구요 | 수입신고는 요청해주시면 맞춰서 진행하겠습니다"
+        },
+        {
+          "room": "네노바&선율",
+          "sender": "가브리엘",
+          "event_type": "ARRIVAL",
+          "excerpt": "감사합니다! | [아드리아나] [오전 9:10] | [검역 금 오전] |  | [15-1차 미국 후드카날] (Korean Air) | 04월 09일 (목) 16:40 도착 예정 | (180- 18988896 KE00"
+        },
+        {
+          "room": "네노바&선율",
+          "sender": "김원빈",
+          "event_type": "INFO",
+          "excerpt": "ZH631 (16:45) 편으로 적하떴고, | 익일 오전검역건으로 확인하겠습니다"
+        }
+      ],
+      "INTERNAL_BACKBONE": [
+        {
+          "room": "빌번호및 입고수량확인방",
+          "sender": "Teresa",
+          "event_type": "ARRIVAL",
+          "excerpt": ". | [아드리아나] [오전 9:10] | [검역 금 오전] |  | [15-1차 미국 후드카날] (Korean Air) | 04월 09일 (목) 16:40 도착 예정 | (180- 18988896 KE0042 70"
+        },
+        {
+          "room": "빌번호및 입고수량확인방",
+          "sender": "김원빈",
+          "event_type": "ARRIVAL",
+          "excerpt": "ZH631 (16:45) 편으로 적하떴고, | 익일 오전검역건으로 확인하겠습니다 | [아드리아나] [오후 4:46] | [검역 금 오전] |  | [15-1차 호주 프리미움 그린] [Qantas Freight] | "
+        },
+        {
+          "room": "빌번호및 입고수량확인방",
+          "sender": "가브리엘",
+          "event_type": "ARRIVAL",
+          "excerpt": "<주말 스케줄 공유 > |  | [15-2차 네덜란드 홀렉스] (Korean Air) | 04월 12일  (일) 16:40 도착 예정 | -> 기타정보 및 서류는 확인되는대로 공유드리겠습니다 |  | [15-1차 태"
+        },
+        {
+          "room": "수입방",
+          "sender": "네노바연주",
+          "event_type": "INFO",
+          "excerpt": "42-1A차 오전 검역 꼭 가능하게 체크부탁드려요"
+        },
+        {
+          "room": "수입방",
+          "sender": "가브리엘",
+          "event_type": "INFO",
+          "excerpt": "측, 제 시간에 문제 없이 검역이 들어갈 겁니다."
+        },
+        {
+          "room": "수입방",
+          "sender": "네노바이사님",
+          "event_type": "INFO",
+          "excerpt": "태국42차 개별 하우스로 진행하기로 한건가요? |  | 참고로, | 선율에도 내용 공유해야 하고, | 하우스비엘도 선율에 전달해야 합니다. | 심동욱 대리님이 무조건 이 내용을 먼저 인지하고 있어야 검역에 문제가 안"
+        }
+      ],
+      "MISC": [
+        {
+          "room": "주님방",
+          "sender": "김원영차장",
+          "event_type": "SHIPMENT",
+          "excerpt": "출고되는 아무곳에서 빼고 검역처리 부탁합니다"
+        }
+      ],
+      "INTERNAL_PRIVATE": [
+        {
+          "room": "김다혜, 전정식, 홍현진, Sam, 이진수, ...",
+          "sender": "아드리아나",
+          "event_type": "ARRIVAL",
+          "excerpt": "[검역 월 오전] |  | [16-2차 네덜란드 홀렉스] (Korean Air) | 04월 19일  (일) 16:40 도착 예정 | (180-50680184 KE0926 90 box) |  |  | 안시리움 품목은 "
+        },
+        {
+          "room": "김다혜, 전정식, 홍현진, Sam, 이진수, ...",
+          "sender": "아드리아나",
+          "event_type": "ARRIVAL",
+          "excerpt": "일요일 도착 (월요일 오전 검역) |  | [16-1차 태국 덴파레] (Thai Cargo) | 04월 19일 (일) 15.25 도착 예정 | ( 217-08911700  TG652  11 box) |  | [아드리"
+        },
+        {
+          "room": "김다혜, 전정식, 홍현진, Sam, 이진수, ...",
+          "sender": "아드리아나",
+          "event_type": "ARRIVAL",
+          "excerpt": "[검역 수 오전] |  | [17-1차 호주 프리미움 그린] [Qantas Freight] | 04월 21일 (화) 19:50 도착 예정 | (081- 62403913 JQ053 94 boxes) |  | 냉장 보관"
+        },
+        {
+          "room": "김다혜, 전정식, 홍현진, Sam, 이진수, ...",
+          "sender": "아드리아나",
+          "event_type": "ARRIVAL",
+          "excerpt": "[검역 목 오전] |  | [17-1차 네덜란드 Holex (KOREAN AIR LINES)] | 04월 22일 (수) 16:40 도착 예정 | (180-50680125 KE0926 30 box) |  | 안시리움 "
+        },
+        {
+          "room": "김다혜, 전정식, 홍현진, Sam, 이진수, ...",
+          "sender": "김다혜",
+          "event_type": "INFO",
+          "excerpt": "아직 항공사 반입이 안 잡혀서요. 확인 하겠습니다 | 금일 검역 끝나지 않으셨나요?"
+        },
+        {
+          "room": "김다혜, 전정식, 홍현진, Sam, 이진수, ...",
+          "sender": "Grb",
+          "event_type": "ORDER_CHANGE",
+          "excerpt": "네 검역 마무리 되었지만 클라이언트쪽에서 물건 상태 확인 요청 들어와서 꼭 오늘 반입 되었으며 합니다. 항공사한테 전화해서 부탁 드렸는데 금방 반입이 잡힐 겁니다. 부탁 드립니다."
+        }
+      ],
+      "SUPPLIER_CHANNEL": [
+        {
+          "room": "경부선 늘봄& 네노바",
+          "sender": "운님",
+          "event_type": "ARRIVAL",
+          "excerpt": "2026년 4월 27일 입고 |  | 그라시오사  15센치- 20박스 |  | Extase 15센치  1박스 |  | 네로   13센치  1박스 |  | Nunzia 13센처 1박스 |  | Prinses Alexi"
+        },
+        {
+          "room": "경부선 늘봄& 네노바",
+          "sender": "조현욱",
+          "event_type": "ORDER_CHANGE",
+          "excerpt": "2026년 4월 27일 네덜란드 발주입니다. |  | 그라시오사  15센치- 20박스 |  | Extase 15센치  1박스 |  | 네로   13센치  1박스 |  | Nunzia 13센치 1박스 | - (발주 가"
+        },
+        {
+          "room": "경부선 일신 &네노바",
+          "sender": "일신원예",
+          "event_type": "DEFECT",
+          "excerpt": "4월 20일주차 파손 및 검역 |  | 크리미아 10 파손 | 핑크익스프레션 10파손 | 만다라 7 파손 | 몬디알 화이트 6 파손 | 사가  2 파손 | 헤르메스 오렌지 2 파손 | 캐롤라인골드 2 파손 | 립스틱"
+        }
+      ]
+    }
+  }
+}

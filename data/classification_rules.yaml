@@ -1,0 +1,286 @@
+# 네노바 카톡 메시지 분류 규칙
+#
+# 이 파일은 관리자가 직접 편집합니다 — 코드 수정 불필요.
+# 저장 후 다음 main.py 실행부터 즉시 반영.
+#
+# 분류 우선순위 (위에서 아래로):
+#   LOGISTICS > DEFECT > CANCEL > ORDER > SHIPMENT > ARRIVAL
+#   > INVENTORY > FINANCE > SYSTEM > INQUIRY > DECISION > PHOTO(최후)
+#
+# 키워드 추가/삭제 후 저장만 하면 끝.
+# 정규식을 쓰고 싶으면 "~:" 접두사 사용 (예: "~:\\d+단").
+
+priority:
+  - LOGISTICS
+  - DEFECT
+  - CANCEL
+  - ORDER
+  - SHIPMENT
+  - ARRIVAL
+  - INVENTORY
+  - FINANCE
+  - SYSTEM
+  - INQUIRY
+  - DECISION
+  - PHOTO
+
+event_types:
+  LOGISTICS:
+    description: 검역·통관·세관·협력사 업무 흐름
+    keywords:
+      - 검역증
+      - 세관
+      - 합격
+      - 불합격
+      - 소독
+      - 통관
+      - ICA
+      - 페킹리스트
+      - 검역품목
+      - 검역 전달
+      - 검역결과
+      - 검역완료
+      - 시료
+      - 식물검역
+
+  DEFECT:
+    description: 불량·클레임·품질이슈 (거래처 품질 협상 포함)
+    keywords:
+      - 불량
+      - 클레임
+      - 파손
+      - 마름
+      - 전량클레임
+      - 겉잎제거
+      - 검역차감
+      - 차감건
+      - 총체
+      - 병해
+      - 곰팡이
+      - 시들
+      - 변색
+      - 꺾임
+      - 부패
+      - 물러짐
+      - 흑점
+      - 품질 이슈
+      - 품질이슈
+      - 품질 문제
+      - 환불
+      - 사과드립니다
+      - 신경 쓰도록
+      - 신경쓰도록
+      - 재발방지
+      - 재발 방지
+
+  CANCEL:
+    description: 주문 취소·보류
+    event_type: ORDER_CHANGE  # 실제 기록 타입 (direction = "-")
+    direction: "-"
+    keywords:
+      - 취소
+      - 삭제
+      - 보류
+
+  ORDER:
+    description: 주문 추가·변경·발주
+    event_type: ORDER_CHANGE
+    direction: "+"
+    keywords:
+      - 추가
+      - 변경
+      # "수정" 은 오타 정정 ("*수정") 오분류 회피 — specific 패턴만 사용
+      - 수정요청
+      - 수정 요청
+      - 수정부탁
+      - 수정 부탁
+      - 수정해주세요
+      - 수정 바랍
+      - 발주
+      - 요청
+      - 잔량
+      - 출고요청
+      - 선출고
+      - 미출고
+      - 재출고
+      - 대체
+
+  SHIPMENT:
+    description: 출고·배송
+    keywords:
+      - 출고
+      - 배차
+      - 배송
+      - 톤
+      - 출발합니다
+      - 배송완료
+      - 경부선
+      - 호남선
+      - 양재동
+      - 출고사진
+
+  ARRIVAL:
+    description: 입고·도착
+    keywords:
+      - 입고
+      - 도착
+      - 항공편
+      - 도착합니
+      - 입항
+      - 도착원가
+      - 도착예정
+      - 스케줄
+      - 통관
+
+  INVENTORY:
+    description: 재고·수량 체크
+    keywords:
+      - 재고
+      - 잔량
+      - 수량
+      - 입고수량
+      - 빌번호
+      - 이상없습니다
+      - 물량표
+
+  FINANCE:
+    description: 단가·가격·정산
+    keywords:
+      - 입금
+      - 단가
+      - 원가
+      - 가격
+      - 견적
+      - 계산서
+
+  SYSTEM:
+    description: 전산·등록·업로드
+    keywords:
+      - 전산
+      - 등록
+      - 수정했습니다
+      - 업로드
+
+  INQUIRY:
+    description: 문의·확인요청·자료요청
+    keywords:
+      - 확인 부탁
+      - 확인부탁
+      - 문의드립
+      - 문의
+      - 가능여부
+      - 가능한
+      - 확인해주세요
+      - 사진 부탁
+      - 박스 사진
+      - 사진 보내
+      - 사진 올려
+      - 사진 주세요
+
+  DECISION:
+    description: 합의·결정·승인·거절
+    keywords:
+      - 네 확인
+      - 불가능
+      - 불가합니다
+      - 어렵다
+      - 진행 어려움
+      - 진행어려움
+      - 클레임 불가
+      - 알겠습니다
+      - 확인했습니다
+      - 승인합니다
+      - 수락합니다
+
+  PHOTO:
+    description: 사진 메시지 (최후 폴백)
+    keywords:
+      - "[사진]"
+      - 사진
+
+# 정규식 규칙 (data/learning/pattern_library.json 의 P001~P039 중 엄선)
+# 키워드 기반 분류보다 먼저 평가됨. 첫 매칭만 적용.
+# direction 명시 시 ORDER_CHANGE + / - 구분에 쓰임.
+regex_rules:
+  # ── 수입/발주 (IMPORT) ──
+  - name: 발주_추가_요청             # P001
+    pattern: '\d+(?:-\d+)?\s*차?\s*(?:중국|콜|콜롬비아|네덜란드|호주|태국|에콰)?\s*.+?(?:발주\s*)?추가'
+    event_type: ORDER_CHANGE
+    direction: "+"
+
+  - name: 변경사항_헤더              # P028
+    pattern: '^\s*\d+[-/]?\d*\s*차?\s*(?:콜|중국|네덜)?\s*[가-힣]+\s*변경사항'
+    event_type: ORDER_CHANGE
+
+  - name: 컷팅_완료_보고             # P006
+    pattern: '컷팅\s*(?:아직\s*)?(?:끝나지\s*)?(?:않았습니다|완료|시작)'
+    event_type: LOGISTICS
+
+  # ── 재고/입고 (INVENTORY) ──
+  - name: 입고수량_이상없음           # P009
+    pattern: '입고수량\s*이상\s*없습니다'
+    event_type: INVENTORY
+
+  - name: 출고후_잔량                # P029
+    pattern: '^\s*\d+\s*차?\s*출고후\s*잔량'
+    event_type: INVENTORY
+
+  - name: 부족_폐기_보고             # P032
+    pattern: '[가-힣]+\s+\d+\s*(?:부족|폐기)(?!없|보)'
+    event_type: INVENTORY
+
+  # ── 도착/물류 (ARRIVAL/LOGISTICS) ──
+  - name: 화물번호_도착              # P017
+    pattern: '\d{3}-\d{8,11}.*?(?:도착|입항|새벽|야간)'
+    event_type: ARRIVAL
+
+  - name: 항공편_편명                # P019
+    pattern: '[A-Z]{2}\d{1,4}\s*\(\d{1,2}:\d{2}\)'
+    event_type: ARRIVAL
+
+  - name: 소독_일정_공지             # P018
+    pattern: '금일\s+(?:오후|새벽|오전)?\s*소독건'
+    event_type: LOGISTICS
+
+  # ── 문의/요청 (INQUIRY) ──
+  - name: 빌_전달_부탁               # P020
+    pattern: '(?:입항|저녁|새벽)\s*빌\s*전달\s*(?:부탁|요청)'
+    event_type: INQUIRY
+
+  # ── 결정/판정 (DECISION) ──
+  - name: 클레임_불가_판정           # P038
+    pattern: '(?:클레임\s*(?:불가능|어렵|진행하기 어렵)|진행하기\s*어렵)'
+    event_type: DECISION
+
+# 방 타입별 이벤트 오버라이드
+# 타입은 core/room_types.classify_room_type() 가 방 이름에서 자동 판별.
+# 같은 키워드라도 방 성격에 따라 의미가 달라서 event_type 을 리매핑한다.
+#
+# 형식:
+#   <방타입>:
+#     <원래 event_type>: <리매핑될 event_type>
+#   default:
+#     <원래 event_type>: <리매핑>   # 모든 타입에 공통 적용 (선택)
+#
+# 관리자가 자유롭게 편집 가능.
+type_overrides:
+  SUPPLIER_CHANNEL:
+    # 거래처 채널에서의 불량 = 거래처의 사과/협상/정보요청 맥락
+    DEFECT: DEFECT_EXTERNAL
+    # 거래처가 출고/발송 부탁하는 SHIPMENT 도 컨텍스트 구분
+    SHIPMENT: SHIPMENT_EXTERNAL
+  PARTNER_CHANNEL:
+    # 선율(검역)/방역 협력사 방 — 업무 정상흐름이므로 LOGISTICS 로 통합
+    ARRIVAL: LOGISTICS_PARTNER
+    INFO: LOGISTICS_PARTNER
+    LOGISTICS: LOGISTICS_PARTNER
+  INTERNAL_BACKBONE:
+    # 내부 불량 보고는 구조화된 DEFECT_REPORT 로 구분
+    DEFECT: DEFECT_REPORT
+  # INTERNAL_PRIVATE, MISC 는 원본 분류 유지
+
+# 정규식 패턴 (고정)
+patterns:
+  sequence: '(\d{1,3})[-/]?(\d{0,2})\s*차?'
+  quantity: '(\d+)\s*(단|송이|박스|속|개|스팀|대)'
+  message_header: '^\[(.+?)\]\s*\[(.+?)\]\s*(.+)$'
