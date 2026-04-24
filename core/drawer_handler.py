@@ -1197,25 +1197,48 @@ def _save_one_bundle(v_hwnd: int) -> bool:
             if root != v_hwnd:
                 r_title = win32gui.GetWindowText(root) or ""
                 print(f"    [서랍] ↓ 좌표 ({dl_x},{dl_y}) 대상 root={r_title[:30]!r} != 뷰어 — 방해 창 강제 닫기", flush=True)
-                # 그 root 창을 Enter 로 처리 (다른 이름으로 저장 / 폴더 선택이면 Enter로 저장됨)
+                # 1단계: WM_CLOSE 강제 (가장 확실)
                 try:
-                    win32gui.SetForegroundWindow(root)
-                    time.sleep(0.2)
-                    if any(k in r_title for k in ("다른 이름으로 저장", "Save As",
-                                                    "폴더 선택", "Select Folder")):
-                        pyautogui.press("enter")  # 저장 확정
-                        time.sleep(1.0)
-                        # 덮어쓰기 Y
-                        pyautogui.press("y")
-                        time.sleep(0.5)
-                    else:
-                        pyautogui.press("escape")
-                        time.sleep(0.3)
+                    win32gui.PostMessage(root, _wc2.WM_CLOSE, 0, 0)
+                    time.sleep(0.5)
+                except Exception:
+                    pass
+                # 2단계: 여전히 살아있으면 SetForeground + Enter/ESC
+                if win32gui.IsWindow(root) and win32gui.IsWindowVisible(root):
+                    try:
+                        win32gui.SetForegroundWindow(root)
+                        time.sleep(0.2)
+                        if any(k in r_title for k in ("다른 이름으로 저장", "Save As",
+                                                        "폴더 선택", "Select Folder")):
+                            pyautogui.press("enter")
+                            time.sleep(0.7)
+                            pyautogui.press("y")
+                            time.sleep(0.4)
+                        else:
+                            pyautogui.press("escape")
+                            time.sleep(0.3)
+                        # 3단계: 그래도 살아있으면 또 WM_CLOSE
                         if win32gui.IsWindow(root) and win32gui.IsWindowVisible(root):
                             win32gui.PostMessage(root, _wc2.WM_CLOSE, 0, 0)
                             time.sleep(0.3)
-                except Exception as e:
-                    print(f"    [서랍] 방해 창 닫기 실패: {e}", flush=True)
+                    except Exception as e:
+                        print(f"    [서랍] 방해 창 닫기 실패: {e}", flush=True)
+                # 모든 같은 제목 다이얼로그 한 번에 닫기 (혹시 여러 개 누적)
+                try:
+                    DLG_KEYS = ("다른 이름으로 저장", "Save As", "폴더 선택", "Select Folder")
+                    def _close_all_dlgs(h, _):
+                        if not win32gui.IsWindowVisible(h):
+                            return
+                        t = win32gui.GetWindowText(h) or ""
+                        if any(k in t for k in DLG_KEYS):
+                            try:
+                                win32gui.PostMessage(h, _wc2.WM_CLOSE, 0, 0)
+                            except Exception:
+                                pass
+                    win32gui.EnumWindows(_close_all_dlgs, None)
+                    time.sleep(0.3)
+                except Exception:
+                    pass
                 # 뷰어 포커스 재확보
                 try:
                     win32gui.SetWindowPos(v_hwnd, -1, 0, 0, 0, 0, SWP)
