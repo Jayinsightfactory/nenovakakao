@@ -1084,13 +1084,18 @@ def _save_one_bundle(v_hwnd: int) -> bool:
         vr_orig = win32gui.GetWindowRect(v_hwnd)
         vw = vr_orig[2] - vr_orig[0]
         vh = vr_orig[3] - vr_orig[1]
-        # 뷰어 중심이 액션 로그 영역 (x>=1620) 안이면 왼쪽으로 이동
-        vc_x = (vr_orig[0] + vr_orig[2]) // 2
-        if vc_x >= 1500 or vr_orig[2] > 1600:
-            # 왼쪽으로 이동 (100, 50) — 화면 좌상단
-            new_x = max(50, min(1500 - vw, 100))
-            win32gui.MoveWindow(v_hwnd, new_x, 50, vw, vh, True)
-            time.sleep(0.3)
+        print(f"    [서랍] 뷰어 원본 rect={vr_orig} size={vw}x{vh}", flush=True)
+        # 뷰어를 표준 사이즈 (565x510, x=100,y=50) 로 강제. 사이즈 다르면 ↓ 좌표가 다 달라짐.
+        # 표준 사이즈: 565x510 (이전 성공 케이스 일관). 큰 뷰어도 강제 축소 후 클릭.
+        STD_X, STD_Y, STD_W, STD_H = 100, 50, 565, 510
+        if (vw, vh) != (STD_W, STD_H) or (vr_orig[0], vr_orig[1]) != (STD_X, STD_Y):
+            try:
+                win32gui.MoveWindow(v_hwnd, STD_X, STD_Y, STD_W, STD_H, True)
+                time.sleep(0.3)
+                vr_after = win32gui.GetWindowRect(v_hwnd)
+                print(f"    [서랍] 뷰어 → 표준 ({STD_X},{STD_Y},{STD_W}x{STD_H}), 실제={vr_after}", flush=True)
+            except Exception as e:
+                print(f"    [서랍] 뷰어 표준화 실패: {e}", flush=True)
         # TOPMOST
         SWP = _wc.SWP_NOMOVE | _wc.SWP_NOSIZE | _wc.SWP_SHOWWINDOW
         win32gui.SetWindowPos(v_hwnd, -1, 0, 0, 0, 0, SWP)
