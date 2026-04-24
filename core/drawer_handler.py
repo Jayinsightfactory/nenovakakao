@@ -1189,56 +1189,39 @@ def _save_one_bundle(v_hwnd: int) -> bool:
         except Exception:
             pass
 
-        # WindowFromPoint 로 ↓ 위치 대상 창 확인 — 뷰어 아니면 그 창 강제 닫기 후 재검증
+        # WindowFromPoint 로 ↓ 위치 대상 창 확인 — 뷰어 아니면 화면 밖으로 이동시켜 클릭 영역 비움.
+        # WM_CLOSE 안 통하는 좀비 다이얼로그 대비 — 다이얼로그를 (-3000, -3000) 로 이동
+        # → visible 이지만 클릭 영역 안 가림 → ↓ 클릭이 뷰어에 정확히 감.
         try:
             import win32con as _wc2
             target = win32gui.WindowFromPoint((dl_x, dl_y))
             root = win32gui.GetAncestor(target, 2)  # GA_ROOT
             if root != v_hwnd:
                 r_title = win32gui.GetWindowText(root) or ""
-                print(f"    [서랍] ↓ 좌표 ({dl_x},{dl_y}) 대상 root={r_title[:30]!r} != 뷰어 — 방해 창 강제 닫기", flush=True)
-                # 1단계: WM_CLOSE 강제 (가장 확실)
-                try:
-                    win32gui.PostMessage(root, _wc2.WM_CLOSE, 0, 0)
-                    time.sleep(0.5)
-                except Exception:
-                    pass
-                # 2단계: 여전히 살아있으면 SetForeground + Enter/ESC
-                if win32gui.IsWindow(root) and win32gui.IsWindowVisible(root):
-                    try:
-                        win32gui.SetForegroundWindow(root)
-                        time.sleep(0.2)
-                        if any(k in r_title for k in ("다른 이름으로 저장", "Save As",
-                                                        "폴더 선택", "Select Folder")):
-                            pyautogui.press("enter")
-                            time.sleep(0.7)
-                            pyautogui.press("y")
-                            time.sleep(0.4)
-                        else:
-                            pyautogui.press("escape")
-                            time.sleep(0.3)
-                        # 3단계: 그래도 살아있으면 또 WM_CLOSE
-                        if win32gui.IsWindow(root) and win32gui.IsWindowVisible(root):
-                            win32gui.PostMessage(root, _wc2.WM_CLOSE, 0, 0)
-                            time.sleep(0.3)
-                    except Exception as e:
-                        print(f"    [서랍] 방해 창 닫기 실패: {e}", flush=True)
-                # 모든 같은 제목 다이얼로그 한 번에 닫기 (혹시 여러 개 누적)
-                try:
-                    DLG_KEYS = ("다른 이름으로 저장", "Save As", "폴더 선택", "Select Folder")
-                    def _close_all_dlgs(h, _):
-                        if not win32gui.IsWindowVisible(h):
-                            return
-                        t = win32gui.GetWindowText(h) or ""
-                        if any(k in t for k in DLG_KEYS):
-                            try:
-                                win32gui.PostMessage(h, _wc2.WM_CLOSE, 0, 0)
-                            except Exception:
-                                pass
-                    win32gui.EnumWindows(_close_all_dlgs, None)
-                    time.sleep(0.3)
-                except Exception:
-                    pass
+                print(f"    [서랍] ↓ 좌표 ({dl_x},{dl_y}) 대상 root={r_title[:30]!r} != 뷰어 — 방해 창 화면 밖으로", flush=True)
+                # 모든 동일/유사 다이얼로그를 화면 밖으로 일괄 이동
+                DLG_KEYS = ("다른 이름으로 저장", "Save As", "폴더 선택", "Select Folder",
+                              "Browse For Folder")
+                moved = []
+                def _move_off(h, _):
+                    if not win32gui.IsWindowVisible(h):
+                        return
+                    t = win32gui.GetWindowText(h) or ""
+                    if any(k in t for k in DLG_KEYS):
+                        try:
+                            r = win32gui.GetWindowRect(h)
+                            w, hh = r[2]-r[0], r[3]-r[1]
+                            # 일단 WM_CLOSE 시도
+                            win32gui.PostMessage(h, _wc2.WM_CLOSE, 0, 0)
+                            # 그리고 화면 밖으로 이동 (close 무시되면 보험)
+                            win32gui.MoveWindow(h, -3000, -3000, w, hh, False)
+                            moved.append(t[:30])
+                        except Exception:
+                            pass
+                win32gui.EnumWindows(_move_off, None)
+                if moved:
+                    print(f"    [서랍] 방해 창 {len(moved)}개 화면 밖으로: {moved}", flush=True)
+                time.sleep(0.4)
                 # 뷰어 포커스 재확보
                 try:
                     win32gui.SetWindowPos(v_hwnd, -1, 0, 0, 0, 0, SWP)
