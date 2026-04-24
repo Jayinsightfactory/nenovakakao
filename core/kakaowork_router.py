@@ -429,11 +429,11 @@ def _send_single(conv_id: str, text: str) -> bool:
 
 def send_image_block(conv_id: str, image_url: str) -> bool:
     """
-    이미지 URL 단순 전송 → 카카오워크 자동 link preview 카드.
+    text URL 자동 카드 + image_link 블록 인라인 썸네일 동시 전송.
 
-    이전 시도 (image_link 블록) 는 클릭 시 '일정 등록' 공유 UX 로 빠지거나
-    렌더 자체가 미미함. text 에 URL 단독으로 보내면 카카오워크가 자동
-    link preview 카드 생성 + 큰 이미지 미리보기 + 클릭 시 브라우저 원본 열림.
+    text 에 URL 단독 → 카카오워크 자동 link preview 카드 (큰 이미지 + 클릭 원본).
+    blocks 에 image_link → 채팅 본문 인라인 썸네일.
+    두 가지가 한 메시지에 같이 보임.
 
     Args:
         conv_id: 대상 방 conversation_id
@@ -441,7 +441,10 @@ def send_image_block(conv_id: str, image_url: str) -> bool:
     """
     payload = {
         "conversation_id": conv_id,
-        "text": image_url,  # URL 단독 → 워크 자동 카드
+        "text": image_url,
+        "blocks": [
+            {"type": "image_link", "url": image_url},
+        ],
     }
     try:
         resp = requests.post(
