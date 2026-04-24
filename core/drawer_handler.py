@@ -1289,6 +1289,25 @@ def _save_one_bundle(v_hwnd: int) -> bool:
                         time.sleep(0.2)
                 except Exception:
                     pass
+
+                # 파일명 입력란에 unique timestamp 부여 → "이미 있습니다" 팝업 회피
+                # Save As 다이얼로그 표준 컨트롤 ID:
+                #   1148 (0x47C) = cmb13 = 파일명 ComboBoxEx32 (Vista+)
+                # 그 안의 Edit 자식에 SetText
+                try:
+                    import time as _t
+                    unique_name = f"PHOTO_{int(_t.time()*1000)}.jpg"
+                    # 1148 = cmb13 (Vista+ 표준)
+                    name_combo = win32gui.GetDlgItem(save_dlg, 1148)
+                    if name_combo:
+                        # ComboBoxEx → child ComboBox → child Edit
+                        # 직접 SetWindowText 시도 (ComboBoxEx 가 Edit 까지 위임)
+                        win32gui.SendMessage(name_combo, 0x000C, 0, unique_name)  # WM_SETTEXT
+                        time.sleep(0.1)
+                        print(f"    [서랍] 파일명 자동 부여: {unique_name}", flush=True)
+                except Exception as e:
+                    print(f"    [서랍] 파일명 부여 스킵 ({e})", flush=True)
+
                 # IDOK = 1 버튼 BM_CLICK
                 BM_CLICK = 0x00F5
                 btn = win32gui.GetDlgItem(save_dlg, 1)
