@@ -1233,11 +1233,28 @@ def _save_one_bundle(v_hwnd: int) -> bool:
             pass
 
         mark("download.dropdown_clicked", "before", {"xy": [dl_x, dl_y], "retry": retry})
-        # moveTo + click 분리 (WM_MOUSEMOVE 보장)
-        pyautogui.moveTo(dl_x, dl_y, duration=0.1)
-        time.sleep(0.15)
-        pyautogui.click(dl_x, dl_y)
-        time.sleep(1.5)  # 1.0 → 1.5 대기 연장
+
+        # 우선: PostMessage 로 뷰어에 직접 클릭 송출 (다이얼로그 회피).
+        # 클라이언트 좌표 변환 후 WM_LBUTTONDOWN/UP. Z-order 무관.
+        pm_ok = False
+        try:
+            import win32con as _wc_pm
+            client_x, client_y = win32gui.ScreenToClient(v_hwnd, (dl_x, dl_y))
+            lparam = (client_y << 16) | (client_x & 0xFFFF)
+            win32gui.PostMessage(v_hwnd, _wc_pm.WM_LBUTTONDOWN, _wc_pm.MK_LBUTTON, lparam)
+            time.sleep(0.05)
+            win32gui.PostMessage(v_hwnd, _wc_pm.WM_LBUTTONUP, 0, lparam)
+            pm_ok = True
+            print(f"    [서랍] ↓ PostMessage 송출 (client {client_x},{client_y})", flush=True)
+        except Exception as e:
+            print(f"    [서랍] PostMessage 실패 ({e}) → pyautogui 클릭", flush=True)
+
+        if not pm_ok:
+            # 폴백: pyautogui (예전 방식)
+            pyautogui.moveTo(dl_x, dl_y, duration=0.1)
+            time.sleep(0.15)
+            pyautogui.click(dl_x, dl_y)
+        time.sleep(1.5)
         mark("download.dropdown_clicked", "after")
         dd = _find_dropdown_menu()
         if dd:
