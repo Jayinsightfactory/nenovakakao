@@ -1455,13 +1455,7 @@ def download_photos_from_drawer(
                 continue  # 빈 셀
 
             v_hwnd, v_title, _ = viewer
-
-            if v_title in seen_viewers:
-                pyautogui.press("escape")
-                time.sleep(0.3)
-                continue
-            seen_viewers.add(v_title)
-            batch_new_viewers += 1
+            # batch_new_viewers 는 새 파일 받은 셀만 카운트 (cell_new 검사 후 결정).
 
             mark("download.viewer_detected", "after", {"title": v_title, "cell": idx_global})
             print(f"    [서랍] [b{batch+1}/{idx_global}] 뷰어: {v_title}", flush=True)
@@ -1485,6 +1479,7 @@ def download_photos_from_drawer(
                     time.sleep(1.0)
             all_new.extend(cell_new)
             if cell_new:
+                batch_new_viewers += 1  # 실제 새 파일 받은 셀만 카운트
                 print(f"    [서랍] [b{batch+1}/{idx_global}] +{len(cell_new)}장 (누적 {len(all_new)})", flush=True)
             else:
                 reason = "다이얼로그 미감지" if not dialog_ok else "저장 후 새 파일 없음"
