@@ -1459,7 +1459,12 @@ def download_photos_from_drawer(
     scroll_cy = dr[1] + grid_y0 + cell_dy  # row 1 center
 
     idx_global = 0
+    consecutive_fail = 0  # 연속 cell_new=[] 카운터 (모달 stuck 신호)
+    MAX_CONSECUTIVE_FAIL = 3
+    stuck = False
     for batch in range(MAX_BATCHES):
+        if stuck:
+            break
         batch_added_before = len(all_new)
         batch_new_viewers = 0
         for (px, py) in positions:
@@ -1502,11 +1507,17 @@ def download_photos_from_drawer(
                     time.sleep(1.0)
             all_new.extend(cell_new)
             if cell_new:
-                batch_new_viewers += 1  # 실제 새 파일 받은 셀만 카운트
+                batch_new_viewers += 1
+                consecutive_fail = 0  # 성공 시 리셋
                 print(f"    [서랍] [b{batch+1}/{idx_global}] +{len(cell_new)}장 (누적 {len(all_new)})", flush=True)
             else:
+                consecutive_fail += 1
                 reason = "다이얼로그 미감지" if not dialog_ok else "저장 후 새 파일 없음"
-                print(f"    [서랍] [b{batch+1}/{idx_global}] 실패 ({reason})", flush=True)
+                print(f"    [서랍] [b{batch+1}/{idx_global}] 실패 ({reason}) — 연속 실패 {consecutive_fail}/{MAX_CONSECUTIVE_FAIL}", flush=True)
+                if consecutive_fail >= MAX_CONSECUTIVE_FAIL:
+                    print(f"    [서랍] 연속 {consecutive_fail}회 실패 → 모달 stuck 의심, 즉시 종료", flush=True)
+                    stuck = True
+                    break
 
         if len(all_new) >= max_bundles:
             print(f"    [서랍] max_bundles={max_bundles} 도달 → 종료", flush=True)

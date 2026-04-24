@@ -244,6 +244,36 @@ def _process_room_result(
         from core.message_extractor import close_chat_room
         close_chat_room()
 
+        # 모달 stuck 잔존 다이얼로그/뷰어 강제 청소 (다음 방 깨끗한 상태)
+        try:
+            import win32gui as _w32, win32con as _wc
+            _DLG_KEYS = ("다른 이름으로 저장", "Save As", "폴더 선택",
+                          "Select Folder", "Browse For Folder")
+            def _purge(h, _):
+                if not _w32.IsWindow(h): return
+                t = _w32.GetWindowText(h) or ""
+                cls = _w32.GetClassName(h) or ""
+                # 다이얼로그 / 뷰어 / 서랍 모두 정리 (분리창은 이미 close_chat_room 완료)
+                kill = False
+                if any(k in t for k in _DLG_KEYS):
+                    kill = True
+                elif "EVA_Window_Dblclk" in cls and any(yr in t for yr in ("2026-", "2025-")):
+                    kill = True
+                elif "채팅방 서랍" in t:
+                    kill = True
+                if kill:
+                    try:
+                        _w32.PostMessage(h, _wc.WM_CLOSE, 0, 0)
+                        # 화면 밖 이동 (close 무시 대비)
+                        r = _w32.GetWindowRect(h)
+                        _w32.MoveWindow(h, -3000, -3000, r[2]-r[0], r[3]-r[1], False)
+                    except Exception:
+                        pass
+            _w32.EnumWindows(_purge, None)
+            time.sleep(0.3)
+        except Exception as e:
+            print(f"     → 잔존 정리 예외 (무시): {e}")
+
     # ── 구글시트에 분류 기록 ──
     try:
         logged = classify_and_log_delta(room_name, delta)
