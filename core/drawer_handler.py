@@ -1265,7 +1265,61 @@ def _save_one_bundle(v_hwnd: int) -> bool:
             print(f"    [서랍] ↓ 메뉴 미출현 — 재시도 (retry {retry+1}/3)", flush=True)
             time.sleep(0.4)
     if not dropdown_hwnd:
-        print(f"    [서랍] ↓ 메뉴 출현 실패 (3회) — 스킵", flush=True)
+        # 메뉴 안 뜸 = 카톡이 단일 저장 다이얼로그 직접 띄웠을 가능성.
+        # "다른 이름으로 저장" 다이얼로그가 있으면 IDOK (저장) 버튼 직접 송출.
+        try:
+            import win32con as _wc_dlg
+            save_dlg = None
+            def _find_dlg(h, _):
+                nonlocal save_dlg
+                if save_dlg or not win32gui.IsWindowVisible(h):
+                    return
+                t = win32gui.GetWindowText(h) or ""
+                if any(k in t for k in ("다른 이름으로 저장", "Save As", "폴더 선택")):
+                    cls = win32gui.GetClassName(h) or ""
+                    if cls == "#32770":
+                        save_dlg = h
+            win32gui.EnumWindows(_find_dlg, None)
+            if save_dlg:
+                # 다이얼로그를 화면 안으로 복원 (이전 MoveWindow 로 -3000 이동됐을 수도)
+                try:
+                    r = win32gui.GetWindowRect(save_dlg)
+                    if r[0] < 0:
+                        win32gui.MoveWindow(save_dlg, 200, 100, r[2]-r[0], r[3]-r[1], True)
+                        time.sleep(0.2)
+                except Exception:
+                    pass
+                # IDOK = 1 버튼 BM_CLICK
+                BM_CLICK = 0x00F5
+                btn = win32gui.GetDlgItem(save_dlg, 1)
+                if btn:
+                    print(f"    [서랍] ↓ 메뉴 없음 → 다이얼로그 IDOK 직접 송출", flush=True)
+                    win32gui.SendMessage(btn, BM_CLICK, 0, 0)
+                    time.sleep(1.0)
+                    # 덮어쓰기 확인 팝업 처리
+                    confirm_dlg = None
+                    def _find_ovr(h, _):
+                        nonlocal confirm_dlg
+                        if confirm_dlg or not win32gui.IsWindowVisible(h):
+                            return
+                        t = win32gui.GetWindowText(h) or ""
+                        if any(k in t for k in ("확인", "바꾸", "있습니다")):
+                            cls = win32gui.GetClassName(h) or ""
+                            if cls == "#32770":
+                                confirm_dlg = h
+                    win32gui.EnumWindows(_find_ovr, None)
+                    if confirm_dlg:
+                        # IDYES = 6
+                        ybtn = win32gui.GetDlgItem(confirm_dlg, 6)
+                        if ybtn:
+                            print(f"    [서랍] 덮어쓰기 IDYES 송출", flush=True)
+                            win32gui.SendMessage(ybtn, BM_CLICK, 0, 0)
+                            time.sleep(0.5)
+                    print(f"    [서랍] 단일 저장 모드 완료 — 다이얼로그 우회 성공", flush=True)
+                    return True  # 저장 성공 (호출자가 파일 스냅샷으로 검증)
+        except Exception as e:
+            print(f"    [서랍] 다이얼로그 IDOK 폴백 실패: {e}", flush=True)
+        print(f"    [서랍] ↓ 메뉴 출현 실패 (3회) + 다이얼로그도 없음 — 스킵", flush=True)
         return False
 
     # 드롭다운 메뉴에서 "묶음사진 전체저장" 찾기 (Vision, 실패 시 하드코딩 하단 항목)
