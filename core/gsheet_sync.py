@@ -20,6 +20,7 @@ from google.oauth2.service_account import Credentials
 from dotenv import load_dotenv
 
 from core.room_types import classify_room_type
+from core.sender_aliases import normalize_sender
 
 load_dotenv(Path(__file__).parent.parent / ".env", override=True)
 
@@ -170,8 +171,13 @@ def _ensure_worksheets():
 # 카톡 메시지 패턴: [발신자] [시각] 내용
 MSG_PATTERN = re.compile(r"^\[(.+?)\]\s*\[(.+?)\]\s*(.+)$")
 
-# 차수 패턴: 14-1, 15-2차, 14차
-SEQ_PATTERN = re.compile(r"(\d{1,3})[-/]?(\d{0,2})\s*차?")
+# 차수 패턴: 14-1차 / 15-2차 / 14차 / 14-1 (콜 표기) / "차수 16-3" 형태
+# 잘못 매칭되던 사례: "5장", "3건", "5송이" 등 단순 수량 → 빈 매치 (단독 숫자 불허)
+# 그룹: (a)차수형 메인숫자 (b)차수형 서브숫자 (c)N-N형 메인숫자 (d)N-N형 서브숫자
+SEQ_PATTERN = re.compile(
+    r"(?<!\d)(\d{1,3})(?:[-/](\d{1,2}))?(?=\s*차)"
+    r"|(?<!\d)(\d{1,3})[-/](\d{1,2})(?!\d)"
+)
 
 # 수량 패턴: 10단, 5송이, 3박스
 QTY_PATTERN = re.compile(r"(\d+)\s*(단|송이|박스|속|개|스팀|대)")
@@ -321,6 +327,12 @@ def _load_known_suppliers() -> list[str]:
     return config.get("suppliers", [])
 
 
+def _is_hangul(ch: str) -> bool:
+    if not ch:
+        return False
+    return "가" <= ch <= "힣"
+
+
 def _apply_type_override(event_type: str, room_type: str, rules: dict) -> str:
     """방타입별 event_type 오버라이드. YAML type_overrides 섹션 참조."""
     overrides = rules.get("type_overrides", {}) or {}
@@ -385,12 +397,14 @@ def parse_message(text: str, room_name: str = "") -> dict:
         result["event_type"], result["room_type"], rules
     )
 
-    # 차수 추출
+    # 차수 추출 — 두 가지 alternation 그룹 중 매칭된 것을 선택
     seq_m = SEQ_PATTERN.search(text)
     if seq_m:
-        main = seq_m.group(1)
-        sub = seq_m.group(2)
-        result["sequence"] = f"{main}-{sub}" if sub else main
+        g1, g2, g3, g4 = seq_m.group(1), seq_m.group(2), seq_m.group(3), seq_m.group(4)
+        if g1:  # 차수형 (X차 / X-Y차)
+            result["sequence"] = f"{g1}-{g2}" if g2 else g1
+        elif g3:  # N-N 형 (콜 표기)
+            result["sequence"] = f"{g3}-{g4}"
 
     # 품목/품종 추출
     products = _load_known_products()
@@ -410,9 +424,17 @@ def parse_message(text: str, room_name: str = "") -> dict:
         result["unit"] = qty_m.group(2)
 
     # 거래처 추출: (1) known suppliers 에서 문자열 매칭
+    # 짧은 거래처명(예: '그린')이 다른 단어 내부('연그린')와 부분일치하면 오탐 →
+    # 좌측이 한글로 이어지면 거절 (우측은 조사/접미사 자연 결합이 흔하므로 허용)
     suppliers = _load_known_suppliers()
     for s in suppliers:
-        if s in text:
+        idx = text.find(s)
+        if idx < 0:
+            continue
+        if len(s) >= 4:
+            result["supplier"] = s
+            break
+        if idx == 0 or not _is_hangul(text[idx - 1]):
             result["supplier"] = s
             break
 
@@ -570,10 +592,11 @@ def classify_and_log_delta(room_name: str, delta: str) -> int:
         if not m:
             continue
 
-        sender, time_str, content = m.groups()
+        sender_raw, time_str, content = m.groups()
+        sender = normalize_sender(sender_raw)
         msg_id = _make_message_id(room_name, sender, time_str, content)
 
-        # Layer 1: 이벤트로그
+        # Layer 1: 이벤트로그 (정규화된 발신자명 기록 — 동명이인/별칭 통합)
         layer1_rows.append([
             time_str, room_name, stage_name, sender, content[:500], msg_id,
         ])
