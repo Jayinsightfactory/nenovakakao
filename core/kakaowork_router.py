@@ -701,10 +701,18 @@ def send_delta_interleaved(
                     window.left + 320, window.top + window.height - 30)
             # 미러방 이름은 '[미러] X' 또는 'NV##:X' 또는 'NV##' 형태 가능
             code_hint = f" 또는 '{nv_name}' 또는 '{nv_code}'로 시작" if nv_code else ""
+            # 한 글자 차이로 헷갈리는 방 이름들을 명시 — 화면 인식 모델이 비슷한
+            # 글자(불량/물량, 수입/수출 등)를 구별하도록 강조. 기존 프롬프트는
+            # 수입방 vs 수입(불량 공유방) 만 다루어 "불량 공유방" vs "물량 공유방"
+            # 충돌(한 글자 차이) 에 대해 38.6% 인식률 / 14.3% (4/20일) 까지 떨어짐.
             target_desc = (
                 f"'[미러] {expected_label}' 텍스트가 표시된 채팅방 행{code_hint}. "
-                f"정확히 '{expected_label}'를 포함하는 것만. "
-                f"비슷하지만 다른 방('수입방' vs '수입(불량 공유방)' 등)은 found=false."
+                f"정확히 '{expected_label}'와 **글자 단위로** 일치하는 것만 선택. "
+                f"한 글자만 달라도 다른 방이다. 특히 주의할 충돌 사례:\n"
+                f"  - '불량 공유방' vs '물량 공유방' (불/물 한 글자 차이)\n"
+                f"  - '수입방' vs '수입(불량 공유방)' vs '수입(물량 공유방)'\n"
+                f"  - '수입/영업/현장' vs '영업/현장' vs '수입/영업'\n"
+                f"비슷하지만 다른 방은 반드시 found=false. 확실하지 않으면 found=false."
             )
             r = find_and_click(
                 bbox, target_desc,
@@ -719,13 +727,17 @@ def send_delta_interleaved(
 
             # 클릭 후 헤더 검증
             time.sleep(1.5)
-            # Vision이 높은 confidence(≥0.9)로 찾았으면 OCR 검증 스킵
-            # (헤더 OCR 영역이 작아 Vision이 읽기 어려움)
-            if r.confidence >= 0.9:
+            # 충돌 위험 방(한 글자 차이) 은 confidence 무관하게 헤더 검증 강제 —
+            # Vision 이 0.9 이상 확신해도 '불량/물량' 같은 한 글자 차이 오인이 빈번.
+            CONFLICT_PRONE = ("불량 공유방", "물량 공유방", "수입/영업", "영업/현장")
+            high_risk = any(k in expected_label for k in CONFLICT_PRONE)
+            if r.confidence >= 0.9 and not high_risk:
                 print(f"  [TRUST-VISION] conf={r.confidence:.2f} ≥ 0.9 → OCR 검증 스킵", flush=True)
                 return True
             if _verify_room(window, expected_label):
                 return True
+            if high_risk:
+                print(f"  [VERIFY-FORCED] '{expected_label}' 충돌 위험 방 — 헤더 불일치, 재시도", flush=True)
 
             print(f"  [VISION-RETRY] {attempt+1}/{max_retries+1} - 클릭 후 헤더 불일치", flush=True)
             _send_single(conv_id, "\u2063")

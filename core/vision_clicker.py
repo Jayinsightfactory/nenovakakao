@@ -32,6 +32,7 @@ DATA_DIR = ROOT / "data"
 CAPTURES_DIR = ROOT / "captures" / "vision"
 CAPTURES_DIR.mkdir(parents=True, exist_ok=True)
 CLICK_LOG = DATA_DIR / "vision_click_log.jsonl"
+ANCHOR_CACHE_FILE = DATA_DIR / "vision_anchor_cache.json"
 
 VISION_MODEL_PRIMARY = "claude-haiku-4-5-20251001"     # 빠르고 싼 기본
 VISION_MODEL_FALLBACK = "claude-opus-4-7"              # 고정밀 (실패 시 재시도)
@@ -65,6 +66,67 @@ def _log(entry: dict) -> None:
             f.write(json.dumps(entry, ensure_ascii=False) + "\n")
     except Exception:
         pass
+
+
+# ─── 좌표 앵커 캐시 ───
+# Vision OCR 이 실패한 태그도 직전 성공 좌표로 클릭 → 시스템 안정성 확보.
+# 카카오워크 NV 탭처럼 OCR 24% 성공률 문제를 좌표 캐시로 우회.
+_ANCHOR_BBOX_TOLERANCE = 80  # 캐시된 bbox 와 현재 bbox 가 이 픽셀 이상 차이나면 무효
+
+
+def _load_anchor_cache() -> dict:
+    if not ANCHOR_CACHE_FILE.exists():
+        return {}
+    try:
+        with open(ANCHOR_CACHE_FILE, encoding="utf-8") as f:
+            return json.load(f) or {}
+    except Exception:
+        return {}
+
+
+def _save_anchor_cache(cache: dict) -> None:
+    try:
+        DATA_DIR.mkdir(parents=True, exist_ok=True)
+        with open(ANCHOR_CACHE_FILE, "w", encoding="utf-8") as f:
+            json.dump(cache, f, ensure_ascii=False, indent=2)
+    except Exception:
+        pass
+
+
+def _remember_anchor(tag: str, bbox: tuple, x: int, y: int) -> None:
+    """OCR 성공 시 호출 — 다음 OCR 실패에 대비해 좌표 저장."""
+    if not tag:
+        return
+    cache = _load_anchor_cache()
+    cache[tag] = {
+        "x": int(x),
+        "y": int(y),
+        "bbox": [int(v) for v in bbox],
+        "ts": time.time(),
+        "hit_count": cache.get(tag, {}).get("hit_count", 0) + 1,
+    }
+    _save_anchor_cache(cache)
+
+
+def _recall_anchor(tag: str, bbox: tuple) -> tuple[int, int] | None:
+    """OCR 실패 시 호출 — 캐시 좌표 반환. bbox 가 크게 다르면 None.
+
+    bbox 가 다르면 화면 레이아웃이 바뀐 것 → 캐시는 신뢰할 수 없음.
+    """
+    if not tag:
+        return None
+    cache = _load_anchor_cache()
+    entry = cache.get(tag)
+    if not entry:
+        return None
+    cached_bbox = entry.get("bbox") or []
+    if len(cached_bbox) != 4:
+        return None
+    # bbox 코너가 일정 픽셀 이내로 일치할 때만 신뢰
+    for cur, cached in zip(bbox, cached_bbox):
+        if abs(cur - cached) > _ANCHOR_BBOX_TOLERANCE:
+            return None
+    return entry["x"], entry["y"]
 
 
 def _rotate_captures() -> None:
@@ -314,6 +376,28 @@ def find_and_click(
             # stdout 이 cp949 이면 이모지 등으로 UnicodeEncodeError. 안전 프린트.
             _safe = (result.debug or "")[:100].encode("ascii", errors="replace").decode("ascii")
             print(f"  [VISION] {tag} 못찾음: {_safe}", flush=True)
+
+        # ── 좌표 앵커 캐시 폴백 ──
+        # OCR 실패 시 직전 성공 좌표로 폴백 시도. NV 탭처럼 자주 실패하지만 위치가
+        # 거의 안 바뀌는 항목에 효과적. dry_run 모드에선 클릭 안 함.
+        if not dry_run:
+            cached = _recall_anchor(tag, bbox)
+            if cached is not None:
+                cx, cy = cached
+                print(f"  [VISION-ANCHOR] {tag} 캐시 좌표 폴백 → ({cx}, {cy})", flush=True)
+                try:
+                    if double:
+                        pyautogui.doubleClick(cx, cy)
+                    else:
+                        pyautogui.click(cx, cy)
+                    log_entry["fallback_anchor"] = {"x": cx, "y": cy}
+                    log_entry["clicked"] = True
+                    # 폴백 클릭은 found=True 로 다루지 않음 — caller 가 후속 검증으로
+                    # 실제 성공 여부 판정. 여기선 좌표만 채워서 진행 가능하게 함.
+                    result.x = cx
+                    result.y = cy
+                except Exception as e:
+                    log_entry["fallback_click_error"] = str(e)
         _log(log_entry)
         return result
 
@@ -331,6 +415,8 @@ def find_and_click(
         else:
             pyautogui.click(result.x, result.y)
         log_entry["clicked"] = True
+        # OCR 성공 클릭 → 다음 실패에 대비해 좌표 캐시 갱신
+        _remember_anchor(tag, bbox, result.x, result.y)
     except Exception as e:
         log_entry["click_error"] = str(e)
 
