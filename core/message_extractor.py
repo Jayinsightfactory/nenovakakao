@@ -57,6 +57,33 @@ def _save_usage_stats(stats: dict):
         json.dump(stats, f, ensure_ascii=False, indent=2)
 
 
+# ─── 해시 중복 차단 ───
+# 구버전: stats["processed_hashes"] = [hash, hash, ...] (flat list, 1000 cap, 활동량
+#         높은 한 방이 다른 방의 해시를 밀어내는 문제 있음)
+# 신버전: stats["hashes_by_room"][room] = [hash, ...] (방별 100 cap, 균형 보장)
+# 마이그레이션: 조회는 양쪽 모두, 신규 기록은 신형만.
+
+_HASH_PER_ROOM_CAP = 100
+
+
+def _hash_already_seen(stats: dict, room_name: str, content_hash: str) -> bool:
+    by_room = stats.get("hashes_by_room", {})
+    if content_hash in by_room.get(room_name, []):
+        return True
+    # 구형 flat list 도 조회 (마이그레이션 기간 false negative 방지)
+    if content_hash in stats.get("processed_hashes", []):
+        return True
+    return False
+
+
+def _remember_hash(stats: dict, room_name: str, content_hash: str) -> None:
+    by_room = stats.setdefault("hashes_by_room", {})
+    bucket = by_room.setdefault(room_name, [])
+    bucket.append(content_hash)
+    if len(bucket) > _HASH_PER_ROOM_CAP:
+        del bucket[: len(bucket) - _HASH_PER_ROOM_CAP]
+
+
 def _get_last_content(room_name: str) -> str:
     """방의 마지막 저장 내용을 가져온다 (방 이름 기반 파일명)."""
     LAST_CONTENT_DIR.mkdir(parents=True, exist_ok=True)
@@ -576,7 +603,8 @@ def read_and_process_saved_file(file_path: Path) -> dict | None:
         content_hash = hashlib.md5(content.encode("utf-8")).hexdigest()
         stats = _load_usage_stats()
 
-        if content_hash in stats.get("processed_hashes", []):
+        # 중복 해시 확인 — 신형(per-room dict) + 구형(flat list) 양쪽 조회
+        if _hash_already_seen(stats, room_name, content_hash):
             return None  # 완전히 동일한 내용 — 변경 없음
 
         # 이전 내용과 비교하여 델타(신규분만) 추출
@@ -584,17 +612,13 @@ def read_and_process_saved_file(file_path: Path) -> dict | None:
         delta = extract_delta(old_content, content)
 
         if not delta.strip():
-            stats.setdefault("processed_hashes", []).append(content_hash)
-            if len(stats["processed_hashes"]) > 1000:
-                stats["processed_hashes"] = stats["processed_hashes"][-1000:]
+            _remember_hash(stats, room_name, content_hash)
             _save_usage_stats(stats)
             return None
 
         _save_last_content(room_name, content)
 
-        stats.setdefault("processed_hashes", []).append(content_hash)
-        if len(stats["processed_hashes"]) > 1000:
-            stats["processed_hashes"] = stats["processed_hashes"][-1000:]
+        _remember_hash(stats, room_name, content_hash)
         _save_usage_stats(stats)
 
         result = {

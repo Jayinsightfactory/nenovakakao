@@ -29,8 +29,25 @@ import win32con
 
 from core.traced_actions import mark
 
-pyautogui.FAILSAFE = False
-ctypes.windll.user32.AllowSetForegroundWindow(-1)
+# pyautogui FAILSAFE 는 카톡 자동화 진입 시점에만 일시 해제. 모듈 import 만으로
+# 다른 모듈(예: mirror_cleanup) 의 pyautogui 호출까지 안전망이 사라지던 이슈를
+# 차단하기 위해 _enable_kakao_automation_mode() 에서 명시적으로 호출.
+_KAKAO_MODE_ON = False
+
+
+def _enable_kakao_automation_mode() -> None:
+    """카톡 서랍/뷰어 자동화 진입 시 호출 — FAILSAFE 해제 + 포커스 권한 허용.
+    한 번만 적용 (idempotent). 외부 모듈에서 drawer_handler import 자체로는 발동 안 함.
+    """
+    global _KAKAO_MODE_ON
+    if _KAKAO_MODE_ON:
+        return
+    pyautogui.FAILSAFE = False
+    try:
+        ctypes.windll.user32.AllowSetForegroundWindow(-1)
+    except Exception:
+        pass
+    _KAKAO_MODE_ON = True
 
 KAKAO_DOWNLOAD_DIR = Path("C:/Users/USER/Documents/카카오톡 받은 파일")
 CAPTURES_DIR = Path(__file__).parent.parent / "captures"
@@ -622,6 +639,13 @@ def open_drawer(chat_hwnd: int) -> int | None:
     Returns: 서랍 창 hwnd or None.
 
     학습 포인트(mark): open_drawer.{focus,click_menu,popup_detected,
+    """
+    _enable_kakao_automation_mode()
+    return _open_drawer_impl(chat_hwnd)
+
+
+def _open_drawer_impl(chat_hwnd: int) -> int | None:
+    """원래 open_drawer 본문. _enable_kakao_automation_mode 후에만 호출.
       hover_submenu,submenu_detected,photo_tab_clicked,panel_opened}
     """
     # 안전 가드: 카톡 활성 + 위험 팝업 자동 처치

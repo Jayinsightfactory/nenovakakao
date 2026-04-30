@@ -29,8 +29,9 @@ ROOT = Path(__file__).parent.parent
 load_dotenv(ROOT / ".env", override=True)
 
 ERP_BASE = os.getenv("NENOVAWEB_URL", "https://nenovaweb.com")
-ERP_USER = os.getenv("NENOVAWEB_USERNAME", "admin")
-ERP_PASS = os.getenv("NENOVAWEB_PASSWORD", "1234")
+ERP_USER = os.getenv("NENOVAWEB_USERNAME", "")
+ERP_PASS = os.getenv("NENOVAWEB_PASSWORD", "")
+# 평문 admin/1234 폴백 금지 — .env 누락 시 즉시 발견되도록 빈 문자열로 두고 _ensure_auth 가 거부.
 
 
 class ERPBridge:
@@ -48,6 +49,10 @@ class ERPBridge:
         """토큰이 없거나 7시간 경과하면 자동 로그인."""
         if self._token and (time.time() - self._token_ts < 7 * 3600):
             return True
+        if not (ERP_USER and ERP_PASS):
+            # .env 미설정 → 평문 폴백 시도 안 함. 호출자가 즉시 인지하도록 명시적 거부.
+            print("[ERPBridge] NENOVAWEB_USERNAME / NENOVAWEB_PASSWORD .env 누락 — 인증 거부", flush=True)
+            return False
         try:
             r = self.session.post(
                 f"{self.base}/api/auth/login",

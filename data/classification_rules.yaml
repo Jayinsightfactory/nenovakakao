@@ -11,6 +11,7 @@
 # 정규식을 쓰고 싶으면 "~:" 접두사 사용 (예: "~:\\d+단").
 
 priority:
+  - FILE_SHARE     # 첨부 파일 라인 — 파일명 키워드 누출 방지 위해 최우선
   - LOGISTICS
   - DEFECT
   - CANCEL
@@ -198,10 +199,26 @@ event_types:
       - "[사진]"
       - 사진
 
+  FILE_SHARE:
+    description: 카톡 파일 첨부 라인 — 파일명에 발주/원가/요청 등이 들어가도 본문 의도와 무관
+    keywords: []   # regex_rules 의 파일_첨부_라인 으로 매칭, keywords 폴백 불필요
+
 # 정규식 규칙 (data/learning/pattern_library.json 의 P001~P039 중 엄선)
 # 키워드 기반 분류보다 먼저 평가됨. 첫 매칭만 적용.
 # direction 명시 시 ORDER_CHANGE + / - 구분에 쓰임.
 regex_rules:
+  # ── 첨부/메타 (FILE_SHARE — 키워드 누출 방지를 위해 최상단) ──
+  - name: 파일_첨부_라인
+    pattern: '^\s*파일\s*:'
+    event_type: FILE_SHARE
+
+  # ── 단답 확인 (DECISION) ──
+  # 25자 이하 단답 ack: "네 감사합니다" / "확인했습니다" / "알겠습니다" 등.
+  # 키워드 폴백의 'DECISION.keywords' 와 중복 매칭되지 않도록 regex_rules 에서 우선 처리.
+  - name: 단답_확인_ack
+    pattern: '^\s*(?:네|넵|예)[\s~!.,]*(?:감사|확인|알겠)|^\s*(?:감사합니다|알겠습니다|확인했습니다|확인했어요)[\s!.~?]*$'
+    event_type: DECISION
+
   # ── 수입/발주 (IMPORT) ──
   - name: 발주_추가_요청             # P001
     pattern: '\d+(?:-\d+)?\s*차?\s*(?:중국|콜|콜롬비아|네덜란드|호주|태국|에콰)?\s*.+?(?:발주\s*)?추가'

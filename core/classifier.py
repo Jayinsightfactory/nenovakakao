@@ -13,6 +13,8 @@ import re
 from dataclasses import dataclass, field, asdict
 from pathlib import Path
 
+from core.text_match import contains_token
+
 SPEC_FILE = Path(__file__).parent.parent / "data" / "classification_spec.json"
 
 # ─── 메시지 파싱 ───
@@ -179,15 +181,14 @@ SUPPLIER_ALIASES = {
 def extract_supplier(text: str) -> str:
     s = spec()
     known = s.get("extraction_rules", {}).get("supplier", {}).get("known", [])
-    # 길이 긴 것부터 매칭 (부분 매칭 방지)
+    # 길이 긴 것부터 매칭 (부분 매칭 방지) + 짧은 토큰은 한글 경계 검사
     for sup in sorted(known, key=len, reverse=True):
-        if sup in text:
-            # known 리스트에서 매칭 → 별칭이면 정규화
+        if contains_token(text, sup):
             return SUPPLIER_ALIASES.get(sup, sup)
 
     # known에 없으면 별칭 키로도 검색 (길이 긴 것 우선)
     for alias in sorted(SUPPLIER_ALIASES.keys(), key=len, reverse=True):
-        if alias in text:
+        if contains_token(text, alias):
             return SUPPLIER_ALIASES[alias]
 
     return ""
@@ -203,13 +204,14 @@ ORIGIN_ALIASES = {
 
 
 def extract_origin(text: str) -> str:
-    """원산지 추출. 긴 키워드 우선 매칭 + 별칭 정규화."""
+    """원산지 추출. 긴 키워드 우선 매칭 + 별칭 정규화.
+    짧은 약어('콜')가 다른 단어('콜라') 내부와 부분일치하지 않도록 경계 검사.
+    """
     s = spec()
     known = s.get("extraction_rules", {}).get("origin", {}).get("known", [])
     # 긴 키워드부터 매칭 (콜롬비아 > 콜롬 > 콜)
     for o in sorted(known, key=len, reverse=True):
-        if o in text:
-            # 별칭이면 정규화된 이름 반환
+        if contains_token(text, o):
             return ORIGIN_ALIASES.get(o, o)
     return ""
 

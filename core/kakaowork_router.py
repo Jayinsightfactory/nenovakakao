@@ -257,9 +257,11 @@ def send_to_mirror_room(kakaotalk_name: str, text: str, max_length: int = 3000) 
         from core.kakaowork_notifier import notify_new_message
         return notify_new_message(kakaotalk_name, text)
 
-    # 메시지 길이 제한
+    # 메시지 길이 제한 — suffix 추가 후에도 max_length 이하가 되도록 본문을 먼저 잘라냄
     if len(text) > max_length:
-        text = text[:max_length] + f"\n... ({len(text) - max_length}자 생략)"
+        omitted = len(text) - max_length
+        suffix = f"\n... ({omitted}자 생략)"
+        text = text[: max_length - len(suffix)] + suffix
 
     # 헤더 추가
     full_text = (
@@ -1055,9 +1057,9 @@ def send_messages_individually(
     for i, msg in enumerate(messages):
         text = f"[{msg['sender']}] [{msg['time']}] {msg['content']}"
 
-        # 3000자 제한
+        # 3000자 제한 — suffix 포함해 한도 초과 안 되도록 본문 먼저 잘라냄
         if len(text) > 3000:
-            text = text[:3000] + "..."
+            text = text[: 3000 - 3] + "..."
 
         ok = _send_single(conv_id, text)
         if ok:
