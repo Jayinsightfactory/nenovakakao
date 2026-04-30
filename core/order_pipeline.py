@@ -269,7 +269,7 @@ def process_delta_to_orders(
         {'ready': int, 'missing_key': int, 'skipped': int,
          'committed': int, 'items': [...]}
     """
-    stats = {"ready": 0, "missing_key": 0, "skipped": 0, "committed": 0}
+    stats = {"ready": 0, "missing_key": 0, "skipped": 0, "committed": 0, "commit_failed": 0}
     items: list[dict] = []
 
     messages = parse_delta_to_messages(delta)
@@ -280,8 +280,10 @@ def process_delta_to_orders(
             parsed, room_name=room_name, raw_text=raw,
         )
         items.append(staged)
-        stats[staged["status"]] = stats.get(staged["status"], 0) + 1
 
+        # auto_commit 모드: ready 인 항목을 즉시 ERP 호출 → 결과에 따라 status 변경.
+        # 통계는 최종 status 가 결정된 후 한 번만 증가시킨다 (이전 버그: ready 로 +1 후
+        # 성공/실패 분기에서 다시 조작하다가 실패 케이스에서 ready 카운트가 남음).
         if auto_commit and staged["status"] == "ready":
             try:
                 bridge = get_bridge()
@@ -289,8 +291,6 @@ def process_delta_to_orders(
                 if resp and resp.get("success"):
                     staged["status"] = "committed"
                     staged["api_response"] = resp
-                    stats["committed"] += 1
-                    stats["ready"] -= 1
                 else:
                     staged["api_response"] = resp
                     staged["status"] = "commit_failed"
@@ -298,11 +298,14 @@ def process_delta_to_orders(
                 staged["status"] = "commit_failed"
                 staged["reason"] = f"{staged.get('reason', '')} | API error: {e}"
 
-    # 기존 pending + 신규 항목 누적 (status != committed만)
-    if not auto_commit:
-        existing = _load_pending()
-        pending_new = [x for x in items if x["status"] in ("ready", "missing_key")]
-        existing.extend(pending_new)
+        stats[staged["status"]] = stats.get(staged["status"], 0) + 1
+
+    # pending 영속화: 재처리/관리자 검토 대상은 모드와 무관하게 누적.
+    # auto_commit 실패(commit_failed) 도 보존해야 ERP 부분 변경 추적 + 재시도 가능.
+    existing = _load_pending()
+    to_persist = [x for x in items if x["status"] in ("ready", "missing_key", "commit_failed")]
+    if to_persist:
+        existing.extend(to_persist)
         _save_pending(existing)
 
     stats["items"] = items

@@ -87,34 +87,36 @@ def verify_mirror_room(conv_id: str) -> bool:
     """
     conversation_id가 실제로 유효한지 확인.
     conversations.info는 Bot API에 없음 → 전체 봇 대화 목록 조회로 검증.
+
+    페이징 안전장치: cursor 가 끝날 때까지 끝까지 순회. 봇이 300+ 방에 있으면
+    이전 3-page 하드 캡으로 false-negative → ensure_mirror_for_rooms 가 중복 미러 방
+    재생성하던 회귀 차단. 무한루프 방지를 위해 page_max(50, 5000방 = 100/page) 상한.
     """
+    target = str(conv_id)
     try:
-        # 전체 conversations.list를 호출 (캐싱은 상위에서)
-        resp = requests.get(
-            f"{API_BASE}/conversations.list",
-            headers=_headers(),
-            params={"limit": 100},
-            timeout=15,
-        )
-        data = resp.json()
-        if not data.get("success"):
-            return False
-        convs = data.get("conversations", [])
-        # 페이징 고려 (최대 3페이지)
-        cursor = data.get("cursor")
-        for _ in range(2):
-            if not cursor:
-                break
-            r2 = requests.get(
+        cursor: str | None = None
+        page_max = 50
+        for _page in range(page_max):
+            params = {"limit": 100}
+            if cursor:
+                params["cursor"] = cursor
+            resp = requests.get(
                 f"{API_BASE}/conversations.list",
                 headers=_headers(),
-                params={"limit": 100, "cursor": cursor},
+                params=params,
                 timeout=15,
             )
-            d2 = r2.json()
-            convs.extend(d2.get("conversations", []))
-            cursor = d2.get("cursor")
-        return any(str(c.get("id")) == str(conv_id) for c in convs)
+            data = resp.json()
+            if not data.get("success"):
+                return False
+            for c in data.get("conversations", []):
+                if str(c.get("id")) == target:
+                    return True
+            cursor = data.get("cursor")
+            if not cursor:
+                return False
+        # page_max 도달 — 5000+ 방 시나리오. 결정 보류 후 caller 책임.
+        return False
     except Exception:
         return False
 
@@ -413,8 +415,17 @@ def count_photo_messages(delta: str) -> int:
     return sum(m["photo_count"] for m in parse_delta_to_messages(delta))
 
 
+_BUMP_LAST_TS: dict[str, float] = {}
+_BUMP_MIN_INTERVAL_SEC = 1.5
+_RATE_LIMITED_UNTIL = 0.0  # 429 발생 시 이 시각까지 모든 _send_single 호출 거부
+
+
 def _send_single(conv_id: str, text: str) -> bool:
-    """단일 메시지 전송 (내부용)"""
+    """단일 메시지 전송 (내부용). 429 응답 시 즉시 거부 (재시도 없음)."""
+    global _RATE_LIMITED_UNTIL
+    if time.time() < _RATE_LIMITED_UNTIL:
+        # 직전 429 후 backoff 구간 — 새 요청 침묵 거부
+        return False
     payload = {"conversation_id": conv_id, "text": text}
     try:
         resp = requests.post(
@@ -423,10 +434,30 @@ def _send_single(conv_id: str, text: str) -> bool:
             json=payload,
             timeout=10,
         )
+        if resp.status_code == 429:
+            # Bot API rate limit. 재시도 금지 (review 규칙 §4) — 30초 backoff.
+            _RATE_LIMITED_UNTIL = time.time() + 30.0
+            print("  [RATE-LIMIT] 카카오워크 Bot API 429 — 30초 송신 일시중단", flush=True)
+            return False
         return resp.json().get("success", False)
     except Exception as e:
         print(f"  [ERROR] 전송 실패: {e}")
         return False
+
+
+def _bump(conv_id: str) -> bool:
+    """미러 방을 워크 목록 맨 위로 올리는 invisible bump.
+
+    같은 conv_id 에 대해 _BUMP_MIN_INTERVAL_SEC 이내 재호출은 묵음 스킵 →
+    한 delta 에 사진 5장 처럼 연속 흐름에서 5회 bump → 1회로 압축.
+    Bot API 호출 절약 + 429 위험 감소.
+    """
+    now = time.time()
+    last = _BUMP_LAST_TS.get(conv_id, 0.0)
+    if now - last < _BUMP_MIN_INTERVAL_SEC:
+        return True  # 최근에 bump 됨 — 조용히 건너뛰고 성공으로 간주
+    _BUMP_LAST_TS[conv_id] = now
+    return _send_single(conv_id, "⁣")
 
 
 def send_image_block(conv_id: str, image_url: str) -> bool:
@@ -818,7 +849,9 @@ def send_delta_interleaved(
                 continue
 
             # 사진 전 invisible bump (미러방 목록 맨 위로 — 텍스트 알림 안 남김)
-            _send_single(conv_id, "\u2063")
+            # _bump() 가 동일 conv_id 의 1.5초 이내 연속 호출을 묵음 스킵 → 다중 사진
+            # 처리 시 Bot API 호출 압축 + rate-limit 회피.
+            _bump(conv_id)
             time.sleep(delay)
 
             # 요청 수량보다 적게 다운로드된 경우 부족분을 기록

@@ -49,6 +49,59 @@ def _enable_kakao_automation_mode() -> None:
         pass
     _KAKAO_MODE_ON = True
 
+
+# ─── 좀비 다이얼로그 추적 ───
+# 방해 다이얼로그를 화면 밖 (-3000, -3000) 으로 이동시킨 hwnd 들을 추적해
+# 한 download 사이클이 끝날 때 EndDialog/Cancel/Close 로 일괄 정리.
+# WM_CLOSE 거부하던 좀비도 다음 실행 시작 시점에 visible 한 채 재발견되어
+# 정상 다이얼로그로 오인되던 회귀를 차단.
+_OFFSCREEN_HWNDS: set[int] = set()
+
+
+def _track_moved_offscreen(hwnd: int) -> None:
+    """MoveWindow(h, -3000, -3000, ...) 호출 직후 등록."""
+    _OFFSCREEN_HWNDS.add(hwnd)
+
+
+def _cleanup_offscreen_dialogs() -> int:
+    """추적된 화면 밖 다이얼로그들을 일괄 정리. 반환: 처리한 개수.
+
+    각 hwnd 에 대해:
+      1) 여전히 살아있는지 확인 (IsWindow). 없으면 set 에서 제거.
+      2) WM_CLOSE 재시도. 살아남으면 EndDialog(IDCANCEL) 송출.
+      3) 그래도 살아있으면 셋에 남겨 다음 사이클에서 재시도.
+    """
+    if not _OFFSCREEN_HWNDS:
+        return 0
+    handled = 0
+    leftover: set[int] = set()
+    for h in list(_OFFSCREEN_HWNDS):
+        try:
+            if not win32gui.IsWindow(h):
+                handled += 1
+                continue
+            try:
+                win32gui.PostMessage(h, win32con.WM_CLOSE, 0, 0)
+            except Exception:
+                pass
+            time.sleep(0.05)
+            if win32gui.IsWindow(h):
+                # IDCANCEL = 2 (Save As / 표준 다이얼로그 공용 취소 코드)
+                try:
+                    win32gui.SendMessage(h, win32con.WM_COMMAND, 2, 0)
+                except Exception:
+                    pass
+                time.sleep(0.05)
+            if win32gui.IsWindow(h):
+                leftover.add(h)
+            else:
+                handled += 1
+        except Exception:
+            leftover.add(h)
+    _OFFSCREEN_HWNDS.clear()
+    _OFFSCREEN_HWNDS.update(leftover)
+    return handled
+
 KAKAO_DOWNLOAD_DIR = Path("C:/Users/USER/Documents/카카오톡 받은 파일")
 CAPTURES_DIR = Path(__file__).parent.parent / "captures"
 
@@ -1239,6 +1292,7 @@ def _save_one_bundle(v_hwnd: int) -> bool:
                             win32gui.PostMessage(h, _wc2.WM_CLOSE, 0, 0)
                             # 그리고 화면 밖으로 이동 (close 무시되면 보험)
                             win32gui.MoveWindow(h, -3000, -3000, w, hh, False)
+                            _track_moved_offscreen(h)
                             moved.append(t[:30])
                         except Exception:
                             pass
@@ -1297,6 +1351,9 @@ def _save_one_bundle(v_hwnd: int) -> bool:
             def _find_dlg(h, _):
                 nonlocal save_dlg
                 if save_dlg or not win32gui.IsWindowVisible(h):
+                    return
+                # 추적된 좀비 (이전 사이클에서 -3000 이동) 는 신규 다이얼로그가 아님 — 스킵
+                if h in _OFFSCREEN_HWNDS:
                     return
                 t = win32gui.GetWindowText(h) or ""
                 if any(k in t for k in ("다른 이름으로 저장", "Save As", "폴더 선택")):
@@ -1653,6 +1710,13 @@ def download_photos_from_drawer(
         all_new = renamed
 
     print(f"    [서랍] 총 {len(all_new)}장 다운로드 ({bundles_done}묶음)", flush=True)
+
+    # 사이클 마감: 화면 밖으로 보낸 좀비 다이얼로그 일괄 정리.
+    # WM_CLOSE 거부하던 다이얼로그도 IDCANCEL 로 강제 종료 → 다음 사이클 깨끗.
+    cleaned = _cleanup_offscreen_dialogs()
+    if cleaned:
+        print(f"    [서랍] 좀비 다이얼로그 {cleaned}개 정리", flush=True)
+
     return all_new
 
 
