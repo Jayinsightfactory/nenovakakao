@@ -31,6 +31,13 @@ NV_MAPPING_FILE = DATA_DIR / "room_mapping_nv.json"
 FIRST_ROOM_X_OFFSET = 80
 FIRST_ROOM_Y_OFFSET = 60
 
+# 채팅방 설정 자동화 좌표 (창 우측 기준 상대 — 사용자 환경에서 미세조정 필요)
+# 환경변수로 오버라이드 가능: NENOVA_GEAR_X / NENOVA_GEAR_Y / NENOVA_PENCIL_X / NENOVA_PENCIL_Y
+GEAR_FROM_RIGHT = int(os.getenv("NENOVA_GEAR_FROM_RIGHT", "85"))   # 우상단에서 안쪽 px
+GEAR_FROM_TOP   = int(os.getenv("NENOVA_GEAR_FROM_TOP",   "95"))   # 헤더 영역 높이
+PENCIL_FROM_RIGHT = int(os.getenv("NENOVA_PENCIL_FROM_RIGHT", "130"))  # 패널 안 우측
+PENCIL_FROM_TOP   = int(os.getenv("NENOVA_PENCIL_FROM_TOP",   "200"))  # 아바타+이름 영역
+
 
 def _load_nv_mapping() -> dict:
     if NV_MAPPING_FILE.exists():
@@ -626,3 +633,80 @@ def upload_to_nv_room(kakaotalk_room_name: str, files: list[Path]):
                 print(f"       [WARN] {f.name} upload failed")
         except Exception as e:
             print(f"       [ERROR] {label} {f.name}: {e}")
+
+
+# ═══════════════════════════════════════════════════════════════════
+# 채팅방 이름 변경 자동화 (⚙️ 톱니바퀴 → ✏️ 볼펜 → 입력)
+# ═══════════════════════════════════════════════════════════════════
+
+def rename_room_via_app(conv_id: str, new_name: str, *, dry_run: bool = False) -> bool:
+    """
+    워크 앱 UI 자동화로 채팅방 이름 변경.
+
+    시퀀스:
+      1) Bot API _bump → 대상 방을 목록 맨 위로
+      2) 워크 앱 활성화 → 첫 번째 방 클릭 (window+80, 60)
+      3) 채팅창 우상단 ⚙️ 톱니바퀴 클릭 → 채팅방 설정 패널 펼침
+      4) 패널 안 채팅방 이름 옆 ✏️ 볼펜 클릭 → 입력란 활성화
+      5) Ctrl+A 로 기존 텍스트 선택 → 클립보드 복사 → Ctrl+V → Enter
+      6) ESC 로 패널 닫기
+
+    좌표는 창 우측/상단 기준 상대값으로 환경변수 오버라이드 가능:
+      NENOVA_GEAR_FROM_RIGHT / NENOVA_GEAR_FROM_TOP
+      NENOVA_PENCIL_FROM_RIGHT / NENOVA_PENCIL_FROM_TOP
+    """
+    print(f"  [RENAME-APP] conv={conv_id} → '{new_name}' (dry_run={dry_run})", flush=True)
+
+    # 1) bump
+    if not dry_run:
+        ok = _send_bot_api(conv_id, "⁣")  # invisible char (zero-width non-joiner U+2063)
+        print(f"    [1/6] _bump OK={ok}", flush=True)
+        time.sleep(1.2)
+
+    # 2) 워크 앱 활성화 + 첫 방 클릭
+    try:
+        win = find_kakaowork_window()
+    except Exception as e:
+        print(f"    [ERROR] 워크 앱 창 없음: {e}", flush=True)
+        return False
+    print(f"    [2/6] 워크 앱 활성화: left={win.left}, top={win.top}, w={win.width}, h={win.height}", flush=True)
+
+    first_xy = (win.left + FIRST_ROOM_X_OFFSET, win.top + FIRST_ROOM_Y_OFFSET)
+    if not dry_run:
+        pyautogui.click(*first_xy)
+        time.sleep(1.2)
+    print(f"    [2/6] 첫 방 클릭 xy={first_xy}", flush=True)
+
+    # 3) ⚙️ 톱니바퀴 클릭
+    gear_xy = (win.left + win.width - GEAR_FROM_RIGHT, win.top + GEAR_FROM_TOP)
+    if not dry_run:
+        pyautogui.click(*gear_xy)
+        time.sleep(1.0)
+    print(f"    [3/6] 톱니바퀴 클릭 xy={gear_xy}", flush=True)
+
+    # 4) ✏️ 볼펜 클릭
+    pencil_xy = (win.left + win.width - PENCIL_FROM_RIGHT, win.top + PENCIL_FROM_TOP)
+    if not dry_run:
+        pyautogui.click(*pencil_xy)
+        time.sleep(0.8)
+    print(f"    [4/6] 볼펜 클릭 xy={pencil_xy}", flush=True)
+
+    # 5) Ctrl+A → Ctrl+V → Enter
+    if not dry_run:
+        pyautogui.hotkey('ctrl', 'a')
+        time.sleep(0.2)
+        pyperclip.copy(new_name)
+        time.sleep(0.2)
+        pyautogui.hotkey('ctrl', 'v')
+        time.sleep(0.3)
+        pyautogui.press('enter')
+        time.sleep(0.8)
+    print(f"    [5/6] 입력 + Enter (text='{new_name}')", flush=True)
+
+    # 6) ESC 로 패널 닫기
+    if not dry_run:
+        pyautogui.press('escape')
+        time.sleep(0.4)
+    print(f"    [6/6] ESC 로 패널 닫기", flush=True)
+
+    return True

@@ -1139,6 +1139,122 @@ def cmd_cleanup_mirrors(argv: list[str]) -> int:
     return 0
 
 
+def cmd_rename_nv(argv: list[str]) -> int:
+    """미러 방 이름을 'NV{NN}:원본이름' 으로 일괄 변경. --dry-run 지원."""
+    from core.mirror_cleanup import apply_nv_naming
+
+    dry_run = "--dry-run" in argv
+    print(f"[NV-RENAME] 시작 (dry_run={dry_run})")
+    result = apply_nv_naming(dry_run=dry_run)
+    if result["failed"]:
+        return 1
+    return 0
+
+
+def cmd_strip_mirror(argv: list[str]) -> int:
+    """미러 방의 '[미러] X' prefix 를 제거해 'X' 원본 이름으로 변경. --dry-run 지원."""
+    from core.mirror_cleanup import strip_mirror_prefixes
+
+    dry_run = "--dry-run" in argv
+    print(f"[STRIP-MIRROR] 시작 (dry_run={dry_run})")
+    result = strip_mirror_prefixes(dry_run=dry_run)
+    if result["failed"]:
+        return 1
+    return 0
+
+
+def cmd_rename_via_app(argv: list[str]) -> int:
+    """워크 앱 UI 자동화로 채팅방 이름 변경. 사용:
+       main.py rename-via-app <conv_id> <new_name> [--dry-run]
+       main.py rename-via-app --all [--dry-run]   # 37개 미러방 일괄
+    """
+    from core.kakaowork_app import rename_room_via_app
+    from core.mirror_cleanup import fetch_all_bot_conversations, DELETE_MARK
+
+    dry_run = "--dry-run" in argv
+    if "--all" in argv:
+        # 37개 정상 미러방 일괄 처리
+        # mapping.json 의 키(원본 이름) 를 새 이름으로 사용
+        from core.kakaowork_router import _load_room_mapping
+        mapping = _load_room_mapping()
+        targets = [(cid, name) for name, cid in mapping.items()]
+        print(f"[RENAME-APP] 일괄 — {len(targets)}개 방, dry_run={dry_run}")
+        for i, (cid, name) in enumerate(targets, start=1):
+            print(f"\n  [{i}/{len(targets)}] {name} ({cid})")
+            try:
+                rename_room_via_app(str(cid), name, dry_run=dry_run)
+            except Exception as e:
+                print(f"    [ERROR] {e}")
+        return 0
+
+    if len(argv) < 4:
+        print("사용: main.py rename-via-app <conv_id> <new_name> [--dry-run]")
+        print("     main.py rename-via-app --all [--dry-run]")
+        return 1
+    conv_id = argv[2]
+    new_name = argv[3]
+    print(f"[RENAME-APP] conv={conv_id}, new_name='{new_name}', dry_run={dry_run}")
+    try:
+        ok = rename_room_via_app(conv_id, new_name, dry_run=dry_run)
+        return 0 if ok else 1
+    except Exception as e:
+        print(f"[ERROR] {e}")
+        return 1
+
+
+def cmd_invite_member(argv: list[str]) -> int:
+    """미러 방에 멤버 일괄 초대. 사용:
+       main.py invite-member <user_id> [<user_id> ...] [--dry-run] [--only <conv_id>]
+       --only <conv_id>: 시험용 단일 방만 초대
+    """
+    from core.mirror_cleanup import (
+        invite_users_to_mirrors,
+        invite_users_to_conv,
+        fetch_all_bot_conversations,
+    )
+
+    dry_run = "--dry-run" in argv
+    only_idx = argv.index("--only") if "--only" in argv else -1
+    only_cid = argv[only_idx + 1] if only_idx >= 0 and only_idx + 1 < len(argv) else None
+    # --only <cid> 자리의 cid 와 dry-run 같은 옵션은 user_id 후보에서 제외
+    skip_indices = set()
+    if only_idx >= 0:
+        skip_indices.add(only_idx)
+        skip_indices.add(only_idx + 1)
+    user_ids = [
+        a for i, a in enumerate(argv[2:], start=2)
+        if a.isdigit() and i not in skip_indices
+    ]
+    if not user_ids:
+        print("[ERROR] 사용: main.py invite-member <user_id> [<user_id>] [--dry-run] [--only <conv_id>]")
+        return 1
+
+    if only_cid:
+        # 시험용: 단일 conv 만 초대
+        print(f"[INVITE] 시험 — conv={only_cid}, users={user_ids}, dry_run={dry_run}")
+        if dry_run:
+            print("  (dry-run — 실제 호출 없음)")
+            return 0
+        ok, detail = invite_users_to_conv(only_cid, user_ids)
+        print(f"  결과: ok={ok}, detail={detail}")
+        return 0 if ok else 1
+
+    # 미러방만 대상으로 좁히기 (--mirrors-only 또는 --prefix 968666)
+    id_prefix = None
+    if "--mirrors-only" in argv:
+        id_prefix = "968666"
+    elif "--prefix" in argv:
+        pidx = argv.index("--prefix")
+        if pidx + 1 < len(argv):
+            id_prefix = argv[pidx + 1]
+
+    print(f"[INVITE] 일괄 — users={user_ids}, dry_run={dry_run}, id_prefix={id_prefix}")
+    result = invite_users_to_mirrors(user_ids, dry_run=dry_run, id_prefix=id_prefix)
+    if result["failed"]:
+        return 1
+    return 0
+
+
 def main(argv: list[str]) -> int:
     if len(argv) < 2:
         return cmd_monitor()
@@ -1163,6 +1279,20 @@ def main(argv: list[str]) -> int:
         return cmd_anchors()
     elif cmd in ("cleanup-mirrors", "cleanup_mirrors", "cleanup"):
         return cmd_cleanup_mirrors(argv)
+    elif cmd in ("rename-nv", "rename_nv"):
+        return cmd_rename_nv(argv)
+    elif cmd in ("strip-mirror", "strip_mirror"):
+        return cmd_strip_mirror(argv)
+    elif cmd in ("invite-member", "invite_member"):
+        return cmd_invite_member(argv)
+    elif cmd in ("rename-via-app", "rename_via_app"):
+        return cmd_rename_via_app(argv)
+    elif cmd in ("sync-mapping", "sync_mapping"):
+        from core.mirror_cleanup import sync_room_mapping
+        dry = "--dry-run" in argv
+        print(f"[SYNC-MAPPING] 시작 (dry_run={dry})")
+        result = sync_room_mapping(dry_run=dry)
+        return 0 if not result["unmatched"] else 0  # unmatched 도 fatal 아님
     elif cmd in ("auto-anchor", "auto_anchor"):
         return cmd_auto_anchor(argv)
     elif cmd == "metrics":

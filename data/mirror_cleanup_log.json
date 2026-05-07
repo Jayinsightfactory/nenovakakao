@@ -1,0 +1,17 @@
+[
+  {
+    "timestamp": 1777960266.0926912,
+    "dry_run": false,
+    "duplicates_found": 4,
+    "renamed": 4,
+    "mapping_cleaned": 0,
+    "ui_left": 0,
+    "renamed_ids": [
+      "968666611748402",
+      "968666616045218",
+      "968666616045219",
+      "968666658266857"
+    ],
+    "ui_failed": []
+  }
+]

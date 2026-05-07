@@ -462,11 +462,13 @@ def _bump(conv_id: str) -> bool:
 
 def send_image_block(conv_id: str, image_url: str) -> bool:
     """
-    text URL 자동 카드 + image_link 블록 인라인 썸네일 동시 전송.
+    text URL 단독 전송 → 카카오워크 자동 link preview 카드 (큰 이미지 + 클릭 시 원본 확대).
 
-    text 에 URL 단독 → 카카오워크 자동 link preview 카드 (큰 이미지 + 클릭 원본).
-    blocks 에 image_link → 채팅 본문 인라인 썸네일.
-    두 가지가 한 메시지에 같이 보임.
+    이력:
+      - (구) text + blocks.image_link 동시 전송 → 인라인 썸네일 클릭 시 '일정등록' UX
+        가 떠서 확대 불가 (Bot API image_link 블록의 알려진 한계).
+      - (현) blocks.image_link 제거. text URL 단독 → 워크가 자동으로 link preview 카드
+        생성, 카드 클릭 시 브라우저로 원본 이미지 열림 (= 확대 가능).
 
     Args:
         conv_id: 대상 방 conversation_id
@@ -475,9 +477,6 @@ def send_image_block(conv_id: str, image_url: str) -> bool:
     payload = {
         "conversation_id": conv_id,
         "text": image_url,
-        "blocks": [
-            {"type": "image_link", "url": image_url},
-        ],
     }
     try:
         resp = requests.post(

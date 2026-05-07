@@ -36,6 +36,16 @@ PYTHON="C:/Users/USER/AppData/Local/Programs/Python/Python312/python.exe"
 "$PYTHON" main.py cleanup-mirrors             # "[중복삭제] X" 리네이밍 + mapping 정리
 "$PYTHON" main.py cleanup-mirrors --ui        # + 카카오워크 앱에서 나가기 UI 자동화
 
+# ── 미러방 이름/멤버 정리 (2026-05-06 추가) ──
+"$PYTHON" main.py strip-mirror --dry-run      # "[미러] X" → "X" 일괄 리네이밍 계획
+"$PYTHON" main.py strip-mirror                # 실행 (멱등, [중복삭제] 보호)
+"$PYTHON" main.py invite-member <user_id> [...] --mirrors-only [--dry-run]
+                                              # 봇 그룹채널에 사람 멤버 일괄 초대
+                                              # --mirrors-only: id prefix 968666* 만 (37개 미러방)
+"$PYTHON" main.py sync-mapping --dry-run      # room_mapping.json 갱신 계획 (이름→conv_id 재매칭)
+"$PYTHON" main.py sync-mapping                # 실행 (.bak 자동 백업)
+"$PYTHON" main.py rename-nv [--dry-run]       # 미러방을 'NV{NN}:원본이름' 으로 (현재 미사용)
+
 # ── 100% 자기학습 루프 (반복 실행 시 스텝 자동 안정화) ──
 "$PYTHON" main.py learn                       # 파이프라인 1회를 전체 화면 녹화 + 이벤트
 "$PYTHON" main.py auto-anchor --commit        # 누적 후보를 클러스터링해 앵커 자동 확정
@@ -100,11 +110,16 @@ nenova_agent/
 ├── data/
 │   ├── rooms_detected.json      # 스캔된 방 리스트 (14개)
 │   ├── selected_rooms.json      # 감시 대상 방
-│   ├── room_mapping.json        # 카톡방 → 워크 미러방 매핑 (14개)
+│   ├── room_mapping.json        # 카톡방 → 워크 미러방 매핑 (15개, 968666* 시리즈)
+│   ├── room_mapping.json.bak    # sync-mapping 자동 백업
 │   ├── kakaowork_users.json     # 워크 멤버 목록 (5명)
 │   ├── collected_data.jsonl     # 수집된 대화 누적
 │   ├── usage_stats.json         # MD5 중복 차단
-│   └── issue_room.json          # 워크 이슈전용방 conversation_id
+│   ├── issue_room.json          # 워크 이슈전용방 conversation_id
+│   ├── mirror_cleanup_log.json  # 중복 청소 이력
+│   ├── strip_mirror_log.json    # [미러] prefix 제거 이력
+│   ├── invite_member_log.json   # 멤버 초대 이력
+│   └── sync_mapping_log.json    # mapping 동기화 이력
 ├── captures/
 │   ├── pages/                   # 방 리스트 스크롤 캡처
 │   ├── drawer.png               # 카톡 서랍 캡처 (사진 다운로드용 좌표 참조)

@@ -1,0 +1,116 @@
+[
+  {
+    "timestamp": 1778026117.522577,
+    "updated": 15,
+    "unchanged": 0,
+    "unmatched": [],
+    "ambiguous": [],
+    "planned": [
+      {
+        "room": "수입방",
+        "old_cid": "962615393086502",
+        "new_cid": "968666620137011",
+        "action": "UPDATE",
+        "match": "EXACT"
+      },
+      {
+        "room": "영업방팀 발주 및 추가 재고확인",
+        "old_cid": "962615393295471",
+        "new_cid": "968666620518119",
+        "action": "UPDATE",
+        "match": "EXACT"
+      },
+      {
+        "room": "네노바 수입(불량 공유방)",
+        "old_cid": "962615397149774",
+        "new_cid": "968666624691959",
+        "action": "UPDATE",
+        "match": "EXACT"
+      },
+      {
+        "room": "현장 추가취소방",
+        "old_cid": "962615397129278",
+        "new_cid": "968666628816591",
+        "action": "UPDATE",
+        "match": "NORMALIZED"
+      },
+      {
+        "room": "현장단체방",
+        "old_cid": "962615397129279",
+        "new_cid": "968666620243689",
+        "action": "UPDATE",
+        "match": "EXACT"
+      },
+      {
+        "room": "전산테스트팀",
+        "old_cid": "962615523241075",
+        "new_cid": "968666662182568",
+        "action": "UPDATE",
+        "match": "EXACT"
+      },
+      {
+        "room": "견적방",
+        "old_cid": "962881777528157",
+        "new_cid": "968666662375201",
+        "action": "UPDATE",
+        "match": "EXACT"
+      },
+      {
+        "room": "한국방역",
+        "old_cid": "962881781570951",
+        "new_cid": "968666662371031",
+        "action": "UPDATE",
+        "match": "EXACT"
+      },
+      {
+        "room": "네노바&선울",
+        "old_cid": "962881781882296",
+        "new_cid": "968666666381036",
+        "action": "UPDATE",
+        "match": "EXACT"
+      },
+      {
+        "room": "3.미우신라방",
+        "old_cid": "962881781591456",
+        "new_cid": "968666666635003",
+        "action": "UPDATE",
+        "match": "EXACT"
+      },
+      {
+        "room": "발번호및 입고수량확인방",
+        "old_cid": "962881781570952",
+        "new_cid": "968666666376873",
+        "action": "UPDATE",
+        "match": "EXACT"
+      },
+      {
+        "room": "네노바현장팀",
+        "old_cid": "962881781853607",
+        "new_cid": "968666624691960",
+        "action": "UPDATE",
+        "match": "EXACT"
+      },
+      {
+        "room": "주님방",
+        "old_cid": "962881786121619",
+        "new_cid": "968666670661325",
+        "action": "UPDATE",
+        "match": "EXACT"
+      },
+      {
+        "room": "영업지원팀",
+        "old_cid": "962881786125768",
+        "new_cid": "968666670759640",
+        "action": "UPDATE",
+        "match": "EXACT"
+      },
+      {
+        "room": "백상",
+        "old_cid": "962881786125769",
+        "new_cid": "968666561523431",
+        "action": "UPDATE",
+        "match": "EXACT"
+      }
+    ]
+  }
+]

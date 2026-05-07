@@ -420,8 +420,613 @@ def cleanup_duplicates(*, dry_run: bool = False, use_ui: bool = False) -> dict:
     }
 
 
+# ═══════════════════════════════════════════════════════
+# 6. NV## prefix 일괄 적용 (room_mapping.json 기준)
+# ═══════════════════════════════════════════════════════
+
+NV_MAPPING_FILE = DATA_DIR / "room_mapping_nv.json"
+RENAME_NV_LOG = DATA_DIR / "rename_nv_log.json"
+
+
+def _strip_nv_prefix(name: str) -> str:
+    """기존 'NV01:수입방' 또는 'NV01: 수입방' 또는 '[미러] 수입방' → '수입방'."""
+    import re
+    s = (name or "").strip()
+    m = re.match(r"^NV\d{1,3}\s*:\s*(.+)$", s)
+    if m:
+        return m.group(1).strip()
+    if s.startswith(MIRROR_PREFIX):
+        return s[len(MIRROR_PREFIX):].strip()
+    return s
+
+
+def apply_nv_naming(*, dry_run: bool = False) -> dict:
+    """
+    room_mapping.json 순서대로 미러 방 이름을 'NV{NN}:원본이름' 으로 일괄 변경.
+
+    규칙:
+      - 인덱스는 room_mapping.json 의 삽입 순서 (1부터 zero-pad 2자리: NV01..NV99)
+      - 이미 'NV{NN}:원본이름' 이면 스킵 (idempotent)
+      - '[중복삭제]' 마킹된 방은 건너뜀
+      - mapping 의 conv_id 가 봇 방 목록에 없으면 orphan 으로 보고만 함
+      - 성공한 항목으로 room_mapping_nv.json 자동 갱신
+
+    Returns:
+        {
+          "planned": [{idx, room, conv_id, current, target, action}],
+          "renamed": int,
+          "skipped": int,
+          "failed": [{conv_id, target, error}],
+          "orphans": [room],
+        }
+    """
+    mapping = _load_room_mapping()
+    if not mapping:
+        print("[NV-RENAME] room_mapping.json 비어있음 — 중단", flush=True)
+        return {"planned": [], "renamed": 0, "skipped": 0, "failed": [], "orphans": []}
+
+    bot_convs = fetch_all_bot_conversations()
+    by_id = {c["id"]: c for c in bot_convs}
+
+    planned: list[dict] = []
+    failed: list[dict] = []
+    orphans: list[str] = []
+    renamed = 0
+    skipped = 0
+    new_nv_mapping: dict = {}
+
+    for idx, (room, conv_id) in enumerate(mapping.items(), start=1):
+        cid = str(conv_id)
+        nv_code = f"NV{idx:02d}"
+        target = f"{nv_code}:{room}"
+        nv_entry = {"conv_id": cid, "nv_code": nv_code, "nv_name": target}
+
+        conv = by_id.get(cid)
+        if not conv:
+            orphans.append(room)
+            planned.append({
+                "idx": idx, "room": room, "conv_id": cid,
+                "current": "(봇 방 목록에 없음)", "target": target, "action": "ORPHAN",
+            })
+            continue
+
+        current = conv["name"] or ""
+        # 중복삭제 마킹된 방은 손대지 않음
+        if current.startswith(DELETE_MARK):
+            planned.append({
+                "idx": idx, "room": room, "conv_id": cid,
+                "current": current, "target": target, "action": "SKIP_DELETED",
+            })
+            skipped += 1
+            continue
+
+        if current == target:
+            planned.append({
+                "idx": idx, "room": room, "conv_id": cid,
+                "current": current, "target": target, "action": "OK_ALREADY",
+            })
+            skipped += 1
+            new_nv_mapping[room] = nv_entry
+            continue
+
+        planned.append({
+            "idx": idx, "room": room, "conv_id": cid,
+            "current": current, "target": target, "action": "RENAME",
+        })
+        if dry_run:
+            continue
+
+        ok = rename_conversation(cid, target)
+        if ok:
+            renamed += 1
+            new_nv_mapping[room] = nv_entry
+        else:
+            failed.append({"conv_id": cid, "target": target, "error": "API false"})
+        time.sleep(0.4)  # API rate-limit 보호
+
+    # 출력 표
+    print(f"\n=== NV## 리네이밍 계획 (총 {len(planned)}개) ===")
+    print(f"  {'#':>2} {'ACTION':<14} {'CURRENT':<40} → {'TARGET'}")
+    for p in planned:
+        cur = (p["current"] or "")[:38]
+        tgt = (p["target"] or "")[:40]
+        print(f"  {p['idx']:>2} {p['action']:<14} {cur:<40} → {tgt}")
+    print(f"\n  실행: rename={renamed}, skip={skipped}, fail={len(failed)}, orphan={len(orphans)}")
+    if dry_run:
+        print(f"  (dry-run — 실제 변경 없음)")
+
+    if not dry_run:
+        # nv mapping 갱신 (renamed/already_ok 만 포함)
+        DATA_DIR.mkdir(parents=True, exist_ok=True)
+        try:
+            existing_nv = json.loads(NV_MAPPING_FILE.read_text(encoding="utf-8")) if NV_MAPPING_FILE.exists() else {}
+        except Exception:
+            existing_nv = {}
+        if not isinstance(existing_nv, dict):
+            existing_nv = {}
+        existing_nv.update(new_nv_mapping)
+        NV_MAPPING_FILE.write_text(
+            json.dumps(existing_nv, ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
+
+        # 로그 누적
+        log_entry = {
+            "timestamp": time.time(),
+            "renamed": renamed,
+            "skipped": skipped,
+            "failed": failed,
+            "orphans": orphans,
+            "planned": planned,
+        }
+        try:
+            existing_log = json.loads(RENAME_NV_LOG.read_text(encoding="utf-8")) if RENAME_NV_LOG.exists() else []
+        except Exception:
+            existing_log = []
+        if not isinstance(existing_log, list):
+            existing_log = []
+        existing_log.append(log_entry)
+        RENAME_NV_LOG.write_text(
+            json.dumps(existing_log, ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
+
+    return {
+        "planned": planned,
+        "renamed": renamed,
+        "skipped": skipped,
+        "failed": failed,
+        "orphans": orphans,
+    }
+
+
+# ═══════════════════════════════════════════════════════
+# 7. '[미러] X' → 'X' prefix 제거 (원본 이름 그대로)
+# ═══════════════════════════════════════════════════════
+
+STRIP_LOG = DATA_DIR / "strip_mirror_log.json"
+
+
+def strip_mirror_prefixes(*, dry_run: bool = False) -> dict:
+    """
+    봇 방의 '[미러] X' prefix를 제거해 'X' 로 리네이밍.
+
+    - '[중복삭제]' 마킹된 방은 보호 (건드리지 않음)
+    - 이미 prefix 없는 방은 스킵 (멱등)
+    - 같은 target 으로 수렴하는 미러방 다수 → conv_id 가 가장 작은 것(=오래된 것)만
+      변경하고 나머지는 SKIP_DUP. (cleanup-mirrors 를 먼저 돌리면 사라짐)
+    - target 과 동일한 이름의 비-미러 방이 별도 존재하면 SKIP_NAMECLASH
+    """
+    bot_convs = fetch_all_bot_conversations()
+
+    # 미러 방 추출
+    mirror_list: list[tuple[str, str, str]] = []  # (cid, current, target)
+    for c in bot_convs:
+        name = c["name"] or ""
+        if name.startswith(MIRROR_PREFIX):
+            target = name[len(MIRROR_PREFIX):].strip()
+            if target:
+                mirror_list.append((c["id"], name, target))
+
+    # target 별로 동명 미러 묶기 → 카노니컬 선택 (id 작은 것 = 오래된 것)
+    by_target: dict[str, list[tuple[str, str]]] = {}
+    for cid, cur, tgt in mirror_list:
+        by_target.setdefault(tgt, []).append((cid, cur))
+    canonical_per_target = {
+        tgt: min(group, key=lambda x: int(x[0]) if x[0].isdigit() else float("inf"))[0]
+        for tgt, group in by_target.items()
+    }
+
+    # 비-미러 방 이름 (충돌 검사용)
+    non_mirror_names = {
+        c["name"] for c in bot_convs
+        if c["name"] and not c["name"].startswith(MIRROR_PREFIX)
+        and not c["name"].startswith(DELETE_MARK)
+    }
+
+    planned: list[dict] = []
+    failed: list[dict] = []
+    conflicts: list[dict] = []
+    renamed = 0
+    skipped = 0
+
+    for cid, current, target in mirror_list:
+        # 1) 동명 미러 다수 → 카노니컬만 진행
+        if cid != canonical_per_target[target]:
+            planned.append({
+                "id": cid, "current": current, "target": target,
+                "action": "SKIP_DUP",
+            })
+            conflicts.append({
+                "id": cid, "current": current, "target": target,
+                "reason": f"동명 미러 다수 (카노니컬={canonical_per_target[target]})",
+            })
+            continue
+
+        # 2) 비-미러 방과 이름 충돌
+        if target in non_mirror_names:
+            planned.append({
+                "id": cid, "current": current, "target": target,
+                "action": "SKIP_NAMECLASH",
+            })
+            conflicts.append({
+                "id": cid, "current": current, "target": target,
+                "reason": "동명 비-미러방 존재",
+            })
+            continue
+
+        # 3) 멱등 — 이미 target 인 케이스는 mirror_list 단계에서 제외됨
+        planned.append({
+            "id": cid, "current": current, "target": target,
+            "action": "RENAME",
+        })
+        if dry_run:
+            continue
+
+        ok = rename_conversation(cid, target)
+        if ok:
+            renamed += 1
+        else:
+            failed.append({"id": cid, "target": target, "error": "API false"})
+        time.sleep(0.4)  # API rate-limit 보호
+
+    # 출력
+    rename_cnt = sum(1 for p in planned if p["action"] == "RENAME")
+    print(f"\n=== '[미러] X' → 'X' prefix 제거 계획 (총 {len(planned)}개) ===")
+    print(f"  {'ACTION':<16} {'CURRENT':<42} → {'TARGET'}")
+    for p in planned:
+        cur = (p["current"] or "")[:40]
+        tgt = (p["target"] or "")[:42]
+        print(f"  {p['action']:<16} {cur:<42} → {tgt}")
+    print(
+        f"\n  계획: rename={rename_cnt}, dup={sum(1 for p in planned if p['action']=='SKIP_DUP')}, "
+        f"clash={sum(1 for p in planned if p['action']=='SKIP_NAMECLASH')}"
+    )
+    print(f"  실행: renamed={renamed}, failed={len(failed)}")
+    if dry_run:
+        print(f"  (dry-run — 실제 변경 없음)")
+
+    if not dry_run:
+        DATA_DIR.mkdir(parents=True, exist_ok=True)
+        log_entry = {
+            "timestamp": time.time(),
+            "renamed": renamed,
+            "failed": failed,
+            "conflicts": conflicts,
+            "planned": planned,
+        }
+        try:
+            existing = json.loads(STRIP_LOG.read_text(encoding="utf-8")) if STRIP_LOG.exists() else []
+        except Exception:
+            existing = []
+        if not isinstance(existing, list):
+            existing = []
+        existing.append(log_entry)
+        STRIP_LOG.write_text(
+            json.dumps(existing, ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
+
+    return {
+        "planned": planned,
+        "renamed": renamed,
+        "skipped": skipped,
+        "conflicts": conflicts,
+        "failed": failed,
+    }
+
+
+# ═══════════════════════════════════════════════════════
+# 8. 미러 방에 멤버 일괄 초대 (그룹 사이즈 ≥ 3 만들기)
+# ═══════════════════════════════════════════════════════
+
+INVITE_LOG = DATA_DIR / "invite_member_log.json"
+
+# 카카오워크 Bot API 의 invite 엔드포인트는 공식 문서가 다소 모호하여
+# 후보 3개를 순차 시도. 404/실패면 다음 후보로.
+def _invite_attempts(conv_id: str, user_ids: list[str]) -> list[tuple[str, str, dict]]:
+    """(label, full_url, json_body) 후보 리스트."""
+    uids_int = [int(u) for u in user_ids]
+    return [
+        ("path-invite",
+         f"{API_BASE}/conversations/{conv_id}/invite",
+         {"user_ids": uids_int}),
+        ("body-invite",
+         f"{API_BASE}/conversations.invite",
+         {"conversation_id": int(conv_id), "user_ids": uids_int}),
+        ("users-invite",
+         f"{API_BASE}/conversations/{conv_id}/users/invite",
+         {"user_ids": uids_int}),
+    ]
+
+
+def invite_users_to_conv(conv_id: str, user_ids: list[str]) -> tuple[bool, str]:
+    """단일 conv 에 user_ids 초대. 엔드포인트 후보 순회."""
+    last_detail = ""
+    for label, url, body in _invite_attempts(conv_id, user_ids):
+        try:
+            r = requests.post(url, headers=_headers(), json=body, timeout=10)
+            if r.status_code == 404:
+                last_detail = f"{label} 404"
+                continue
+            try:
+                data = r.json()
+            except Exception:
+                last_detail = f"{label} non-json {r.status_code} {r.text[:80]}"
+                continue
+            if data.get("success"):
+                return True, f"{label} OK"
+            err = (data.get("error") or {}).get("code", "") or data.get("message", "") or ""
+            err_str = str(err).lower()
+            if any(k in err_str for k in ("already", "duplicate", "exist")):
+                return True, f"{label} ALREADY_MEMBER"
+            last_detail = f"{label} {data}"
+        except Exception as e:
+            last_detail = f"{label} 예외: {e}"
+    return False, last_detail or "all endpoints failed"
+
+
+def invite_users_to_mirrors(
+    user_ids: list[str],
+    *,
+    dry_run: bool = False,
+    skip_marked: bool = True,
+    id_prefix: str | None = None,
+) -> dict:
+    """
+    봇이 속한 group conv 들에 user_ids 초대.
+
+    Args:
+        user_ids: 초대할 카카오워크 user_id 리스트 (문자열 ID)
+        dry_run: True 면 API 호출 없이 계획만 출력
+        skip_marked: True 면 '[중복삭제]' prefix 방은 건너뜀
+        id_prefix: 지정 시 conv_id 가 해당 prefix 로 시작하는 방만 대상
+                   (예: '968666' 으로 미러방만 좁히기)
+
+    Returns:
+        {planned, invited, skipped, failed}
+    """
+    bot_convs = fetch_all_bot_conversations()
+
+    # 대상 = group type + (옵션) [중복삭제] 제외 + (옵션) id_prefix 일치
+    targets: list[dict] = []
+    for c in bot_convs:
+        name = c.get("name") or ""
+        if c.get("type") != "group":
+            continue
+        if skip_marked and name.startswith(DELETE_MARK):
+            continue
+        if id_prefix and not str(c.get("id", "")).startswith(id_prefix):
+            continue
+        targets.append(c)
+
+    planned: list[dict] = []
+    invited = 0
+    skipped = 0
+    failed: list[dict] = []
+
+    for c in targets:
+        cid = c["id"]
+        users_now = int(c.get("users_count") or 0)
+        # 이미 N+ 명이면 (봇 + 임재용 본인 + 초대 대상) 스킵 가능. 단, 어떤 user_id 가
+        # 들어가있는지 모르므로 일괄 시도하고 ALREADY_MEMBER 응답 받기.
+        planned.append({
+            "id": cid, "name": c["name"], "users_before": users_now,
+            "user_ids": user_ids,
+        })
+        if dry_run:
+            continue
+
+        ok, detail = invite_users_to_conv(cid, user_ids)
+        if ok:
+            invited += 1
+            planned[-1]["result"] = detail
+        else:
+            failed.append({"id": cid, "name": c["name"], "detail": detail})
+            planned[-1]["result"] = f"FAIL: {detail}"
+        time.sleep(0.4)
+
+    print(f"\n=== 미러방 초대 계획 (대상 {len(targets)}개, user_ids={user_ids}) ===")
+    print(f"  {'id':>20}  {'before':>6}  {'name':<30}  result")
+    for p in planned:
+        res = p.get("result", "(dry-run)")
+        nm = p["name"][:28]
+        print(f"  {p['id']:>20}  {p['users_before']:>6}  {nm:<30}  {res}")
+    print(f"\n  실행: invited={invited}, failed={len(failed)}")
+    if dry_run:
+        print(f"  (dry-run — 실제 변경 없음)")
+
+    if not dry_run:
+        DATA_DIR.mkdir(parents=True, exist_ok=True)
+        log_entry = {
+            "timestamp": time.time(),
+            "user_ids": user_ids,
+            "invited": invited,
+            "failed": failed,
+            "planned": planned,
+        }
+        try:
+            existing = json.loads(INVITE_LOG.read_text(encoding="utf-8")) if INVITE_LOG.exists() else []
+        except Exception:
+            existing = []
+        if not isinstance(existing, list):
+            existing = []
+        existing.append(log_entry)
+        INVITE_LOG.write_text(
+            json.dumps(existing, ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
+
+    return {
+        "planned": planned,
+        "invited": invited,
+        "skipped": skipped,
+        "failed": failed,
+    }
+
+
+# ═══════════════════════════════════════════════════════
+# 9. room_mapping.json 을 현재 봇 conv 기반으로 자동 갱신
+# ═══════════════════════════════════════════════════════
+
+ROOM_MAPPING_FILE = DATA_DIR / "room_mapping.json"
+SYNC_MAPPING_LOG = DATA_DIR / "sync_mapping_log.json"
+
+
+def sync_room_mapping(*, dry_run: bool = False) -> dict:
+    """
+    room_mapping.json 의 키(카톡 방 이름)와 봇 conv 의 name 을 매칭해
+    conv_id 를 실제 봇 ID 로 갱신.
+
+    매칭 규칙:
+      1. 정확 매칭: mapping_key == conv_name
+      2. 정규화 매칭: _normalize_room_name(mapping_key) == _normalize_room_name(conv_name)
+      3. (옵션) '[중복삭제]' 마킹된 conv 는 제외
+
+    Returns:
+        {planned, updated, unchanged, unmatched, ambiguous}
+    """
+    mapping = _load_room_mapping()
+    if not mapping:
+        print("[SYNC] room_mapping.json 비어있음", flush=True)
+        return {"planned": [], "updated": 0, "unchanged": 0, "unmatched": [], "ambiguous": []}
+
+    bot_convs = fetch_all_bot_conversations()
+    # name 기준 인덱스 — [중복삭제] 제외, group only
+    name_to_convs: dict[str, list[dict]] = {}
+    norm_to_convs: dict[str, list[dict]] = {}
+    for c in bot_convs:
+        nm = c.get("name") or ""
+        if not nm or nm.startswith(DELETE_MARK):
+            continue
+        if c.get("type") != "group":
+            continue
+        name_to_convs.setdefault(nm, []).append(c)
+        norm_to_convs.setdefault(_normalize_room_name(nm), []).append(c)
+
+    planned: list[dict] = []
+    new_mapping: dict[str, str] = {}
+    updated = 0
+    unchanged = 0
+    unmatched: list[str] = []
+    ambiguous: list[dict] = []
+
+    for room_name, old_cid in mapping.items():
+        old_cid_s = str(old_cid)
+
+        # 1) 정확 매칭
+        candidates = name_to_convs.get(room_name) or []
+        match_kind = "EXACT"
+        # 2) 정규화 매칭
+        if not candidates:
+            candidates = norm_to_convs.get(_normalize_room_name(room_name)) or []
+            match_kind = "NORMALIZED"
+
+        if not candidates:
+            planned.append({
+                "room": room_name, "old_cid": old_cid_s, "new_cid": None,
+                "action": "UNMATCHED",
+            })
+            unmatched.append(room_name)
+            new_mapping[room_name] = old_cid_s  # 기존 값 보존
+            continue
+
+        if len(candidates) > 1:
+            chosen = min(candidates, key=lambda c: int(c["id"]) if c["id"].isdigit() else float("inf"))
+            ambiguous.append({
+                "room": room_name,
+                "candidates": [{"id": c["id"], "name": c["name"]} for c in candidates],
+                "chosen": chosen["id"],
+            })
+        else:
+            chosen = candidates[0]
+
+        new_cid = chosen["id"]
+        if new_cid == old_cid_s:
+            planned.append({
+                "room": room_name, "old_cid": old_cid_s, "new_cid": new_cid,
+                "action": "UNCHANGED", "match": match_kind,
+            })
+            unchanged += 1
+            new_mapping[room_name] = new_cid
+        else:
+            planned.append({
+                "room": room_name, "old_cid": old_cid_s, "new_cid": new_cid,
+                "action": "UPDATE", "match": match_kind,
+            })
+            updated += 1
+            new_mapping[room_name] = new_cid
+
+    # 출력
+    print(f"\n=== room_mapping.json 동기화 (총 {len(planned)}개) ===")
+    for p in planned:
+        room = p["room"][:30]
+        if p["action"] == "UNMATCHED":
+            print(f"  UNMATCHED      {room:<32}  old={p['old_cid']}  → (봇 conv 에 동명 없음)")
+        elif p["action"] == "UNCHANGED":
+            print(f"  UNCHANGED      {room:<32}  cid={p['new_cid']}")
+        else:
+            print(f"  UPDATE[{p['match']:<10}] {room:<32}  {p['old_cid']} → {p['new_cid']}")
+    if ambiguous:
+        print(f"\n  ⚠️  ambiguous {len(ambiguous)}건 (동명 conv 다수 — 가장 작은 id 선택):")
+        for a in ambiguous:
+            print(f"    {a['room']}: chosen={a['chosen']} from {[c['id'] for c in a['candidates']]}")
+    print(f"\n  결과: update={updated}, unchanged={unchanged}, unmatched={len(unmatched)}, ambiguous={len(ambiguous)}")
+    if dry_run:
+        print(f"  (dry-run — 파일 변경 없음)")
+
+    if not dry_run and (updated > 0 or unmatched):
+        # 백업 + 저장
+        DATA_DIR.mkdir(parents=True, exist_ok=True)
+        backup = ROOM_MAPPING_FILE.with_suffix(".json.bak")
+        try:
+            if ROOM_MAPPING_FILE.exists():
+                backup.write_text(ROOM_MAPPING_FILE.read_text(encoding="utf-8"), encoding="utf-8")
+        except Exception as e:
+            print(f"  [WARN] 백업 실패: {e}")
+        _save_room_mapping(new_mapping)
+
+        log_entry = {
+            "timestamp": time.time(),
+            "updated": updated,
+            "unchanged": unchanged,
+            "unmatched": unmatched,
+            "ambiguous": ambiguous,
+            "planned": planned,
+        }
+        try:
+            existing = json.loads(SYNC_MAPPING_LOG.read_text(encoding="utf-8")) if SYNC_MAPPING_LOG.exists() else []
+        except Exception:
+            existing = []
+        if not isinstance(existing, list):
+            existing = []
+        existing.append(log_entry)
+        SYNC_MAPPING_LOG.write_text(
+            json.dumps(existing, ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
+
+    return {
+        "planned": planned,
+        "updated": updated,
+        "unchanged": unchanged,
+        "unmatched": unmatched,
+        "ambiguous": ambiguous,
+    }
+
+
 if __name__ == "__main__":
     import sys
-    dry = "--dry-run" in sys.argv
-    ui = "--ui" in sys.argv
-    cleanup_duplicates(dry_run=dry, use_ui=ui)
+    if "rename-nv" in sys.argv or "rename_nv" in sys.argv:
+        apply_nv_naming(dry_run="--dry-run" in sys.argv)
+    elif "strip-mirror" in sys.argv or "strip_mirror" in sys.argv:
+        strip_mirror_prefixes(dry_run="--dry-run" in sys.argv)
+    elif "invite-member" in sys.argv or "invite_member" in sys.argv:
+        uids = [a for a in sys.argv[1:] if a.isdigit()]
+        invite_users_to_mirrors(uids, dry_run="--dry-run" in sys.argv)
+    elif "sync-mapping" in sys.argv or "sync_mapping" in sys.argv:
+        sync_room_mapping(dry_run="--dry-run" in sys.argv)
+    else:
+        dry = "--dry-run" in sys.argv
+        ui = "--ui" in sys.argv
+        cleanup_duplicates(dry_run=dry, use_ui=ui)

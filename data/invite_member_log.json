@@ -1,0 +1,1292 @@
+[
+  {
+    "timestamp": 1777963393.93934,
+    "user_ids": [
+      "11798470"
+    ],
+    "invited": 94,
+    "failed": [
+      {
+        "id": "968697842913396",
+        "name": "임재용",
+        "detail": "users-invite {'error': {'code': 'api_not_found', 'message': 'please check api name and HTTP method of your request'}, 'success': False}"
+      }
+    ],
+    "planned": [
+      {
+        "id": "968666561523431",
+        "name": "백상",
+        "users_before": 2,
+        "user_ids": [
+          "11798470"
+        ],
+        "result": "path-invite OK"
+      },
+      {
+        "id": "968666565611056",
+        "name": "빌번호 및 입고수량확인방",
+        "users_before": 2,
+        "user_ids": [
+          "11798470"
+        ],
+        "result": "path-invite OK"
+      },
+      {
+        "id": "968666565803719",
+        "name": "네노바&선율",
+        "users_before": 2,
+        "user_ids": [
+          "11798470"
+        ],
+        "result": "path-invite OK"
+      },
+      {
+        "id": "968666620137011",
+        "name": "수입방",
+        "users_before": 2,
+        "user_ids": [
+          "11798470"
+        ],
+        "result": "path-invite OK"
+      },
+      {
+        "id": "968666620243689",
+        "name": "현장단체방",
+        "users_before": 2,
+        "user_ids": [
+          "11798470"
+        ],
+        "result": "path-invite OK"
+      },
+      {
+        "id": "968666620518119",
+        "name": "영업방팀 발주 및 추가 재고확인",
+        "users_before": 2,
+        "user_ids": [
+          "11798470"
+        ],
+        "result": "path-invite OK"
+      },
+      {
+        "id": "968666624691959",
+        "name": "네노바 수입(불량 공유방)",
+        "users_before": 2,
+        "user_ids": [
+          "11798470"
+        ],
+        "result": "path-invite OK"
+      },
+      {
+        "id": "968666624691960",
+        "name": "네노바현장팀",
+        "users_before": 2,
+        "user_ids": [
+          "11798470"
+        ],
+        "result": "path-invite OK"
+      },
+      {
+        "id": "968666628816591",
+        "name": "현장추가취소방",
+        "users_before": 2,
+        "user_ids": [
+          "11798470"
+        ],
+        "result": "path-invite OK"
+      },
+      {
+        "id": "968666628816592",
+        "name": "네노바 영업/현장",
+        "users_before": 2,
+        "user_ids": [
+          "11798470"
+        ],
+        "result": "path-invite OK"
+      },
+      {
+        "id": "968666628820766",
+        "name": "네노바 수입/영업/현장",
+        "users_before": 2,
+        "user_ids": [
+          "11798470"
+        ],
+        "result": "path-invite OK"
+      },
+      {
+        "id": "968666633010897",
+        "name": "란스 발주방",
+        "users_before": 2,
+        "user_ids": [
+          "11798470"
+        ],
+        "result": "path-invite OK"
+      },
+      {
+        "id": "968666633010898",
+        "name": "영림원예+네노바",
+        "users_before": 2,
+        "user_ids": [
+          "11798470"
+        ],
+        "result": "path-invite OK"
+      },
+      {
+        "id": "968666633101032",
+        "name": "네노바 영업",
+        "users_before": 2,
+        "user_ids": [
+          "11798470"
+        ],
+        "result": "path-invite OK"
+      },
+      {
+        "id": "968666637205203",
+        "name": "네노바 + 대지",
+        "users_before": 2,
+        "user_ids": [
+          "11798470"
+        ],
+        "result": "path-invite OK"
+      },
+      {
+        "id": "968666637209375",
+        "name": "수연원예+네노바",
+        "users_before": 2,
+        "user_ids": [
+          "11798470"
+        ],
+        "result": "path-invite OK"
+      },
+      {
+        "id": "968666641108532",
+        "name": "구백의천사 + 네노바",
+        "users_before": 2,
+        "user_ids": [
+          "11798470"
+        ],
+        "result": "path-invite OK"
+      },
+      {
+        "id": "968666641211044",
+        "name": "네노바&수아레",
+        "users_before": 2,
+        "user_ids": [
+          "11798470"
+        ],
+        "result": "path-invite OK"
+      },
+      {
+        "id": "968666641211045",
+        "name": "경부선 늘봄&네노바",
+        "users_before": 2,
+        "user_ids": [
+          "11798470"
+        ],
+        "result": "path-invite OK"
+      },
+      {
+        "id": "968666645302837",
+        "name": "수경원예+네노바",
+        "users_before": 2,
+        "user_ids": [
+          "11798470"
+        ],
+        "result": "path-invite OK"
+      },
+      {
+        "id": "968666645405350",
+        "name": "네노바 + 꽃샘원예",
+        "users_before": 2,
+        "user_ids": [
+          "11798470"
+        ],
+        "result": "path-invite OK"
+      },
+      {
+        "id": "968666645663481",
+        "name": "태광 + 네노바",
+        "users_before": 2,
+        "user_ids": [
+          "11798470"
+        ],
+        "result": "path-invite OK"
+      },
+      {
+        "id": "968666649689802",
+        "name": "경부선 일신 &네노바",
+        "users_before": 2,
+        "user_ids": [
+          "11798470"
+        ],
+        "result": "path-invite OK"
+      },
+      {
+        "id": "968666649788116",
+        "name": "네노바 + 다원",
+        "users_before": 2,
+        "user_ids": [
+          "11798470"
+        ],
+        "result": "path-invite OK"
+      },
+      {
+        "id": "968666653982421",
+        "name": "네노바 + 청화원예",
+        "users_before": 2,
+        "user_ids": [
+          "11798470"
+        ],
+        "result": "path-invite OK"
+      },
+      {
+        "id": "968666653982422",
+        "name": "참좋은 &네노바",
+        "users_before": 2,
+        "user_ids": [
+          "11798470"
+        ],
+        "result": "path-invite OK"
+      },
+      {
+        "id": "968666654052090",
+        "name": "엘리아리+네노바",
+        "users_before": 2,
+        "user_ids": [
+          "11798470"
+        ],
+        "result": "path-invite OK"
+      },
+      {
+        "id": "968666658078412",
+        "name": "경부 중앙화훼",
+        "users_before": 2,
+        "user_ids": [
+          "11798470"
+        ],
+        "result": "path-invite OK"
+      },
+      {
+        "id": "968666662182568",
+        "name": "전산테스트팀",
+        "users_before": 2,
+        "user_ids": [
+          "11798470"
+        ],
+        "result": "path-invite OK"
+      },
+      {
+        "id": "968666662371031",
+        "name": "한국방역",
+        "users_before": 2,
+        "user_ids": [
+          "11798470"
+        ],
+        "result": "path-invite OK"
+      },
+      {
+        "id": "968666662375201",
+        "name": "견적방",
+        "users_before": 2,
+        "user_ids": [
+          "11798470"
+        ],
+        "result": "path-invite OK"
+      },
+      {
+        "id": "968666666376873",
+        "name": "발번호및 입고수량확인방",
+        "users_before": 2,
+        "user_ids": [
+          "11798470"
+        ],
+        "result": "path-invite OK"
+      },
+      {
+        "id": "968666666381036",
+        "name": "네노바&선울",
+        "users_before": 2,
+        "user_ids": [
+          "11798470"
+        ],
+        "result": "path-invite OK"
+      },
+      {
+        "id": "968666666635003",
+        "name": "3.미우신라방",
+        "users_before": 2,
+        "user_ids": [
+          "11798470"
+        ],
+        "result": "path-invite OK"
+      },
+      {
+        "id": "968666670661325",
+        "name": "주님방",
+        "users_before": 2,
+        "user_ids": [
+          "11798470"
+        ],
+        "result": "path-invite OK"
+      },
+      {
+        "id": "968666670759640",
+        "name": "영업지원팀",
+        "users_before": 2,
+        "user_ids": [
+          "11798470"
+        ],
+        "result": "path-invite OK"
+      },
+      {
+        "id": "968666670849770",
+        "name": "네노바 수입(물량 공유방)",
+        "users_before": 2,
+        "user_ids": [
+          "11798470"
+        ],
+        "result": "path-invite OK"
+      },
+      {
+        "id": "968694701002656",
+        "name": "임재용",
+        "users_before": 2,
+        "user_ids": [
+          "11798470"
+        ],
+        "result": "path-invite OK"
+      },
+      {
+        "id": "968694701359201",
+        "name": "임재용, 임재용",
+        "users_before": 3,
+        "user_ids": [
+          "11798470"
+        ],
+        "result": "path-invite OK"
+      },
+      {
+        "id": "968696697847933",
+        "name": "수입방 TEST",
+        "users_before": 3,
+        "user_ids": [
+          "11798470"
+        ],
+        "result": "path-invite OK"
+      },
+      {
+        "id": "968697729478733",
+        "name": "임재용",
+        "users_before": 2,
+        "user_ids": [
+          "11798470"
+        ],
+        "result": "path-invite OK"
+      },
+      {
+        "id": "968697746444401",
+        "name": "임재용",
+        "users_before": 2,
+        "user_ids": [
+          "11798470"
+        ],
+        "result": "path-invite OK"
+      },
+      {
+        "id": "968697758752873",
+        "name": "임재용",
+        "users_before": 2,
+        "user_ids": [
+          "11798470"
+        ],
+        "result": "path-invite OK"
+      },
+      {
+        "id": "968697771589767",
+        "name": "임재용",
+        "users_before": 2,
+        "user_ids": [
+          "11798470"
+        ],
+        "result": "path-invite OK"
+      },
+      {
+        "id": "968697788297327",
+        "name": "임재용",
+        "users_before": 2,
+        "user_ids": [
+          "11798470"
+        ],
+        "result": "path-invite OK"
+      },
+      {
+        "id": "968697800691743",
+        "name": "임재용",
+        "users_before": 2,
+        "user_ids": [
+          "11798470"
+        ],
+        "result": "path-invite OK"
+      },
+      {
+        "id": "968697813553267",
+        "name": "임재용",
+        "users_before": 2,
+        "user_ids": [
+          "11798470"
+        ],
+        "result": "path-invite OK"
+      },
+      {
+        "id": "968697830142030",
+        "name": "임재용",
+        "users_before": 2,
+        "user_ids": [
+          "11798470"
+        ],
+        "result": "path-invite OK"
+      },
+      {
+        "id": "968697842913396",
+        "name": "임재용",
+        "users_before": 2,
+        "user_ids": [
+          "11798470"
+        ],
+        "result": "FAIL: users-invite {'error': {'code': 'api_not_found', 'message': 'please check api name and HTTP method of your request'}, 'success': False}"
+      },
+      {
+        "id": "968697855217697",
+        "name": "임재용",
+        "users_before": 2,
+        "user_ids": [
+          "11798470"
+        ],
+        "result": "path-invite OK"
+      },
+      {
+        "id": "968697872273525",
+        "name": "임재용",
+        "users_before": 2,
+        "user_ids": [
+          "11798470"
+        ],
+        "result": "path-invite OK"
+      },
+      {
+        "id": "968697884479425",
+        "name": "임재용",
+        "users_before": 2,
+        "user_ids": [
+          "11798470"
+        ],
+        "result": "path-invite OK"
+      },
+      {
+        "id": "968697897250896",
+        "name": "임재용",
+        "users_before": 2,
+        "user_ids": [
+          "11798470"
+        ],
+        "result": "path-invite OK"
+      },
+      {
+        "id": "968697913839554",
+        "name": "임재용",
+        "users_before": 2,
+        "user_ids": [
+          "11798470"
+        ],
+        "result": "path-invite OK"
+      },
+      {
+        "id": "968697926779018",
+        "name": "임재용",
+        "users_before": 2,
+        "user_ids": [
+          "11798470"
+        ],
+        "result": "path-invite OK"
+      },
+      {
+        "id": "968697939296423",
+        "name": "임재용",
+        "users_before": 2,
+        "user_ids": [
+          "11798470"
+        ],
+        "result": "path-invite OK"
+      },
+      {
+        "id": "968697956073640",
+        "name": "임재용",
+        "users_before": 2,
+        "user_ids": [
+          "11798470"
+        ],
+        "result": "path-invite OK"
+      },
+      {
+        "id": "968697968463907",
+        "name": "임재용",
+        "users_before": 2,
+        "user_ids": [
+          "11798470"
+        ],
+        "result": "path-invite OK"
+      },
+      {
+        "id": "968697981239466",
+        "name": "임재용",
+        "users_before": 2,
+        "user_ids": [
+          "11798470"
+        ],
+        "result": "path-invite OK"
+      },
+      {
+        "id": "968697997725635",
+        "name": "임재용",
+        "users_before": 2,
+        "user_ids": [
+          "11798470"
+        ],
+        "result": "path-invite OK"
+      },
+      {
+        "id": "968698010599596",
+        "name": "임재용",
+        "users_before": 2,
+        "user_ids": [
+          "11798470"
+        ],
+        "result": "path-invite OK"
+      },
+      {
+        "id": "968698023080018",
+        "name": "임재용",
+        "users_before": 2,
+        "user_ids": [
+          "11798470"
+        ],
+        "result": "path-invite OK"
+      },
+      {
+        "id": "968698039668676",
+        "name": "임재용",
+        "users_before": 2,
+        "user_ids": [
+          "11798470"
+        ],
+        "result": "path-invite OK"
+      },
+      {
+        "id": "968698052349989",
+        "name": "임재용",
+        "users_before": 2,
+        "user_ids": [
+          "11798470"
+        ],
+        "result": "path-invite OK"
+      },
+      {
+        "id": "968698064834501",
+        "name": "임재용",
+        "users_before": 2,
+        "user_ids": [
+          "11798470"
+        ],
+        "result": "path-invite OK"
+      },
+      {
+        "id": "968698081902765",
+        "name": "임재용",
+        "users_before": 2,
+        "user_ids": [
+          "11798470"
+        ],
+        "result": "path-invite OK"
+      },
+      {
+        "id": "968698094383188",
+        "name": "임재용",
+        "users_before": 2,
+        "user_ids": [
+          "11798470"
+        ],
+        "result": "path-invite OK"
+      },
+      {
+        "id": "968698111160405",
+        "name": "임재용",
+        "users_before": 2,
+        "user_ids": [
+          "11798470"
+        ],
+        "result": "path-invite OK"
+      },
+      {
+        "id": "968698123911309",
+        "name": "임재용",
+        "users_before": 2,
+        "user_ids": [
+          "11798470"
+        ],
+        "result": "path-invite OK"
+      },
+      {
+        "id": "968698136428720",
+        "name": "임재용",
+        "users_before": 2,
+        "user_ids": [
+          "11798470"
+        ],
+        "result": "path-invite OK"
+      },
+      {
+        "id": "968698153205937",
+        "name": "임재용",
+        "users_before": 2,
+        "user_ids": [
+          "11798470"
+        ],
+        "result": "path-invite OK"
+      },
+      {
+        "id": "968698165497800",
+        "name": "임재용",
+        "users_before": 2,
+        "user_ids": [
+          "11798470"
+        ],
+        "result": "path-invite OK"
+      },
+      {
+        "id": "968698178179111",
+        "name": "임재용",
+        "users_before": 2,
+        "user_ids": [
+          "11798470"
+        ],
+        "result": "path-invite OK"
+      },
+      {
+        "id": "968698194960498",
+        "name": "임재용",
+        "users_before": 2,
+        "user_ids": [
+          "11798470"
+        ],
+        "result": "path-invite OK"
+      },
+      {
+        "id": "968698207727730",
+        "name": "임재용",
+        "users_before": 2,
+        "user_ids": [
+          "11798470"
+        ],
+        "result": "path-invite OK"
+      },
+      {
+        "id": "968698220310643",
+        "name": "임재용",
+        "users_before": 2,
+        "user_ids": [
+          "11798470"
+        ],
+        "result": "path-invite OK"
+      },
+      {
+        "id": "968698236903540",
+        "name": "임재용",
+        "users_before": 2,
+        "user_ids": [
+          "11798470"
+        ],
+        "result": "path-invite OK"
+      },
+      {
+        "id": "968698249740432",
+        "name": "임재용",
+        "users_before": 2,
+        "user_ids": [
+          "11798470"
+        ],
+        "result": "path-invite OK"
+      },
+      {
+        "id": "968727765057898",
+        "name": "네노바, 임재용",
+        "users_before": 3,
+        "user_ids": [
+          "11798470"
+        ],
+        "result": "path-invite OK"
+      },
+      {
+        "id": "968727765078358",
+        "name": "네노바, 임재용",
+        "users_before": 3,
+        "user_ids": [
+          "11798470"
+        ],
+        "result": "path-invite OK"
+      },
+      {
+        "id": "968727768994057",
+        "name": "네노바, 임재용",
+        "users_before": 3,
+        "user_ids": [
+          "11798470"
+        ],
+        "result": "path-invite OK"
+      },
+      {
+        "id": "968727768994058",
+        "name": "네노바, 임재용",
+        "users_before": 3,
+        "user_ids": [
+          "11798470"
+        ],
+        "result": "path-invite OK"
+      },
+      {
+        "id": "968727773188363",
+        "name": "네노바, 임재용",
+        "users_before": 3,
+        "user_ids": [
+          "11798470"
+        ],
+        "result": "path-invite OK"
+      },
+      {
+        "id": "968727773376845",
+        "name": "네노바, 임재용",
+        "users_before": 3,
+        "user_ids": [
+          "11798470"
+        ],
+        "result": "path-invite OK"
+      },
+      {
+        "id": "968727777280177",
+        "name": "네노바, 임재용",
+        "users_before": 3,
+        "user_ids": [
+          "11798470"
+        ],
+        "result": "path-invite OK"
+      },
+      {
+        "id": "968727777571150",
+        "name": "네노바, 임재용",
+        "users_before": 3,
+        "user_ids": [
+          "11798470"
+        ],
+        "result": "path-invite OK"
+      },
+      {
+        "id": "968727781474482",
+        "name": "네노바, 임재용",
+        "users_before": 3,
+        "user_ids": [
+          "11798470"
+        ],
+        "result": "path-invite OK"
+      },
+      {
+        "id": "968727785771276",
+        "name": "네노바, 임재용",
+        "users_before": 3,
+        "user_ids": [
+          "11798470"
+        ],
+        "result": "path-invite OK"
+      },
+      {
+        "id": "968727786029419",
+        "name": "네노바, 임재용",
+        "users_before": 3,
+        "user_ids": [
+          "11798470"
+        ],
+        "result": "path-invite OK"
+      },
+      {
+        "id": "968727789863091",
+        "name": "네노바, 임재용",
+        "users_before": 3,
+        "user_ids": [
+          "11798470"
+        ],
+        "result": "path-invite OK"
+      },
+      {
+        "id": "968727790154063",
+        "name": "네노바, 임재용",
+        "users_before": 3,
+        "user_ids": [
+          "11798470"
+        ],
+        "result": "path-invite OK"
+      },
+      {
+        "id": "968727794159885",
+        "name": "네노바, 임재용",
+        "users_before": 3,
+        "user_ids": [
+          "11798470"
+        ],
+        "result": "path-invite OK"
+      },
+      {
+        "id": "968727794348368",
+        "name": "네노바, 임재용",
+        "users_before": 3,
+        "user_ids": [
+          "11798470"
+        ],
+        "result": "path-invite OK"
+      },
+      {
+        "id": "968727798542673",
+        "name": "네노바, 임재용",
+        "users_before": 3,
+        "user_ids": [
+          "11798470"
+        ],
+        "result": "path-invite OK"
+      },
+      {
+        "id": "968727798546844",
+        "name": "네노바, 임재용",
+        "users_before": 3,
+        "user_ids": [
+          "11798470"
+        ],
+        "result": "path-invite OK"
+      }
+    ]
+  },
+  {
+    "timestamp": 1777968729.303445,
+    "user_ids": [
+      "11798493",
+      "11798575",
+      "11821285"
+    ],
+    "invited": 37,
+    "failed": [],
+    "planned": [
+      {
+        "id": "968666561523431",
+        "name": "백상",
+        "users_before": 3,
+        "user_ids": [
+          "11798493",
+          "11798575",
+          "11821285"
+        ],
+        "result": "path-invite OK"
+      },
+      {
+        "id": "968666565611056",
+        "name": "빌번호 및 입고수량확인방",
+        "users_before": 3,
+        "user_ids": [
+          "11798493",
+          "11798575",
+          "11821285"
+        ],
+        "result": "path-invite OK"
+      },
+      {
+        "id": "968666565803719",
+        "name": "네노바&선율",
+        "users_before": 3,
+        "user_ids": [
+          "11798493",
+          "11798575",
+          "11821285"
+        ],
+        "result": "path-invite OK"
+      },
+      {
+        "id": "968666620137011",
+        "name": "수입방",
+        "users_before": 3,
+        "user_ids": [
+          "11798493",
+          "11798575",
+          "11821285"
+        ],
+        "result": "path-invite OK"
+      },
+      {
+        "id": "968666620243689",
+        "name": "현장단체방",
+        "users_before": 3,
+        "user_ids": [
+          "11798493",
+          "11798575",
+          "11821285"
+        ],
+        "result": "path-invite OK"
+      },
+      {
+        "id": "968666620518119",
+        "name": "영업방팀 발주 및 추가 재고확인",
+        "users_before": 3,
+        "user_ids": [
+          "11798493",
+          "11798575",
+          "11821285"
+        ],
+        "result": "path-invite OK"
+      },
+      {
+        "id": "968666624691959",
+        "name": "네노바 수입(불량 공유방)",
+        "users_before": 3,
+        "user_ids": [
+          "11798493",
+          "11798575",
+          "11821285"
+        ],
+        "result": "path-invite OK"
+      },
+      {
+        "id": "968666624691960",
+        "name": "네노바현장팀",
+        "users_before": 3,
+        "user_ids": [
+          "11798493",
+          "11798575",
+          "11821285"
+        ],
+        "result": "path-invite OK"
+      },
+      {
+        "id": "968666628816591",
+        "name": "현장추가취소방",
+        "users_before": 3,
+        "user_ids": [
+          "11798493",
+          "11798575",
+          "11821285"
+        ],
+        "result": "path-invite OK"
+      },
+      {
+        "id": "968666628816592",
+        "name": "네노바 영업/현장",
+        "users_before": 3,
+        "user_ids": [
+          "11798493",
+          "11798575",
+          "11821285"
+        ],
+        "result": "path-invite OK"
+      },
+      {
+        "id": "968666628820766",
+        "name": "네노바 수입/영업/현장",
+        "users_before": 3,
+        "user_ids": [
+          "11798493",
+          "11798575",
+          "11821285"
+        ],
+        "result": "path-invite OK"
+      },
+      {
+        "id": "968666633010897",
+        "name": "란스 발주방",
+        "users_before": 3,
+        "user_ids": [
+          "11798493",
+          "11798575",
+          "11821285"
+        ],
+        "result": "path-invite OK"
+      },
+      {
+        "id": "968666633010898",
+        "name": "영림원예+네노바",
+        "users_before": 3,
+        "user_ids": [
+          "11798493",
+          "11798575",
+          "11821285"
+        ],
+        "result": "path-invite OK"
+      },
+      {
+        "id": "968666633101032",
+        "name": "네노바 영업",
+        "users_before": 3,
+        "user_ids": [
+          "11798493",
+          "11798575",
+          "11821285"
+        ],
+        "result": "path-invite OK"
+      },
+      {
+        "id": "968666637205203",
+        "name": "네노바 + 대지",
+        "users_before": 3,
+        "user_ids": [
+          "11798493",
+          "11798575",
+          "11821285"
+        ],
+        "result": "path-invite OK"
+      },
+      {
+        "id": "968666637209375",
+        "name": "수연원예+네노바",
+        "users_before": 3,
+        "user_ids": [
+          "11798493",
+          "11798575",
+          "11821285"
+        ],
+        "result": "path-invite OK"
+      },
+      {
+        "id": "968666641108532",
+        "name": "구백의천사 + 네노바",
+        "users_before": 3,
+        "user_ids": [
+          "11798493",
+          "11798575",
+          "11821285"
+        ],
+        "result": "path-invite OK"
+      },
+      {
+        "id": "968666641211044",
+        "name": "네노바&수아레",
+        "users_before": 3,
+        "user_ids": [
+          "11798493",
+          "11798575",
+          "11821285"
+        ],
+        "result": "path-invite OK"
+      },
+      {
+        "id": "968666641211045",
+        "name": "경부선 늘봄&네노바",
+        "users_before": 3,
+        "user_ids": [
+          "11798493",
+          "11798575",
+          "11821285"
+        ],
+        "result": "path-invite OK"
+      },
+      {
+        "id": "968666645302837",
+        "name": "수경원예+네노바",
+        "users_before": 3,
+        "user_ids": [
+          "11798493",
+          "11798575",
+          "11821285"
+        ],
+        "result": "path-invite OK"
+      },
+      {
+        "id": "968666645405350",
+        "name": "네노바 + 꽃샘원예",
+        "users_before": 3,
+        "user_ids": [
+          "11798493",
+          "11798575",
+          "11821285"
+        ],
+        "result": "path-invite OK"
+      },
+      {
+        "id": "968666645663481",
+        "name": "태광 + 네노바",
+        "users_before": 3,
+        "user_ids": [
+          "11798493",
+          "11798575",
+          "11821285"
+        ],
+        "result": "path-invite OK"
+      },
+      {
+        "id": "968666649689802",
+        "name": "경부선 일신 &네노바",
+        "users_before": 3,
+        "user_ids": [
+          "11798493",
+          "11798575",
+          "11821285"
+        ],
+        "result": "path-invite OK"
+      },
+      {
+        "id": "968666649788116",
+        "name": "네노바 + 다원",
+        "users_before": 3,
+        "user_ids": [
+          "11798493",
+          "11798575",
+          "11821285"
+        ],
+        "result": "path-invite OK"
+      },
+      {
+        "id": "968666653982421",
+        "name": "네노바 + 청화원예",
+        "users_before": 3,
+        "user_ids": [
+          "11798493",
+          "11798575",
+          "11821285"
+        ],
+        "result": "path-invite OK"
+      },
+      {
+        "id": "968666653982422",
+        "name": "참좋은 &네노바",
+        "users_before": 3,
+        "user_ids": [
+          "11798493",
+          "11798575",
+          "11821285"
+        ],
+        "result": "path-invite OK"
+      },
+      {
+        "id": "968666654052090",
+        "name": "엘리아리+네노바",
+        "users_before": 3,
+        "user_ids": [
+          "11798493",
+          "11798575",
+          "11821285"
+        ],
+        "result": "path-invite OK"
+      },
+      {
+        "id": "968666658078412",
+        "name": "경부 중앙화훼",
+        "users_before": 3,
+        "user_ids": [
+          "11798493",
+          "11798575",
+          "11821285"
+        ],
+        "result": "path-invite OK"
+      },
+      {
+        "id": "968666662182568",
+        "name": "전산테스트팀",
+        "users_before": 3,
+        "user_ids": [
+          "11798493",
+          "11798575",
+          "11821285"
+        ],
+        "result": "path-invite OK"
+      },
+      {
+        "id": "968666662371031",
+        "name": "한국방역",
+        "users_before": 3,
+        "user_ids": [
+          "11798493",
+          "11798575",
+          "11821285"
+        ],
+        "result": "path-invite OK"
+      },
+      {
+        "id": "968666662375201",
+        "name": "견적방",
+        "users_before": 3,
+        "user_ids": [
+          "11798493",
+          "11798575",
+          "11821285"
+        ],
+        "result": "path-invite OK"
+      },
+      {
+        "id": "968666666376873",
+        "name": "발번호및 입고수량확인방",
+        "users_before": 3,
+        "user_ids": [
+          "11798493",
+          "11798575",
+          "11821285"
+        ],
+        "result": "path-invite OK"
+      },
+      {
+        "id": "968666666381036",
+        "name": "네노바&선울",
+        "users_before": 3,
+        "user_ids": [
+          "11798493",
+          "11798575",
+          "11821285"
+        ],
+        "result": "path-invite OK"
+      },
+      {
+        "id": "968666666635003",
+        "name": "3.미우신라방",
+        "users_before": 3,
+        "user_ids": [
+          "11798493",
+          "11798575",
+          "11821285"
+        ],
+        "result": "path-invite OK"
+      },
+      {
+        "id": "968666670661325",
+        "name": "주님방",
+        "users_before": 3,
+        "user_ids": [
+          "11798493",
+          "11798575",
+          "11821285"
+        ],
+        "result": "path-invite OK"
+      },
+      {
+        "id": "968666670759640",
+        "name": "영업지원팀",
+        "users_before": 3,
+        "user_ids": [
+          "11798493",
+          "11798575",
+          "11821285"
+        ],
+        "result": "path-invite OK"
+      },
+      {
+        "id": "968666670849770",
+        "name": "네노바 수입(물량 공유방)",
+        "users_before": 3,
+        "user_ids": [
+          "11798493",
+          "11798575",
+          "11821285"
+        ],
+        "result": "path-invite OK"
+      }
+    ]
+  }
+]
