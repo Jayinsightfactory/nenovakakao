@@ -288,12 +288,24 @@ def _process_room_result(
     # 텍스트는 Bot API, 사진은 카카오워크 앱 Ctrl+T 업로드.
     # 각 사진 직전에 "[발신자] [시각] [사진]" 헤더를 Bot API로 선전송 →
     # 도착시간·발신자·첨부파일이 실제 카톡 순서대로 미러 방에 표시됨.
+    # watchdog beat helper — 무거운 IO (구글시트/워크 API/nenovaweb) 도중 진행 신호
+    def _wd_beat(label: str) -> None:
+        try:
+            import builtins as _b
+            wd = getattr(_b, "_nenova_watchdog", None)
+            if wd:
+                wd.beat(label)
+        except Exception:
+            pass
+
     from core.kakaowork_router import send_delta_interleaved
     r = None
     try:
         if downloaded_files:
             focus_kakaowork()
+        _wd_beat(f"send_start:{room_name}")
         r = send_delta_interleaved(room_name, delta, downloaded_files)
+        _wd_beat(f"send_done:{room_name}")
         print(
             f"     → 워크 전송 완료: 텍스트 {r['text_sent']}건 / "
             f"사진 {r['photos_uploaded']}장 "
@@ -343,10 +355,12 @@ def _process_room_result(
             print(f"     → 캡쳐 미러: 매핑 없음 ({room_name}) — 스킵", flush=True)
         else:
             urls = _cap_upload([cap_path], room=room_name)
+            _wd_beat(f"capture_upload:{room_name}")
             if urls and urls[0]:
                 ts_str = _dt.datetime.now().strftime("%H:%M:%S")
                 _cap_send_text(conv_id, f"[방 화면 캡쳐 {ts_str}] {room_name}")
                 cap_ok = _cap_send(conv_id, urls[0])
+                _wd_beat(f"capture_send:{room_name}")
                 print(
                     f"     → 캡쳐 미러: {'✅' if cap_ok else '❌'} ({cap_path.stat().st_size:,}B)",
                     flush=True,
@@ -597,6 +611,29 @@ def cmd_monitor(*, with_recorder: bool = False) -> int:
     # 이전 [19→0] 순서는 안읽음 방 적을 때 빈 영역 헛클릭 반복했음.
     PAGES = list(range(0, 20))  # [0, 1, ..., 19] — 맨 위부터
 
+    # ── 화면 정체 워치독 가동 (2026-05-12) ──
+    # 카톡 창 영역 픽셀 변화를 1초마다 감시. 120초 동안 화면+beat 둘 다 없으면 stall →
+    # SIGINT 자기 PID 송신 → monitor 정상 종료. 무한 retry/클릭 폭주 자동 차단.
+    #
+    # stall_seconds=120: 한 방 처리가 무거운 경우 (구글시트 100+건 기록 등) 90초까지
+    # 걸리는 케이스 있음. 명시 beat() 호출로 한 방 처리 중에도 진행 신호 갱신.
+    try:
+        from core.screen_watchdog import ScreenWatchdog, stall_kill_self
+        _watchdog = ScreenWatchdog(
+            on_stall=stall_kill_self,
+            stall_seconds=120.0,
+            poll_interval=1.0,
+            diff_threshold=2.5,
+        )
+        _watchdog.start()
+        # 전역 접근용 (_process_room_result 안에서 beat() 호출하도록)
+        import builtins as _b
+        _b._nenova_watchdog = _watchdog
+        print("[WATCHDOG] 화면 정체 감지 가동 (120초 정체 → 자동 정지)", flush=True)
+    except Exception as _wde:
+        print(f"[WATCHDOG] 가동 실패 (무시): {_wde}", flush=True)
+        _watchdog = None
+
     try:
         while True:
             # ── 중지 버튼 체크 ──
@@ -606,6 +643,10 @@ def cmd_monitor(*, with_recorder: bool = False) -> int:
 
             cycle += 1
             overlay.set_idle()
+
+            # watchdog beat — 매 사이클 진입 = 명시적 진행 신호 (long idle 일 때도 OK)
+            if _watchdog:
+                _watchdog.beat(f"cycle_{cycle}")
 
             # 이번 사이클에서 처리된 방 이름 추적
             processed_this_cycle: set[str] = set()
@@ -954,6 +995,14 @@ def cmd_monitor(*, with_recorder: bool = False) -> int:
 
     except KeyboardInterrupt:
         print("\n[MONITOR] Ctrl+C 감지. 감시 종료.")
+
+    # watchdog 정리
+    try:
+        if _watchdog:
+            _watchdog.stop()
+            print("[WATCHDOG] 종료", flush=True)
+    except Exception:
+        pass
 
     # 공통 종료 처리 (중지버튼/Ctrl+C 모두)
     try:

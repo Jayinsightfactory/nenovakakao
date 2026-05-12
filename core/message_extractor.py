@@ -474,17 +474,67 @@ def save_chat_with_ctrl_s(room_name: str | None = None, chat_hwnd: int | None = 
 
         # "대화내보내기 완료되었습니다" 확인 팝업 닫기 (Enter 또는 ESC)
         # 카톡이 저장 성공 후 출력하는 confirmation popup — 닫지 않으면 후속 작업 차단
-        time.sleep(1.0)
-        for _ in range(3):
-            ft2 = get_foreground_title()
-            if any(k in ft2 for k in ["완료", "내보내기", "완료되었", "저장되었"]):
+        #
+        # 2026-05-12 강화: 포그라운드 title 매칭만으로는 못 잡는 케이스 발견 —
+        # 다이얼로그가 떴는데 윈도우 title 이 비어있어서 get_foreground_title() = ""
+        # → 키워드 매칭 실패 → 다이얼로그 잔재. EnumWindows 로 자식 텍스트까지 검사.
+        import win32gui as _w32g
+        KW = ("완료", "내보내기", "완료되었", "저장되었")
+
+        def _find_completion_popup():
+            """포그라운드 title 또는 가시 작은 dialog 의 자식 텍스트에서 keyword 잡기."""
+            try:
+                ft = get_foreground_title() or ""
+                if any(k in ft for k in KW):
+                    return _w32g.GetForegroundWindow()
+            except Exception:
+                pass
+            found = [None]
+            def _check(hwnd, _):
+                if found[0] or not _w32g.IsWindowVisible(hwnd):
+                    return
                 try:
-                    pyautogui.press("enter")
-                    time.sleep(0.3)
+                    rect = _w32g.GetWindowRect(hwnd)
+                    w, h = rect[2] - rect[0], rect[3] - rect[1]
+                    # 작은 모달 다이얼로그 크기 (메인 앱 창 제외)
+                    if w < 150 or w > 700 or h < 80 or h > 500:
+                        return
+                    t = _w32g.GetWindowText(hwnd) or ""
+                    child_texts = [t] if t else []
+                    def _coll(ch, _):
+                        ct = _w32g.GetWindowText(ch) or ""
+                        if ct:
+                            child_texts.append(ct)
+                    _w32g.EnumChildWindows(hwnd, _coll, None)
+                    body = " ".join(child_texts)
+                    if any(k in body for k in KW):
+                        found[0] = hwnd
                 except Exception:
                     pass
-            else:
+            _w32g.EnumWindows(_check, None)
+            return found[0]
+
+        time.sleep(1.0)
+        for _ in range(5):  # 3 → 5: 다이얼로그 늦게 뜨는 케이스 대응
+            popup = _find_completion_popup()
+            if not popup:
                 break
+            try:
+                # 다이얼로그 활성화 + Enter 송신
+                try:
+                    _w32g.SetForegroundWindow(popup)
+                except Exception:
+                    pass
+                time.sleep(0.15)
+                pyautogui.press("enter")
+                time.sleep(0.3)
+            except Exception:
+                # Enter 실패 시 WM_CLOSE fallback
+                try:
+                    import win32con as _wc
+                    _w32g.PostMessage(popup, _wc.WM_CLOSE, 0, 0)
+                except Exception:
+                    pass
 
     except SafetyAbort as e:
         mark("ctrl_s.aborted", "fail", {"reason": str(e)})
