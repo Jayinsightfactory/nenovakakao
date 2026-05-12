@@ -1,0 +1,393 @@
+[
+  {
+    "mapping_key": "수입방",
+    "conv_id": "973772195788587",
+    "detected_title": "Program Manager",
+    "exact_match": false,
+    "before_windows": [
+      "주광 담당",
+      "Program Manager",
+      "발번호및 입고수량확인방",
+      "ToastWindow",
+      "Windows 입력 환경",
+      "네노바 영업/현장",
+      "카카오워크"
+    ],
+    "new_windows": [],
+    "fg_title": "카카오톡"
+  },
+  {
+    "mapping_key": "영업방팀 발주 및 추가 재고확인",
+    "conv_id": "973772199691964",
+    "detected_title": "Program Manager",
+    "exact_match": false,
+    "before_windows": [
+      "주광 담당",
+      "Program Manager",
+      "발번호및 입고수량확인방",
+      "ToastWindow",
+      "Windows 입력 환경",
+      "네노바 영업/현장",
+      "카카오워크"
+    ],
+    "new_windows": [],
+    "fg_title": "카카오톡"
+  },
+  {
+    "mapping_key": "네노바 수입(불량 공유방)",
+    "conv_id": "973772199638642",
+    "detected_title": "Program Manager",
+    "exact_match": false,
+    "before_windows": [
+      "주광 담당",
+      "Program Manager",
+      "발번호및 입고수량확인방",
+      "ToastWindow",
+      "Windows 입력 환경",
+      "네노바 영업/현장",
+      "카카오워크"
+    ],
+    "new_windows": [],
+    "fg_title": "카카오톡"
+  },
+  {
+    "mapping_key": "현장 추가취소방",
+    "conv_id": "973772199691965",
+    "detected_title": "Program Manager",
+    "exact_match": false,
+    "before_windows": [
+      "주광 담당",
+      "Program Manager",
+      "발번호및 입고수량확인방",
+      "ToastWindow",
+      "Windows 입력 환경",
+      "네노바 영업/현장",
+      "카카오워크"
+    ],
+    "new_windows": [],
+    "fg_title": "카카오톡"
+  },
+  {
+    "mapping_key": "현장단체방",
+    "conv_id": "973772203869875",
+    "detected_title": "Program Manager",
+    "exact_match": false,
+    "before_windows": [
+      "주광 담당",
+      "Program Manager",
+      "발번호및 입고수량확인방",
+      "ToastWindow",
+      "Windows 입력 환경",
+      "네노바 영업/현장",
+      "카카오워크"
+    ],
+    "new_windows": [],
+    "fg_title": "카카오톡"
+  },
+  {
+    "mapping_key": "전산테스트팀",
+    "conv_id": "973772203886270",
+    "detected_title": "Program Manager",
+    "exact_match": false,
+    "before_windows": [
+      "주광 담당",
+      "Program Manager",
+      "발번호및 입고수량확인방",
+      "ToastWindow",
+      "Windows 입력 환경",
+      "네노바 영업/현장",
+      "카카오워크"
+    ],
+    "new_windows": [],
+    "fg_title": "카카오톡"
+  },
+  {
+    "mapping_key": "견적방",
+    "conv_id": "973772208080575",
+    "detected_title": "Program Manager",
+    "exact_match": false,
+    "before_windows": [
+      "주광 담당",
+      "Program Manager",
+      "발번호및 입고수량확인방",
+      "ToastWindow",
+      "Windows 입력 환경",
+      "네노바 영업/현장",
+      "카카오워크"
+    ],
+    "new_windows": [],
+    "fg_title": "카카오톡"
+  },
+  {
+    "mapping_key": "한국방역",
+    "conv_id": "973772208371500",
+    "detected_title": "Program Manager",
+    "exact_match": false,
+    "before_windows": [
+      "주광 담당",
+      "Program Manager",
+      "발번호및 입고수량확인방",
+      "ToastWindow",
+      "Windows 입력 환경",
+      "네노바 영업/현장",
+      "카카오워크"
+    ],
+    "new_windows": [],
+    "fg_title": "카카오톡"
+  },
+  {
+    "mapping_key": "네노바&선울",
+    "conv_id": "973772212565805",
+    "detected_title": "Program Manager",
+    "exact_match": false,
+    "before_windows": [
+      "주광 담당",
+      "Program Manager",
+      "발번호및 입고수량확인방",
+      "ToastWindow",
+      "Windows 입력 환경",
+      "네노바 영업/현장",
+      "카카오워크"
+    ],
+    "new_windows": [],
+    "fg_title": "카카오톡"
+  },
+  {
+    "mapping_key": "3.미우신라방",
+    "conv_id": "973772212258485",
+    "detected_title": "Program Manager",
+    "exact_match": false,
+    "before_windows": [
+      "주광 담당",
+      "Program Manager",
+      "발번호및 입고수량확인방",
+      "ToastWindow",
+      "Windows 입력 환경",
+      "네노바 영업/현장",
+      "카카오워크"
+    ],
+    "new_windows": [],
+    "fg_title": "카카오톡"
+  },
+  {
+    "mapping_key": "발번호및 입고수량확인방",
+    "conv_id": "973772216452790",
+    "detected_title": "Program Manager",
+    "exact_match": false,
+    "before_windows": [
+      "주광 담당",
+      "Program Manager",
+      "발번호및 입고수량확인방",
+      "ToastWindow",
+      "Windows 입력 환경",
+      "네노바 영업/현장",
+      "카카오워크"
+    ],
+    "new_windows": [],
+    "fg_title": "카카오톡"
+  },
+  {
+    "mapping_key": "네노바현장팀",
+    "conv_id": "973772216403601",
+    "detected_title": "Program Manager",
+    "exact_match": false,
+    "before_windows": [
+      "주광 담당",
+      "Program Manager",
+      "발번호및 입고수량확인방",
+      "ToastWindow",
+      "Windows 입력 환경",
+      "네노바 영업/현장",
+      "카카오워크"
+    ],
+    "new_windows": [],
+    "fg_title": "카카오톡"
+  },
+  {
+    "mapping_key": "주님방",
+    "conv_id": "973772216452792",
+    "detected_title": "Program Manager",
+    "exact_match": false,
+    "before_windows": [
+      "주광 담당",
+      "Program Manager",
+      "발번호및 입고수량확인방",
+      "ToastWindow",
+      "Windows 입력 환경",
+      "네노바 영업/현장",
+      "카카오워크"
+    ],
+    "new_windows": [],
+    "fg_title": "카카오톡"
+  },
+  {
+    "mapping_key": "영업지원팀",
+    "conv_id": "973772220610163",
+    "detected_title": "Program Manager",
+    "exact_match": false,
+    "before_windows": [
+      "주광 담당",
+      "Program Manager",
+      "발번호및 입고수량확인방",
+      "ToastWindow",
+      "Windows 입력 환경",
+      "네노바 영업/현장",
+      "카카오워크"
+    ],
+    "new_windows": [],
+    "fg_title": "카카오톡"
+  },
+  {
+    "mapping_key": "백상",
+    "conv_id": "973772220597906",
+    "detected_title": "Program Manager",
+    "exact_match": false,
+    "before_windows": [
+      "주광 담당",
+      "Program Manager",
+      "발번호및 입고수량확인방",
+      "ToastWindow",
+      "Windows 입력 환경",
+      "네노바 영업/현장",
+      "카카오워크"
+    ],
+    "new_windows": [],
+    "fg_title": "카카오톡"
+  },
+  {
+    "mapping_key": "네노바 수입/영업/현장",
+    "conv_id": "974124290524125",
+    "detected_title": "Program Manager",
+    "exact_match": false,
+    "before_windows": [
+      "주광 담당",
+      "Program Manager",
+      "발번호및 입고수량확인방",
+      "ToastWindow",
+      "Windows 입력 환경",
+      "네노바 영업/현장",
+      "카카오워크"
+    ],
+    "new_windows": [],
+    "fg_title": "카카오톡"
+  },
+  {
+    "mapping_key": "네노바 영업",
+    "conv_id": "974124290487217",
+    "detected_title": "Program Manager",
+    "exact_match": false,
+    "before_windows": [
+      "주광 담당",
+      "Program Manager",
+      "발번호및 입고수량확인방",
+      "ToastWindow",
+      "Windows 입력 환경",
+      "네노바 영업/현장",
+      "카카오워크"
+    ],
+    "new_windows": [],
+    "fg_title": "카카오톡"
+  },
+  {
+    "mapping_key": "란스 발주방",
+    "conv_id": "974124294734830",
+    "detected_title": "Program Manager",
+    "exact_match": false,
+    "before_windows": [
+      "주광 담당",
+      "Program Manager",
+      "발번호및 입고수량확인방",
+      "ToastWindow",
+      "Windows 입력 환경",
+      "네노바 영업/현장",
+      "카카오워크"
+    ],
+    "new_windows": [],
+    "fg_title": "카카오톡"
+  },
+  {
+    "mapping_key": "조현욱, 박성빈, 김원영차장",
+    "conv_id": "974124294796204",
+    "detected_title": "Program Manager",
+    "exact_match": false,
+    "before_windows": [
+      "주광 담당",
+      "Program Manager",
+      "발번호및 입고수량확인방",
+      "ToastWindow",
+      "Windows 입력 환경",
+      "네노바 영업/현장",
+      "카카오워크"
+    ],
+    "new_windows": [],
+    "fg_title": "카카오톡"
+  },
+  {
+    "mapping_key": "경부선 늘봄& 네노바",
+    "conv_id": "974124298875826",
+    "detected_title": "Program Manager",
+    "exact_match": false,
+    "before_windows": [
+      "주광 담당",
+      "Program Manager",
+      "발번호및 입고수량확인방",
+      "ToastWindow",
+      "Windows 입력 환경",
+      "네노바 영업/현장",
+      "카카오워크"
+    ],
+    "new_windows": [],
+    "fg_title": "카카오톡"
+  },
+  {
+    "mapping_key": "주광 담당",
+    "conv_id": "974124299220054",
+    "detected_title": "Program Manager",
+    "exact_match": false,
+    "before_windows": [
+      "주광 담당",
+      "Program Manager",
+      "발번호및 입고수량확인방",
+      "ToastWindow",
+      "Windows 입력 환경",
+      "네노바 영업/현장",
+      "카카오워크"
+    ],
+    "new_windows": [],
+    "fg_title": "카카오톡"
+  },
+  {
+    "mapping_key": "네노바 영업/현장",
+    "conv_id": "974124298875827",
+    "detected_title": "Program Manager",
+    "exact_match": false,
+    "before_windows": [
+      "주광 담당",
+      "Program Manager",
+      "발번호및 입고수량확인방",
+      "ToastWindow",
+      "Windows 입력 환경",
+      "네노바 영업/현장",
+      "카카오워크"
+    ],
+    "new_windows": [],
+    "fg_title": "카카오톡"
+  },
+  {
+    "mapping_key": "경부선 일신 &네노바",
+    "conv_id": "974124303107038",
+    "detected_title": "Program Manager",
+    "exact_match": false,
+    "before_windows": [
+      "주광 담당",
+      "Program Manager",
+      "발번호및 입고수량확인방",
+      "ToastWindow",
+      "Windows 입력 환경",
+      "네노바 영업/현장",
+      "카카오워크"
+    ],
+    "new_windows": [],
+    "fg_title": "카카오톡"
+  }
+]
