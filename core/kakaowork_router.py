@@ -1040,13 +1040,14 @@ def send_delta_interleaved(
                     break
 
             if not photos_for_this:
-                # 다운로드된 파일 없음 — 실패 텍스트로 남김
-                fallback = f"[{sender}] [{tstr}] [사진 {want}장 — 다운로드 실패]"
+                # 캡쳐 미러 패턴 (2026-05-12~): 사진은 _process_room_result 끝에서
+                # 카톡 창 화면 1장으로 별도 송신. 여기서는 시간순 보존 위해 헤더만.
+                fallback = f"[{sender}] [{tstr}] [사진 {want}장]"
                 if _send_single(conv_id, fallback):
                     stats["text_sent"] += 1
                 else:
                     stats["text_failed"] += 1
-                stats["photos_missing"] += want
+                # 실패 아님 — photos_missing 카운트 X (캡쳐 미러로 보완됨)
                 time.sleep(delay)
                 continue
 

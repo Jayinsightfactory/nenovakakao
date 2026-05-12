@@ -107,7 +107,8 @@ def _process_room_result(
     downloaded_files = []
     photo_count = count_photo_messages(delta)
     if photo_count > 0:
-        print(f"     → [사진] {photo_count}개 감지 - 서랍 열기...")
+        # 캡쳐 미러 패턴 (2026-05-12~): 사진 다운로드 우회. 카톡 창 화면 캡쳐로 대체.
+        print(f"     → [사진] {photo_count}개 감지 - 캡쳐 미러로 대체 (다운로드 우회)")
         import win32gui
         norm_room = room_name.replace(" ", "")
 
@@ -239,7 +240,8 @@ def _process_room_result(
         if downloaded_files:
             print(f"     → {len(downloaded_files)}개 사진 다운로드 완료")
         else:
-            print(f"     → 사진 다운로드 실패/없음 (요청 {photo_count}장)")
+            # 캡쳐 미러 패턴 — extract_photos_from_room 이 [] 반환 (정상 동작)
+            print(f"     → 사진 {photo_count}장 — 다운로드 우회 (캡쳐 미러로 대체)")
 
         from core.message_extractor import close_chat_room
         close_chat_room()
@@ -306,15 +308,69 @@ def _process_room_result(
         if downloaded_files:
             return_to_kakaotalk()
 
+    # ── 캡쳐 미러 패턴: 카톡 창 화면을 1장 캡쳐 → 미러방으로 송신 ──
+    # 사진 다운로드 흐름 우회 (extract_photos_from_room 이 [] 반환).
+    # 시각 정보 (텍스트 메시지 + 첨부 이미지 미리보기 + UI 상태) 그대로 보존.
+    cap_ok = False
+    try:
+        from PIL import ImageGrab
+        from core.window_manager import KAKAOTALK_FIXED_POS
+        from core.photo_uploader import upload_many as _cap_upload
+        from core.kakaowork_router import (
+            send_image_preview_and_link as _cap_send,
+            _load_room_mapping as _cap_load_map,
+            _send_single as _cap_send_text,
+        )
+        import datetime as _dt
+
+        x_, y_, w_, h_ = KAKAOTALK_FIXED_POS
+        # 카톡 분리창이 있으면 그 영역 우선 (활성 채팅 분리창)
+        cap_bbox = (x_, y_, x_ + w_, y_ + h_)
+        chat_img = ImageGrab.grab(bbox=cap_bbox)
+
+        cap_dir = ROOT / "data" / "monitor_captures"
+        cap_dir.mkdir(exist_ok=True, parents=True)
+        safe = (
+            room_name.replace("/", "_").replace(" ", "")
+            .replace(",", "_").replace("&", "").replace("?", "")[:15]
+        )
+        cap_path = cap_dir / f"CAP_{int(time.time())}_{safe}.png"
+        chat_img.save(cap_path)
+
+        mapping = _cap_load_map()
+        conv_id = mapping.get(room_name)
+        if not conv_id:
+            print(f"     → 캡쳐 미러: 매핑 없음 ({room_name}) — 스킵", flush=True)
+        else:
+            urls = _cap_upload([cap_path], room=room_name)
+            if urls and urls[0]:
+                ts_str = _dt.datetime.now().strftime("%H:%M:%S")
+                _cap_send_text(conv_id, f"[방 화면 캡쳐 {ts_str}] {room_name}")
+                cap_ok = _cap_send(conv_id, urls[0])
+                print(
+                    f"     → 캡쳐 미러: {'✅' if cap_ok else '❌'} ({cap_path.stat().st_size:,}B)",
+                    flush=True,
+                )
+            else:
+                print(f"     → 캡쳐 미러: nenovaweb 업로드 실패", flush=True)
+        try:
+            cap_path.unlink()
+        except Exception:
+            pass
+    except Exception as _e:
+        print(f"     → 캡쳐 미러 예외: {type(_e).__name__}: {_e}", flush=True)
+
     # 작업 완료 배너 — 한 줄 요약
     if r:
         status = "✅" if r['photos_missing'] == 0 else "⚠️"
+        cap_mark = " 📸" if cap_ok else ""
         print(
-            f"  └─ {status} [{room_name}] 감지:{photo_count} 다운:{len(downloaded_files)} "
-            f"워크텍스트:{r['text_sent']} 워크사진:{r['photos_uploaded']} 누락:{r['photos_missing']}\n"
+            f"  └─ {status}{cap_mark} [{room_name}] 감지:{photo_count} "
+            f"워크텍스트:{r['text_sent']} 누락:{r['photos_missing']}\n"
         )
     else:
-        print(f"  └─ ❌ [{room_name}] 워크 전송 실패\n")
+        cap_mark = " 📸" if cap_ok else ""
+        print(f"  └─ ❌{cap_mark} [{room_name}] 텍스트 전송 실패 (캡쳐만 송신 시도)\n")
 
     return room_name
 
@@ -372,17 +428,17 @@ def cmd_monitor(*, with_recorder: bool = False) -> int:
     )
 
     def extract_photos_from_room(chat_hwnd, photo_count=0, room_name=""):
-        """layout 기반만 사용. 실패 시 빈 리스트 반환 (서랍 스크롤 없음)."""
-        if not LAYOUT_FILE.exists():
-            print(f"     → layout 파일 없음, 사진 스킵 (measure_drawer_layout.py 실행 필요)", flush=True)
-            return []
-        try:
-            return extract_photos_from_chat_via_layout(
-                chat_hwnd, photo_count=photo_count, room_name=room_name,
-            )
-        except Exception as e:
-            print(f"     → 레이아웃 기반 에러({e}), 사진 스킵", flush=True)
-            return []
+        """
+        캡쳐 미러 패턴 통합 (2026-05-12) — 사진 다운로드 흐름 **완전 비활성**.
+
+        이전: 서랍 → 묶음저장 → 다이얼로그 → nenovaweb → 카카오워크 송신.
+              사진 30+장 처리 시 다이얼로그 충돌/retry 폭주 + 미러 송신 0건 위험.
+        현재: 사진 다운로드 우회. _process_room_result 끝에서 카톡 창 화면을
+              **1장 캡쳐 → nenovaweb → 미리보기+링크 송신** (시각 정보 그대로 보존).
+
+        layout 기반 흐름은 비상 시 복귀 가능하도록 코드 자체는 import 만 보존.
+        """
+        return []
     from core.status_overlay import get_overlay
     from core.issue_reporter import report_issue
     from core.gsheet_sync import classify_and_log_delta, process_admin_feedback
