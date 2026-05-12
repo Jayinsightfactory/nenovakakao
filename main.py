@@ -346,6 +346,15 @@ def cmd_monitor(*, with_recorder: bool = False) -> int:
 
     # Windows: 다른 프로세스 창 활성화 허용
     ctypes.windll.user32.AllowSetForegroundWindow(-1)
+
+    # PyAutoGUI fail-safe 회피 — 시작 시점에 마우스가 모서리 근처면 자동화 즉시 정지.
+    # 화면 중앙으로 강제 이동해서 안전 영역 확보. (2026-05-11 fail-safe 사고 대응)
+    try:
+        import pyautogui as _pag
+        _sw, _sh = _pag.size()
+        _pag.moveTo(_sw // 2, _sh // 2, duration=0)
+    except Exception as _e:
+        print(f"  [SAFETY] 마우스 중앙 이동 실패 (무시): {_e}", flush=True)
     from core.window_detector import (
         capture_room_list, scroll_room_list_to_top,
     )
@@ -1256,6 +1265,15 @@ def cmd_invite_member(argv: list[str]) -> int:
 
 
 def main(argv: list[str]) -> int:
+    # PyAutoGUI fail-safe 공통 회피 — 모든 cmd 시작 전 마우스를 화면 중앙으로
+    # (0,0/모서리 근처에 있으면 자동화 즉시 정지. 2026-05-11~ 적용)
+    try:
+        import pyautogui as _pag
+        _sw, _sh = _pag.size()
+        _pag.moveTo(_sw // 2, _sh // 2, duration=0)
+    except Exception:
+        pass
+
     if len(argv) < 2:
         return cmd_monitor()
 

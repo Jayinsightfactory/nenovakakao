@@ -2,6 +2,31 @@
 
 > 이 파일은 Claude Code가 매 세션마다 자동으로 읽습니다. 세션이 바뀌어도 컨텍스트가 유지됩니다.
 
+## 🚨 절대 원칙 (모든 작업 시작 전 반드시 인지)
+
+1. **방별 차별화 분석 — 유형 그룹화 절대 금지**
+   - 14개+ 카톡 방마다 **고유 설정** 으로 분석 (`data/room_analysis_config.json`)
+   - "INTERNAL_BACKBONE / SUPPLIER_CHANNEL / PARTNER_CHANNEL" 같은 유형 묶음 사용 금지
+   - 분류 규칙 / 키워드 사전 / 발신자 매핑 / 거래처 매칭 모두 **방마다 다르게**
+   - 메모리 [room_specific_analysis_design.md] + [project_scope_correction.md] 참조
+
+2. **현재 단계: 분석 신뢰도 향상 — WEB(nenovaweb/ERP) 쓰기 절대 금지**
+   - 자동 입력 (`add_order` / `distribute_outgoing` / `set_start_stock` / `create_shipment_detail`) 금지
+   - 읽기 (마스터 조회, 매칭 검증) 만 허용
+   - 분석/분류 정확도가 충분히 올라간 후 사용자 명시 컨펌 받고 쓰기 시작
+
+3. **봇 API 송신 — 1:1 DM 정상 복구 (2026-05-11)**
+   - **이전 진단 ("2026-05-07~ 봇 push 차단") 은 오진**. 실제 원인: `ADMIN_USER_ID = 11826656`
+     이 워크스페이스에서 빠진 stale 계정이라 `messages.send` 가 success 반환해도
+     "no such user" 에게 갔던 것. 진짜 admin user_id 는 **11854018** (Nenovabusiness1@gmail.com).
+   - 정정 후 BOT_A(`b80694c0`, 네노바 주문 알림봇), BOT_B(`1a70022c`, 카톡복사봇) 둘 다 1:1 DM
+     송신 100% 정상 (사용자 클라이언트에서 직접 확인 완료).
+   - **그룹/미러방 송신은 별도 검증 필요** — BOT_A 가 100+ 방에 들어가 있으나, 미러방
+     실시청 정상 수신 여부는 아직 미검증. 미러 트랙 재개 전 그룹 1개에 테스트 송신 → 클라이언트 확인 필수.
+   - find_by_email 은 **대소문자 구분** — `Nenovabusiness1@gmail.com` (대문자 N) 정확히 입력 필요.
+   - 신규 봇 추가/멤버 변경 시 항상 `users.list` 로 실워크스페이스 멤버 재확인 (`kakaowork_users.json`
+     stale 방지). 2026-05-11 기준 실멤버 3명: 11798470(임재용), 11798493(강현우), 11854018(네노바).
+
 ## 🎯 프로젝트 목표
 
 카카오톡의 여러 방에서 들어오는 주문/변경 메시지 + 사진/파일을 자동 수집 → 카카오워크 미러 방에 실시간 전송 (텍스트 + 이미지) → 최종적으로 nenovaweb.com에 자동 입력.
@@ -338,9 +363,15 @@ PeriodDay(14,610) ← 날짜↔차수 매핑 (차수 계산 핵심!)
 - Python: `C:\Users\USER\AppData\Local\Programs\Python\Python312\python.exe`
 - 카톡 창: (0,0) 500x900, 채팅탭 아이콘 (27,115)
 - 카톡 Ctrl+S 저장: `C:\Users\USER\Downloads\카톡대화데이터`
-- 카카오워크 Bot: "네노바 주문 알림봇" (App Key in .env)
-- 카카오워크 관리자: 임재용 (user_id: 11826656, dlaww584@gmail.com)
-- 워크 멤버 5명: 임재용(2), 강현우, 김선희, 네노바
+- 카카오워크 Bot: "네노바 주문 알림봇" (App Key in .env, prefix `b80694c0`)
+  - 부 봇 "카톡복사봇" (`1a70022c`) 존재 — .env 는 알림봇으로 통일 (2026-05-11)
+- 카카오워크 관리자: **네노바 (user_id: 11854018, Nenovabusiness1@gmail.com)**
+  - find_by_email 은 **대소문자 구분** — 정확히 `Nenovabusiness1@gmail.com`
+- 워크 멤버 (실제 3명, 2026-05-11 `users.list` 기준):
+  - 11798470 임재용 (dlaww@naver.com)
+  - 11798493 강현우 (floshw@naver.com)
+  - 11854018 네노바 (Nenovabusiness1@gmail.com) ← ADMIN
+- 이전 stale entry (`data/kakaowork_users.json` 의 11826656/11798575/11821285) 정리 완료
 
 ## .env 항목
 

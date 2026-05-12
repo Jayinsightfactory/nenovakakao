@@ -54,70 +54,18 @@
   {
     "avatar_url": null,
     "department": null,
-    "display_name": "김선희",
-    "emails": [],
-    "id": "11798575",
-    "identifications": [
-      {
-        "type": "email",
-        "value": "nenova@nenova.co.kr"
-      }
-    ],
-    "job_description": null,
-    "mobiles": [],
-    "name": "김선희",
-    "nickname": null,
-    "position": null,
-    "responsibility": null,
-    "space_id": "284428",
-    "status": "activated",
-    "tels": [],
-    "vacation_end_time": null,
-    "vacation_start_time": null,
-    "work_end_time": null,
-    "work_start_time": null
-  },
-  {
-    "avatar_url": null,
-    "department": null,
     "display_name": "네노바",
     "emails": [],
-    "id": "11821285",
+    "id": "11854018",
     "identifications": [
       {
         "type": "email",
-        "value": "Nenovabusiness@gmail.com"
+        "value": "Nenovabusiness1@gmail.com"
       }
     ],
     "job_description": null,
     "mobiles": [],
     "name": "네노바",
-    "nickname": null,
-    "position": null,
-    "responsibility": null,
-    "space_id": "284428",
-    "status": "activated",
-    "tels": [],
-    "vacation_end_time": null,
-    "vacation_start_time": null,
-    "work_end_time": null,
-    "work_start_time": null
-  },
-  {
-    "avatar_url": null,
-    "department": null,
-    "display_name": "임재용",
-    "emails": [],
-    "id": "11826656",
-    "identifications": [
-      {
-        "type": "email",
-        "value": "dlaww584@gmail.com"
-      }
-    ],
-    "job_description": null,
-    "mobiles": [],
-    "name": "임재용",
     "nickname": null,
     "position": null,
     "responsibility": null,
