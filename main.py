@@ -995,6 +995,16 @@ def cmd_monitor(*, with_recorder: bool = False) -> int:
 
     except KeyboardInterrupt:
         print("\n[MONITOR] Ctrl+C 감지. 감시 종료.")
+    except Exception as _main_exc:
+        # PyAutoGUI fail-safe (사용자 마우스 모서리 이동) 또는 기타 자동화 정지 신호
+        # → 정상 종료 흐름으로 cleanup (overlay/watchdog stop, 카톡 창 위치 복귀)
+        _exc_name = type(_main_exc).__name__
+        if "FailSafe" in _exc_name:
+            print(f"\n[MONITOR] PyAutoGUI fail-safe (마우스 모서리) 감지. 정상 종료.")
+        else:
+            import traceback
+            print(f"\n[MONITOR] 예기치 못한 예외 ({_exc_name}): {_main_exc}")
+            traceback.print_exc()
 
     # watchdog 정리
     try:
