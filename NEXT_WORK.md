@@ -1,97 +1,122 @@
-# 다음 세션 이어갈 작업 (2026-05-12 종료 시점)
+# 다음 세션 이어갈 작업 (2026-05-13 종료 시점)
 
-## 현재 상태 (마지막 commit `006854a`)
+## 현재 상태 (마지막 commit `62b8221`)
 
-오늘 4개 commit 완료:
-```
-006854a monitor: FailSafeException 정상 종료 흐름 처리
-c1bc31e 화면 정체 워치독 + 완료 다이얼로그 자식텍스트 매칭
-3e515d5 monitor 흐름 캡쳐 미러 패턴 통합 — 사진 다운로드 우회
-a979815 ADMIN user_id 정정 + 미러방 23개 확장 + 채팅창 캡쳐 미러 패턴
-```
+오늘 큰 진척 2 가지 + 추천 자료 1 건:
 
-작동 검증 완료:
-- ✅ 봇 1:1 DM 송신 정상 (ADMIN 11854018)
-- ✅ 미러방 23개 (BOT_A `b80694c0`) 생성
-- ✅ 캡쳐 미러 패턴 (사진 다운로드 우회)
-- ✅ 미리보기+링크 분리 송신
-- ✅ 화면 정체 워치독 (120초 stall → 자동 정지)
-- ✅ 완료 다이얼로그 자식 텍스트 매칭
-- ✅ FailSafe graceful exit
-- ✅ monitor 한 사이클 실증 (네노바 수입/영업/현장 624자 + 캡쳐 ✅)
+### 1) 안전 인프라 구축 — 자가 진단·자동 회복·정지 버튼
+- `core/side_effect_detector.py` — 상태 캡쳐 + 진단 + ESC 회복 + 룰북 자동 진화
+- `core/safe_actions.py` — `safe_click / safe_paste / safe_hotkey / safe_press`
+- `core/stop_button.py` — 우상단 빨간 [🛑 즉시 정지] 창 (별도 스레드 tkinter)
+- `data/automation_rules.yaml` — forbidden_coords / forbidden_sequences / known_dialogs
+- `tools/test_side_effect_detector.py` — 마우스 미사용 정적 자가 테스트 9/9 통과
+- `tools/preview_stop_button.py` — 정지 버튼 미리보기
 
-## 🚨 남은 작업: 미러방 ↔ 카톡 방 1:1 매칭 검증
+오늘 사고 (검색바 paste → 친구추가 팝업) 와 어제 사고 (Ctrl+F 가정 실패) 모두 룰북에 등록.
+신규 자동화 도구가 같은 좌표·시퀀스 시도하면 즉시 `ForbiddenAction` 으로 차단됨.
 
-**문제:** mapping 23개 키 vs 카톡 실제 방 이름이 정확히 1:1 매칭 안 됨.
+### 2) 미러방 ↔ 카톡 방 1:1 매칭 검증 — 완료
+- `tools/verify_room_mapping_v2.py` 실행 결과 (`data/mapping_verify_report_v2.json`)
+  - ✅ 정확 일치: **12/23**
+  - 🟡 fuzzy 매칭: 2 (`네노바&선울`, `네노바현장팀` — 카톡에서 떠났을 가능성)
+  - ❌ 미검증: 9 (수입방, 영업방팀..., 현장단체방, 견적방, 한국방역,
+                  3.미우신라방, 발번호및 입고수량확인방, 영업지원팀, 백상)
+- 카톡 채팅 리스트에 있는 방 43 개 중 mapping 에 없는 방 28 개 (대부분 1:1 채팅 + 거래처 단체방)
 
-- 알려진 불일치 1건: `조현욱, 박성빈, 김원영차장` (mapping) vs `조현욱, 박성빈, 김원영차장, 변진형과장` (카톡 실제)
-- mapping 의 1-15 (기존 미러방, 안 읽음 탭에 없음) 검증 미완
-- monitor 가 "감시 대상 아님" 으로 스킵해서 해당 방 메시지가 미러방에 영영 안 감
+### 3) 정정 추천 자료
+- `tools/recommend_mapping_fixes.py` 실행 결과 (`data/mapping_recommendations.json`)
+- 11 정정 대상 (9 미발견 + 2 fuzzy) 에 대해 detected_rooms 중 fuzzy 점수 top-4 후보
+- 점수 25 이하면 사실상 매칭 후보 없음 = 카톡에서 떠난 방
 
-**시도한 도구:** `tools/verify_room_mapping.py`
+---
 
-**결과:** 모든 23개 검색에서 분리창 title 이 `Program Manager` 로 잡힘 (= Windows 데스크탑 자체).
-즉:
-- Ctrl+F 검색이 카톡 분리창을 띄우지 않음 (또는 분리창 enum 코드가 카톡 분리창 못 찾음)
-- 카톡 검색이 좌측 패널 내부 매칭만 하고 분리창 열지 않을 가능성
-- `_get_visible_separate_windows` 의 excluded 리스트에 "Program Manager" 추가 + 다른 enum 방식 시도 필요
+## 🚨 다음 세션 우선 작업
 
-## 다음 세션 우선 작업 (우선순위 순)
+### 우선순위 1 — 매핑 정정 적용
+관리자가 `data/mapping_recommendations.json` 보고 각 mapping key 처리 결정:
 
-### 1. 1:1 매칭 검증 — 다른 방식 시도
-- `tools/verify_room_mapping.py` 의 분리창 감지 로직 수정
-- 또는 Ctrl+F → Enter 후 카톡 메인 창의 채팅 영역 헤더(상단 방 이름) OCR
-- 또는 카톡 좌측 채팅 리스트 (전체 탭) 스크롤하면서 Vision OCR 으로 모든 방 이름 추출
+| mapping key | 추천 액션 (사용자 결정 필요) |
+|---|---|
+| `수입방` | mapping 에서 제거 OR `네노바 수입(불량 공유방)` 으로 매핑? |
+| `영업방팀 발주 및 추가 재고확인` | mapping 제거? |
+| `현장단체방` | mapping 제거? (`현장 추가취소방` 과는 다른 방) |
+| `견적방` | mapping 제거? |
+| `한국방역` | mapping 제거? |
+| `3.미우신라방` | mapping 제거? |
+| `발번호및 입고수량확인방` | mapping 제거? |
+| `영업지원팀` | mapping 제거? (`네노바 영업` 과 다름) |
+| `백상` | mapping 제거? |
+| `네노바&선울` | mapping 제거 OR `네노바` 1:1 로 통합? |
+| `네노바현장팀` | mapping 제거 OR `네노바 영업/현장` (별도 conv_id) 으로 흡수? |
 
-### 2. 불일치 mapping 수정
-검증 통과 후:
-- `data/room_mapping.json` 키 정정
-- 미러방 conversation_name 도 카톡 실제 이름과 동일하게 rename
-  - Bot API 미러방 rename endpoint 확인 (없으면 GUI 자동화 `main.py rename-via-app`)
+→ **`tools/apply_mapping_fixes.py` 신규 작성 필요** (인터랙티브 선택 도구)
+   - 각 key 마다 [1] 그대로 [2] 후보 적용 [3] mapping 에서 제거 선택
+   - 기존 backup (`room_mapping.json.bak.YYYYMMDD_HHMMSS`) 자동 생성
 
-### 3. monitor 본 운영 (재가동)
-1:1 매칭 보장 후:
+### 우선순위 2 — 새 방 등록
+카톡 리스트 28 개 mapping 미등록 방 중 미러링 필요한 거 있으면:
+- `data/mapping_verify_report_v2.json` 의 `extra_rooms_in_chatlist_not_in_mapping` 확인
+- `main.py mirror` 로 NV{NN} 미러방 일괄 생성 + mapping 추가
+
+### 우선순위 3 — monitor 본 운영 재가동
+매핑 정정 후:
 - `python main.py monitor` 본 운영
-- 워치독 + graceful exit + 캡쳐 미러 패턴 검증된 상태
+- safe_actions 기반 자동화 도구가 차단 룰북 + 정지 버튼 + 부작용 진단을 모두 거침
+- 첫 30 분은 관리자 옆에서 직접 감시 권장
+
+---
 
 ## 즉시 실행 가능한 명령어
 
 ```bash
 PYTHON="C:/Users/USER/AppData/Local/Programs/Python/Python312/python.exe"
 
-# 1) 상태 확인
-git log --oneline -10
-cat NEXT_WORK.md
+# 1) 정지 버튼 미리보기 (마우스 미사용)
+"$PYTHON" tools/preview_stop_button.py
 
-# 2) 1:1 매칭 보고서 확인 (이전 실패 결과)
-cat data/mapping_verify_report.json
+# 2) 정적 자가 테스트 (마우스 미사용)
+"$PYTHON" tools/test_side_effect_detector.py
 
-# 3) 매칭 검증 재시도 (코드 수정 후)
-"$PYTHON" tools/verify_room_mapping.py
+# 3) 매핑 검증 재실행 (Phase A — 안전 영역 클릭만)
+"$PYTHON" tools/verify_room_mapping_v2.py
 
-# 4) monitor 본 운영 (매칭 통과 후)
-"$PYTHON" main.py monitor
+# 4) 매핑 정정 추천 (보고서 재계산)
+"$PYTHON" tools/recommend_mapping_fixes.py
 
-# 5) 23개 미러방 일괄 ping (송신 가능 여부 빠른 확인)
-"$PYTHON" -c "
-import os, json, requests
-from pathlib import Path
-from dotenv import load_dotenv
-load_dotenv('.env')
-H = {'Authorization': f\"Bearer {os.getenv('KAKAOWORK_BOT_TOKEN')}\", 'Content-Type': 'application/json'}
-mapping = json.loads(Path('data/room_mapping.json').read_text(encoding='utf-8'))
-for n, cid in mapping.items():
-    r = requests.post('https://api.kakaowork.com/v1/messages.send', headers=H,
-        json={'conversation_id': cid, 'text': f'[ping] {n}'}, timeout=10).json()
-    print(f\"{'OK' if r.get('success') else 'FAIL'} {n}\")
-"
+# 5) 매핑 검증 결과 보기
+cat data/mapping_verify_report_v2.json | python -m json.tool | head -80
+cat data/mapping_recommendations.json | python -m json.tool
+
+# 6) (다음 세션) 매핑 정정 도구 (작성 필요)
+# "$PYTHON" tools/apply_mapping_fixes.py
 ```
+
+---
+
+## 안전장치 (자동 적용됨, 변경 금지)
+
+1. **자동화 도구는 모두 `safe_actions` 사용**. raw `pyautogui.click()` 직접 호출 금지.
+2. **카톡 좌표 신규 추가 전 화면 캡쳐로 검증 1 회 필수**. paste/Enter 가
+   통합검색·친구추가 같은 부작용을 일으킬 수 있음 (2026-05-13 사고 참고).
+3. **신규 도구 첫 실행 시 정지 버튼 띄움**. `start_stop_button()` 호출 + 종료 시 `stop_button_close()`.
+4. **forbidden_coords / forbidden_sequences 는 자동 진화**. critical/high 부작용
+   발생 시 좌표 ±40px 영역이 자동으로 `data/automation_rules.yaml` 에 추가됨.
+
+---
+
+## 어제 (5/12) 작업 (계승)
+
+- ✅ 봇 1:1 DM 송신 (ADMIN 11854018)
+- ✅ 미러방 23 개 생성
+- ✅ 캡쳐 미러 패턴
+- ✅ 화면 정체 워치독
+- ✅ FailSafe graceful exit
 
 ## 주의사항 (계승)
 
 - 봇 `b80694c0` (네노바 주문 알림봇), ADMIN `11854018` 변경 금지
-- 카톡창 위치 `(50, 50, 900, 900)` 변경 금지 (fail-safe 회피)
+- 카톡창 위치 `(50, 50, 900, 900)` 변경 금지
 - 동일 에러 2회 발생 시 즉시 정지 + 수정 정책 유지
 - 5분 룰: 결과 안 나오면 자동 중단 + 로그 분석
-- PowerShell 도구 사용 자제 — Bash + Python subprocess (STARTF_USESHOWWINDOW) 만 사용
+- PowerShell 도구 사용 자제 — Bash + Python subprocess 만 사용
 - 사진 다운로드 흐름 (서랍/묶음저장) 완전 우회 — 캡쳐 미러 패턴만 사용
