@@ -1,0 +1,89 @@
+# 카톡/카카오워크 자동화 안전 룰북 (자가 진화)
+#
+# 이 파일은 `core/side_effect_detector.py` 와 `core/safe_actions.py` 가 읽고,
+# 부작용 감지 시 자동으로 항목을 추가합니다.
+#
+# 운영자가 직접 편집해도 OK. 자동 추가 항목은 `added_by: auto` 로 표시됨.
+version: 1
+last_updated: 2026-05-13
+
+# ─────────────────────────────────────────────
+# 1) 절대 클릭 금지 좌표 (창 기준 상대좌표)
+# ─────────────────────────────────────────────
+forbidden_coords:
+  - name: "kakaotalk_unified_search_zone"
+    window: "카카오톡"
+    x_rel_min: 100
+    x_rel_max: 280
+    y_rel_min: 70
+    y_rel_max: 135
+    reason: |
+      검색바/통합검색 영역. click+paste 시 통합검색 다이얼로그 → 친구추가 팝업
+      연쇄 부작용 (사고일: 2026-05-13, verify_room_mapping_v2.py Phase B)
+    added_by: "manual"
+    added_at: "2026-05-13"
+
+# ─────────────────────────────────────────────
+# 2) 위험 시퀀스 차단 (단축키/매크로)
+# ─────────────────────────────────────────────
+forbidden_sequences:
+  - name: "ctrl_f_for_room_lookup"
+    keys: ["ctrl", "f"]
+    context: "카카오톡 메인창"
+    reason: |
+      Ctrl+F 는 카톡 PC 에서 통합검색 다이얼로그를 띄움 (2026-05-12 verify_room_mapping.py
+      v1 에서 분리창 열 것으로 가정해서 실패). 채팅방 선택/분리창 열기 용도로 사용 금지.
+    added_by: "manual"
+    added_at: "2026-05-12"
+
+# ─────────────────────────────────────────────
+# 3) 알려진 다이얼로그 → 자동 회복 액션
+# ─────────────────────────────────────────────
+# severity:
+#   - critical: 즉시 정지 (halt: true), 회복 후 사용자 보고
+#   - high:     회복만 하고 호출자에 알림
+#   - low:      조용히 회복
+#   - ignore:   부작용 아님 (예: 데스크탑)
+known_dialogs:
+  - title_contains: "친구 추가"
+    severity: "critical"
+    recovery: ["escape", "escape"]
+    halt: true
+    note: "통합검색 → 이름 paste → 친구추가 팝업 (2026-05-13 사고)"
+  - title_contains: "통합검색"
+    severity: "high"
+    recovery: ["escape"]
+    halt: false
+  - title_exact: "Program Manager"
+    severity: "ignore"
+    note: "Windows 데스크탑 셸. 무시"
+  - title_exact: "ToastWindow"
+    severity: "ignore"
+  - title_exact: "Windows 입력 환경"
+    severity: "ignore"
+
+# ─────────────────────────────────────────────
+# 4) 보호 대상 창 (부작용 감지에서 제외)
+# ─────────────────────────────────────────────
+# 자동화가 의도적으로 띄우는 창들. "예상치 못한 새 창" 으로 오인 방지.
+protected_windows:
+  exact:
+    - "카카오톡"
+    - "카카오워크"
+    - "네노바 액션 로그 (Ctrl+C 복사 가능)"
+    - "네노바 상태"
+    - "Claude"
+    - "Program Manager"
+    - "ToastWindow"
+    - "Windows 입력 환경"
+  contains:
+    - "Chrome"
+    - "Edge"
+    - "Firefox"
+    - "Brave"
+    - "Visual Studio"
+    - "VS Code"
+    - "Terminal"
+    - "PowerShell"
+    - "Cmd "
+    - "Explorer"
