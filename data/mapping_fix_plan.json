@@ -1,0 +1,95 @@
+{
+  "generated_at": "2026-05-15 10:37:09",
+  "config": {
+    "auto_delete_below": 25.0,
+    "auto_remap_above": 70.0,
+    "overrides": {}
+  },
+  "plan": [
+    {
+      "action": "delete",
+      "score": 20.0,
+      "source": "auto:low-score",
+      "mapping_key": "수입방",
+      "current_conv_id": "973772195788587"
+    },
+    {
+      "action": "delete",
+      "score": 6.92,
+      "source": "auto:low-score",
+      "mapping_key": "영업방팀 발주 및 추가 재고확인",
+      "current_conv_id": "973772199691964"
+    },
+    {
+      "action": "delete",
+      "score": 24.29,
+      "source": "auto:low-score",
+      "mapping_key": "현장단체방",
+      "current_conv_id": "973772203869875"
+    },
+    {
+      "action": "delete",
+      "score": 20.0,
+      "source": "auto:low-score",
+      "mapping_key": "견적방",
+      "current_conv_id": "973772208080575"
+    },
+    {
+      "action": "delete",
+      "score": 12.14,
+      "source": "auto:low-score",
+      "mapping_key": "한국방역",
+      "current_conv_id": "973772208371500"
+    },
+    {
+      "action": "review",
+      "score": 57.0,
+      "top_candidate": "네노바",
+      "source": "auto:mid-score",
+      "mapping_key": "네노바&선울",
+      "current_conv_id": "973772212565805"
+    },
+    {
+      "action": "delete",
+      "score": 7.58,
+      "source": "auto:low-score",
+      "mapping_key": "3.미우신라방",
+      "current_conv_id": "973772212258485"
+    },
+    {
+      "action": "delete",
+      "score": 15.32,
+      "source": "auto:low-score",
+      "mapping_key": "발번호및 입고수량확인방",
+      "current_conv_id": "973772216452790"
+    },
+    {
+      "action": "review",
+      "score": 50.0,
+      "top_candidate": "네노바",
+      "source": "auto:mid-score",
+      "mapping_key": "네노바현장팀",
+      "current_conv_id": "973772216403601"
+    },
+    {
+      "action": "delete",
+      "score": 24.0,
+      "source": "auto:low-score",
+      "mapping_key": "영업지원팀",
+      "current_conv_id": "973772220610163"
+    },
+    {
+      "action": "delete",
+      "score": 0.0,
+      "source": "auto:low-score",
+      "mapping_key": "백상",
+      "current_conv_id": "973772220597906"
+    }
+  ],
+  "counts": {
+    "remap": 0,
+    "delete": 9,
+    "review": 2,
+    "keep": 0
+  }
+}
