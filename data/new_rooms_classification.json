@@ -1,0 +1,177 @@
+{
+  "total_new_rooms": 29,
+  "by_category": {
+    "external_group": [
+      "2반경로당~봉계2리",
+      "경부 중앙화훼"
+    ],
+    "system": [
+      "NH농협카드 알림톡",
+      "덧글 모아보기",
+      "아이엠뱅크",
+      "특게시판 '공지'",
+      "특계시팜 '공지'"
+    ],
+    "personal_1to1": [
+      "강명훈",
+      "변진형과장",
+      "설연주",
+      "안녕하세요 사장님",
+      "임재용대리",
+      "정재훈",
+      "현우"
+    ],
+    "mirror_candidate": [
+      "구백의천사 + 네노바",
+      "김인석, 설연주, 정재준, 조기",
+      "네노바 + 꽃샘원예",
+      "네노바 + 다원",
+      "네노바 + 대지",
+      "네노바 + 정화원예",
+      "네노바&수야래",
+      "수경원예+네노바",
+      "수영원여 + 네노바",
+      "여리아리 + 네노바",
+      "영림원예+네노바",
+      "우연원예+네노바",
+      "조현욱, 박성빈, 홍현진, Sa",
+      "참좋은 &네노바 5",
+      "태광 + 네노바"
+    ]
+  },
+  "details": [
+    {
+      "name": "2반경로당~봉계2리",
+      "category": "external_group"
+    },
+    {
+      "name": "NH농협카드 알림톡",
+      "category": "system"
+    },
+    {
+      "name": "강명훈",
+      "category": "personal_1to1"
+    },
+    {
+      "name": "경부 중앙화훼",
+      "category": "external_group"
+    },
+    {
+      "name": "구백의천사 + 네노바",
+      "category": "mirror_candidate"
+    },
+    {
+      "name": "김인석, 설연주, 정재준, 조기",
+      "category": "mirror_candidate"
+    },
+    {
+      "name": "네노바 + 꽃샘원예",
+      "category": "mirror_candidate"
+    },
+    {
+      "name": "네노바 + 다원",
+      "category": "mirror_candidate"
+    },
+    {
+      "name": "네노바 + 대지",
+      "category": "mirror_candidate"
+    },
+    {
+      "name": "네노바 + 정화원예",
+      "category": "mirror_candidate"
+    },
+    {
+      "name": "네노바&수야래",
+      "category": "mirror_candidate"
+    },
+    {
+      "name": "덧글 모아보기",
+      "category": "system"
+    },
+    {
+      "name": "변진형과장",
+      "category": "personal_1to1"
+    },
+    {
+      "name": "설연주",
+      "category": "personal_1to1"
+    },
+    {
+      "name": "수경원예+네노바",
+      "category": "mirror_candidate"
+    },
+    {
+      "name": "수영원여 + 네노바",
+      "category": "mirror_candidate"
+    },
+    {
+      "name": "아이엠뱅크",
+      "category": "system"
+    },
+    {
+      "name": "안녕하세요 사장님",
+      "category": "personal_1to1"
+    },
+    {
+      "name": "여리아리 + 네노바",
+      "category": "mirror_candidate"
+    },
+    {
+      "name": "영림원예+네노바",
+      "category": "mirror_candidate"
+    },
+    {
+      "name": "우연원예+네노바",
+      "category": "mirror_candidate"
+    },
+    {
+      "name": "임재용대리",
+      "category": "personal_1to1"
+    },
+    {
+      "name": "정재훈",
+      "category": "personal_1to1"
+    },
+    {
+      "name": "조현욱, 박성빈, 홍현진, Sa",
+      "category": "mirror_candidate"
+    },
+    {
+      "name": "참좋은 &네노바 5",
+      "category": "mirror_candidate"
+    },
+    {
+      "name": "태광 + 네노바",
+      "category": "mirror_candidate"
+    },
+    {
+      "name": "특게시판 '공지'",
+      "category": "system"
+    },
+    {
+      "name": "특계시팜 '공지'",
+      "category": "system"
+    },
+    {
+      "name": "현우",
+      "category": "personal_1to1"
+    }
+  ],
+  "mirror_candidates_unique": [
+    "구백의천사 + 네노바",
+    "김인석, 설연주, 정재준, 조기",
+    "네노바 + 꽃샘원예",
+    "네노바 + 다원",
+    "네노바 + 대지",
+    "네노바 + 정화원예",
+    "네노바&수야래",
+    "수경원예+네노바",
+    "수영원여 + 네노바",
+    "여리아리 + 네노바",
+    "영림원예+네노바",
+    "우연원예+네노바",
+    "조현욱, 박성빈, 홍현진, Sa",
+    "참좋은 &네노바 5",
+    "태광 + 네노바"
+  ]
+}

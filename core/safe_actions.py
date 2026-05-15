@@ -48,12 +48,23 @@ def _post_action_check(
     before,
     kakaotalk_origin: tuple[int, int] | None,
     post_wait: float,
+    expect_new_window: bool = False,
 ) -> None:
-    """액션 후 진단 → 부작용이면 회복 + 학습 + halt 시 예외."""
+    """액션 후 진단 → 부작용이면 회복 + 학습 + halt 시 예외.
+
+    Args:
+        expect_new_window: 호출자가 새 창이 뜨는 걸 의도한 경우 True.
+            "unknown_window" 종류 부작용은 학습/회복 모두 skip.
+            (예: 채팅 리스트 행 더블클릭으로 분리창 띄우기)
+            친구추가/통합검색 같은 critical/known_dialogs 은 여전히 차단됨.
+    """
     time.sleep(post_wait)
     after = capture_state()
     diag = diagnose(before, after)
     if not diag.has_side_effect:
+        return
+    # 의도된 새 창은 부작용 처리 skip
+    if expect_new_window and diag.side_effect_kind == "unknown_window":
         return
     print(
         f"  [SIDE-EFFECT] intent={intent!r} → kind={diag.side_effect_kind!r} "
@@ -82,12 +93,16 @@ def safe_click(
     button: str = "left",
     clicks: int = 1,
     post_wait: float = 0.5,
+    expect_new_window: bool = False,
 ) -> None:
     """
     정지 체크 → forbidden 체크 → 클릭 → 부작용 진단.
 
     Args:
         kakaotalk_origin: 카톡 메인창의 (left, top). 좌표 기반 forbidden 체크에 필요.
+        expect_new_window: 새 창이 뜨는 걸 의도한 경우 True. "unknown_window" 종류는
+            학습/회복 skip. (예: 채팅 리스트 행 더블클릭 → 분리창 띄우기)
+            친구추가/통합검색 같은 critical 은 여전히 차단됨.
     """
     import pyautogui
 
@@ -104,7 +119,8 @@ def safe_click(
         pyautogui.doubleClick(x, y, button=button)
     else:
         pyautogui.click(x, y, button=button)
-    _post_action_check(intent, (x, y), before, kakaotalk_origin, post_wait)
+    _post_action_check(intent, (x, y), before, kakaotalk_origin, post_wait,
+                       expect_new_window=expect_new_window)
 
 
 def safe_paste(
