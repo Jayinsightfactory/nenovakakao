@@ -406,6 +406,15 @@ def cmd_monitor(*, with_recorder: bool = False) -> int:
     install_pyautogui_hooks()
     _log("감시 모드 시작", "INFO")
 
+    # ── 정지 버튼 (우상단 [🛑 즉시 정지]) — 누르면 모든 monitor 동작 멈춤 ──
+    try:
+        from core.stop_button import start_stop_button
+        start_stop_button()
+        print("  [STOP] 우상단 정지 버튼 활성. 누르면 monitor 즉시 중단.", flush=True)
+        _log("정지 버튼 활성", "INFO")
+    except Exception as _e:
+        print(f"  [STOP] 정지 버튼 띄우기 실패 (무시): {_e}", flush=True)
+
     if with_recorder:
         from datetime import datetime
         from core.learning_recorder import LearningRecorder, set_recorder
@@ -636,10 +645,17 @@ def cmd_monitor(*, with_recorder: bool = False) -> int:
 
     try:
         while True:
-            # ── 중지 버튼 체크 ──
+            # ── 중지 버튼 체크 (overlay + 새 stop_button 둘 다) ──
             if overlay.should_stop:
                 print("[MONITOR] 중지 버튼 클릭 -- 감시 종료")
                 break
+            try:
+                from core.stop_button import is_stop_requested
+                if is_stop_requested():
+                    print("[MONITOR] 정지 버튼 (우상단) 누름 -- 감시 종료")
+                    break
+            except Exception:
+                pass
 
             cycle += 1
             overlay.set_idle()
@@ -1041,6 +1057,12 @@ def cmd_monitor(*, with_recorder: bool = False) -> int:
         reflect_and_write_report()
     except Exception as e:
         print(f"[REFLECT] 회고 err: {e}")
+    # 정지 버튼 창 정리
+    try:
+        from core.stop_button import stop_button_close
+        stop_button_close()
+    except Exception:
+        pass
     return 0
 
 
