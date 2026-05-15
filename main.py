@@ -1085,11 +1085,25 @@ def cmd_monitor_agentic() -> int:
 
     print("[AGENTIC-MONITOR] 완전 Agentic 감시 모드 시작")
     print(f"          폴링 간격: {5}초 / UI 액션 100% Claude Computer Use")
+    print(f"          비용 한도: 시간당 30 호출, 연속 5 실패 시 30분 쿨다운")
+
+    # 정지 버튼 (우상단 [🛑 즉시 정지])
+    try:
+        from core.stop_button import start_stop_button
+        start_stop_button()
+        print("          정지 버튼 활성 (우상단)")
+    except Exception as _e:
+        print(f"          [STOP] 정지 버튼 띄우기 실패 (무시): {_e}")
 
     try:
         window = focus_kakaotalk()
     except Exception as e:
         print(f"[ERROR] 카톡 활성화 실패: {e}")
+        try:
+            from core.stop_button import stop_button_close
+            stop_button_close()
+        except Exception:
+            pass
         return 1
 
     print(f"          창: ({window.left},{window.top}) {window.width}x{window.height}\n")
@@ -1098,6 +1112,15 @@ def cmd_monitor_agentic() -> int:
     cycle = 0
     try:
         while True:
+            # 정지 버튼 / STOP 파일 체크
+            try:
+                from core.stop_button import is_stop_requested
+                if is_stop_requested():
+                    print("[AGENTIC-MONITOR] 정지 버튼 (우상단) 누름 — 종료")
+                    break
+            except Exception:
+                pass
+
             cycle += 1
             try:
                 window = focus_kakaotalk()
@@ -1139,6 +1162,7 @@ def cmd_monitor_agentic() -> int:
             time.sleep(5)
     except KeyboardInterrupt:
         print("\n[AGENTIC-MONITOR] Ctrl+C 종료")
+    finally:
         try:
             from core.failed_frame_analyzer import analyze_recent
             analyze_recent(within_seconds=7200)
@@ -1149,7 +1173,12 @@ def cmd_monitor_agentic() -> int:
             reflect_and_write_report()
         except Exception:
             pass
-        return 0
+        try:
+            from core.stop_button import stop_button_close
+            stop_button_close()
+        except Exception:
+            pass
+    return 0
 
 
 def cmd_run() -> int:
