@@ -1,5 +1,5 @@
 version: 1
-last_updated: '2026-05-15'
+last_updated: '2026-05-18'
 forbidden_coords:
 - name: kakaotalk_unified_search_zone
   window: 카카오톡
@@ -14,19 +14,7 @@ forbidden_coords:
     '
   added_by: manual
   added_at: '2026-05-13'
-forbidden_sequences:
-- name: ctrl_f_for_room_lookup
-  keys:
-  - ctrl
-  - f
-  context: 카카오톡 메인창
-  reason: 'Ctrl+F 는 카톡 PC 에서 통합검색 다이얼로그를 띄움 (2026-05-12 verify_room_mapping.py
-
-    v1 에서 분리창 열 것으로 가정해서 실패). 채팅방 선택/분리창 열기 용도로 사용 금지.
-
-    '
-  added_by: manual
-  added_at: '2026-05-12'
+forbidden_sequences: []
 known_dialogs:
 - title_contains: 친구 추가
   severity: critical

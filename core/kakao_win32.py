@@ -1,0 +1,508 @@
+"""
+카카오톡 PC win32 API 직접 자동화 (좌표·OCR·Computer Use 전부 불필요).
+
+채택 출처: https://github.com/kronenz/kakaotalk-mcp (MIT License, (c) 2025 kronenz)
+원본 controller.py + config.py + parser.py 핵심 함수를 우리 프로젝트 구조에 맞춰 통합.
+
+핵심 발견 (2026-05-18):
+  카톡 PC 의 child window 가 win32 으로 직접 enum/조작 가능. EVA UI 라 보이지만
+  실제로는 표준 윈도우 클래스 (EVA_Window_Dblclk, RICHEDIT50W, EVA_VH_ListControl_Dblclk).
+
+검증된 워크플로우:
+  1. search_and_open_room(name) — 채팅탭 검색 Edit 에 WM_CHAR 로 글자별 → Enter
+     → 분리창 띄움. 통합검색 다이얼로그 아님, 친구추가 부작용 없음.
+  2. read_chat_messages(name) — 분리창의 ListControl 포커스 → Ctrl+A → Ctrl+C
+     → 클립보드 텍스트. 저장 다이얼로그 안 씀.
+  3. find_chat_window(name) — title 로 직접 hwnd 찾음. 더블클릭/캡쳐 무관.
+  4. send_message_to_room — 분리창 RICHEDIT50W 에 클립보드 paste + Enter
+     (봇 API 와 별개; Fallback).
+  5. download_recent_images — 카톡 cache 디렉토리에서 이미지 직접 복사.
+     서랍 자동화 완전 우회.
+"""
+from __future__ import annotations
+
+import ctypes
+import os
+import shutil
+import subprocess
+import sys
+import time
+from typing import Optional, List, Dict
+
+import win32api
+import win32clipboard
+import win32con
+import win32gui
+import win32process
+
+
+# ─────────────────────────────────────────────
+# 카톡 윈도우 클래스명 (kakao-mcp 의 config.py 에서 추출)
+# ─────────────────────────────────────────────
+KAKAO_MAIN_WINDOW_CLASS = "EVA_Window_Dblclk"
+KAKAO_MAIN_WINDOW_TITLE = "카카오톡"
+KAKAO_CHAT_WINDOW_CLASS = "EVA_Window_Dblclk"
+KAKAO_LIST_CONTROL_CLASS = "EVA_VH_ListControl_Dblclk"
+KAKAO_EDIT_CLASS = "RICHEDIT50W"
+
+# win32 상수
+WM_SETTEXT = 0x000C
+WM_KEYDOWN = 0x0100
+WM_KEYUP = 0x0101
+WM_CHAR = 0x0102
+EM_SETSEL = 0x00B1
+WM_CLEAR = 0x0303
+VK_RETURN = 0x0D
+VK_CONTROL = 0x11
+VK_ESCAPE = 0x1B
+VK_A = 0x41
+VK_C = 0x43
+VK_F = 0x46
+VK_V = 0x56
+VK_MENU = 0x12
+KEYEVENTF_KEYUP = 0x0002
+
+# 타이밍
+WINDOW_ACTIVATE_WAIT_SEC = 0.15
+EDIT_CLICK_WAIT_SEC = 0.08
+SEARCH_ACTIVATE_WAIT_SEC = 0.3
+SEARCH_CHAR_INTERVAL_SEC = 0.02
+SEARCH_RESULTS_WAIT_SEC = 0.8
+SEARCH_OPEN_WAIT_SEC = 0.5
+KEY_COMBO_WAIT_SEC = 0.15
+CLIPBOARD_MAX_RETRIES = 5
+CLIPBOARD_RETRY_INTERVAL_SEC = 0.1
+
+# 카톡 데이터 경로 (사진 캐시)
+KAKAO_LOCAL_DATA = os.path.join(
+    os.environ.get("LOCALAPPDATA", ""), "Kakao", "KakaoTalk"
+)
+KAKAO_USERS_DIR = os.path.join(KAKAO_LOCAL_DATA, "users")
+IMAGE_CACHE_SUBDIRS = [
+    "chat_data/cli_http_v2",
+    "chat_data/cli/thumbnail",
+    "chat_data/oci_v2",
+    "chat_data/mci_v2",
+]
+
+_user32 = ctypes.windll.user32
+
+
+def _log(msg: str) -> None:
+    print(f"[kakao_win32] {msg}", file=sys.stderr, flush=True)
+
+
+# ─────────────────────────────────────────────
+# 윈도우 탐색
+# ─────────────────────────────────────────────
+def is_kakaotalk_running() -> Dict:
+    """카톡 메인창 존재 확인. {'running': bool, 'hwnd': int|None, 'pid': int|None}"""
+    hwnd = win32gui.FindWindow(KAKAO_MAIN_WINDOW_CLASS, KAKAO_MAIN_WINDOW_TITLE)
+    if hwnd == 0:
+        return {"running": False, "hwnd": None, "pid": None}
+    _, pid = win32process.GetWindowThreadProcessId(hwnd)
+    return {"running": True, "hwnd": hwnd, "pid": pid}
+
+
+def find_chat_window(room_name: str) -> Optional[int]:
+    """방 이름 정확 일치하는 분리창 hwnd. 없으면 None."""
+    results: List[int] = []
+
+    def _cb(hwnd, _):
+        if win32gui.IsWindowVisible(hwnd):
+            cls = win32gui.GetClassName(hwnd)
+            title = win32gui.GetWindowText(hwnd)
+            if cls == KAKAO_CHAT_WINDOW_CLASS and title == room_name:
+                results.append(hwnd)
+        return True
+
+    win32gui.EnumWindows(_cb, None)
+    return results[0] if results else None
+
+
+def list_chat_windows() -> List[Dict]:
+    """현재 열린 카톡 채팅 분리창 목록 (메인창 제외).
+
+    Returns: [{'hwnd': int, 'title': str}, ...]
+    """
+    main_hwnd = win32gui.FindWindow(KAKAO_MAIN_WINDOW_CLASS, KAKAO_MAIN_WINDOW_TITLE)
+    windows: List[Dict] = []
+
+    def _cb(hwnd, _):
+        if win32gui.IsWindowVisible(hwnd):
+            cls = win32gui.GetClassName(hwnd)
+            title = win32gui.GetWindowText(hwnd)
+            if (
+                cls == KAKAO_CHAT_WINDOW_CLASS
+                and hwnd != main_hwnd
+                and title
+                and title != KAKAO_MAIN_WINDOW_TITLE
+            ):
+                windows.append({"hwnd": hwnd, "title": title})
+        return True
+
+    win32gui.EnumWindows(_cb, None)
+    return windows
+
+
+def find_child_window_recursive(parent_hwnd: int, class_name: str) -> Optional[int]:
+    """parent 의 child window 를 재귀로 class_name 매칭."""
+    found: List[int] = []
+
+    def _cb(hwnd, _):
+        if win32gui.GetClassName(hwnd) == class_name:
+            found.append(hwnd)
+            return False
+        return True
+
+    try:
+        win32gui.EnumChildWindows(parent_hwnd, _cb, None)
+    except Exception:
+        pass
+    return found[0] if found else None
+
+
+def bring_window_to_front(hwnd: int) -> None:
+    """창을 포그라운드로. AttachThreadInput 해킹으로 Windows 제한 우회."""
+    VK_MENU_LOCAL = 0x12
+    SW_RESTORE = 9
+    HWND_TOPMOST = -1
+    HWND_NOTOPMOST = -2
+    SWP_NOMOVE = 0x0002
+    SWP_NOSIZE = 0x0001
+    SWP_SHOWWINDOW = 0x0040
+
+    _user32.ShowWindow(hwnd, SW_RESTORE)
+    # Alt 키 누름 → SetForegroundWindow 잠금 해제
+    _user32.keybd_event(VK_MENU_LOCAL, 0, 0, 0)
+    _user32.keybd_event(VK_MENU_LOCAL, 0, KEYEVENTF_KEYUP, 0)
+    _user32.SetForegroundWindow(hwnd)
+    _user32.SetWindowPos(
+        hwnd, HWND_TOPMOST, 0, 0, 0, 0,
+        SWP_NOMOVE | SWP_NOSIZE | SWP_SHOWWINDOW,
+    )
+    _user32.SetWindowPos(
+        hwnd, HWND_NOTOPMOST, 0, 0, 0, 0,
+        SWP_NOMOVE | SWP_NOSIZE | SWP_SHOWWINDOW,
+    )
+
+
+# ─────────────────────────────────────────────
+# 키 입력 헬퍼
+# ─────────────────────────────────────────────
+def _send_ctrl_key_combo(vk_key: int) -> None:
+    """Ctrl+<key> 단축키 전송 (활성 창에 영향)."""
+    _user32.keybd_event(VK_CONTROL, 0, 0, 0)
+    time.sleep(0.02)
+    _user32.keybd_event(vk_key, 0, 0, 0)
+    time.sleep(0.02)
+    _user32.keybd_event(vk_key, 0, KEYEVENTF_KEYUP, 0)
+    time.sleep(0.02)
+    _user32.keybd_event(VK_CONTROL, 0, KEYEVENTF_KEYUP, 0)
+
+
+# ─────────────────────────────────────────────
+# 클립보드
+# ─────────────────────────────────────────────
+def _read_clipboard_text() -> str:
+    """클립보드 텍스트 읽기 (재시도 포함)."""
+    for _ in range(CLIPBOARD_MAX_RETRIES):
+        try:
+            win32clipboard.OpenClipboard()
+            try:
+                data = win32clipboard.GetClipboardData(win32clipboard.CF_UNICODETEXT)
+                return data if data else ""
+            finally:
+                win32clipboard.CloseClipboard()
+        except Exception:
+            time.sleep(CLIPBOARD_RETRY_INTERVAL_SEC)
+    return ""
+
+
+def _set_clipboard_text(text: str) -> None:
+    win32clipboard.OpenClipboard()
+    try:
+        win32clipboard.EmptyClipboard()
+        win32clipboard.SetClipboardText(text, win32clipboard.CF_UNICODETEXT)
+    finally:
+        win32clipboard.CloseClipboard()
+
+
+# ─────────────────────────────────────────────
+# 메시지 읽기 ★ (저장 다이얼로그 안 씀)
+# ─────────────────────────────────────────────
+def read_chat_messages(room_name: str) -> Dict:
+    """카톡 분리창에서 메시지를 Ctrl+A + Ctrl+C 로 클립보드 추출.
+
+    저장 다이얼로그 / 파일 저장 흐름 자체를 우회. 분리창이 열려있어야 함.
+    분리창 없으면 search_and_open_room 으로 먼저 열어야 함.
+
+    Returns:
+        {'success': bool, 'raw_text': str, 'error': str?}
+    """
+    hwnd = find_chat_window(room_name)
+    if hwnd is None:
+        return {"success": False, "error": f"분리창 '{room_name}' 없음 (먼저 열기)", "raw_text": ""}
+
+    list_hwnd = find_child_window_recursive(hwnd, KAKAO_LIST_CONTROL_CLASS)
+    if list_hwnd is None:
+        return {
+            "success": False,
+            "error": f"ListControl ({KAKAO_LIST_CONTROL_CLASS}) 못 찾음 in '{room_name}'",
+            "raw_text": "",
+        }
+
+    bring_window_to_front(hwnd)
+    time.sleep(WINDOW_ACTIVATE_WAIT_SEC)
+
+    # 리스트 영역 클릭 → 포커스
+    try:
+        rect = win32gui.GetWindowRect(list_hwnd)
+        cx = (rect[0] + rect[2]) // 2
+        cy = (rect[1] + rect[3]) // 2
+        _user32.SetCursorPos(cx, cy)
+        _user32.mouse_event(0x0002, 0, 0, 0, 0)
+        _user32.mouse_event(0x0004, 0, 0, 0, 0)
+        time.sleep(EDIT_CLICK_WAIT_SEC)
+    except Exception:
+        pass
+
+    _send_ctrl_key_combo(VK_A)
+    time.sleep(KEY_COMBO_WAIT_SEC)
+    _send_ctrl_key_combo(VK_C)
+    time.sleep(KEY_COMBO_WAIT_SEC)
+
+    raw = _read_clipboard_text()
+    return {"success": True, "raw_text": raw}
+
+
+# ─────────────────────────────────────────────
+# 채팅방 검색 + 열기 ★ (Ctrl+F = 채팅탭 검색 Edit, 통합검색 아님)
+# ─────────────────────────────────────────────
+def _find_chat_list_view(main_hwnd: int) -> Optional[int]:
+    """카톡 메인 안의 ChatRoomListView (EVA_Window) 찾기."""
+    result = None
+
+    def _cb(hwnd, _):
+        nonlocal result
+        cls = win32gui.GetClassName(hwnd)
+        text = win32gui.GetWindowText(hwnd)
+        if cls == "EVA_Window" and "ChatRoomListView" in text:
+            result = hwnd
+            return False
+        return True
+
+    try:
+        win32gui.EnumChildWindows(main_hwnd, _cb, None)
+    except Exception:
+        pass
+    return result
+
+
+def _activate_search_and_get_edit(main_hwnd: int) -> Optional[int]:
+    """Ctrl+F → 채팅탭 검색 Edit 활성화 후 hwnd 반환.
+
+    카톡 PC 의 Ctrl+F 는 채팅탭 검색바 활성. (통합검색이 아님!)
+    """
+    chat_list_view = _find_chat_list_view(main_hwnd)
+    _log(f"ChatRoomListView hwnd: {chat_list_view}")
+    if chat_list_view is None:
+        return None
+
+    _send_ctrl_key_combo(VK_F)
+    time.sleep(SEARCH_ACTIVATE_WAIT_SEC)
+
+    edit_hwnd = find_child_window_recursive(chat_list_view, "Edit")
+    if edit_hwnd:
+        vis = win32gui.IsWindowVisible(edit_hwnd)
+        _log(f"Edit hwnd after Ctrl+F: {edit_hwnd}, visible: {vis}")
+    return edit_hwnd
+
+
+def _ensure_foreground(hwnd: int) -> bool:
+    bring_window_to_front(hwnd)
+    time.sleep(WINDOW_ACTIVATE_WAIT_SEC)
+    return _user32.GetForegroundWindow() == hwnd
+
+
+def search_and_open_room(room_name: str) -> Dict:
+    """카톡 메인의 채팅탭 검색 → 첫 결과 Enter 로 분리창 열기.
+
+    검색바 Edit 에 WM_CHAR 로 글자별 송신 (Korean IME 회피).
+    Returns: {'success': bool, 'message'|'error': str, 'hwnd': int?}
+    """
+    main_hwnd = win32gui.FindWindow(KAKAO_MAIN_WINDOW_CLASS, KAKAO_MAIN_WINDOW_TITLE)
+    if main_hwnd == 0:
+        return {"success": False, "error": "카톡 메인창 없음"}
+
+    if not _ensure_foreground(main_hwnd):
+        _log("warn: 카톡 포그라운드 실패")
+
+    edit_hwnd = _activate_search_and_get_edit(main_hwnd)
+    if edit_hwnd is None:
+        return {"success": False, "error": "검색 Edit 못 찾음 (Ctrl+F 후)"}
+
+    # 기존 텍스트 제거
+    win32api.SendMessage(edit_hwnd, EM_SETSEL, 0, -1)
+    win32api.SendMessage(edit_hwnd, WM_CLEAR, 0, 0)
+    time.sleep(EDIT_CLICK_WAIT_SEC)
+
+    # WM_CHAR 글자별 송신 (IME 회피)
+    for ch in room_name:
+        win32api.SendMessage(edit_hwnd, WM_CHAR, ord(ch), 0)
+        time.sleep(SEARCH_CHAR_INTERVAL_SEC)
+    _log(f"WM_CHAR 송신 완료: '{room_name}'")
+    time.sleep(SEARCH_RESULTS_WAIT_SEC)
+
+    # Enter → 첫 결과 열기
+    _user32.keybd_event(VK_RETURN, 0, 0, 0)
+    _user32.keybd_event(VK_RETURN, 0, KEYEVENTF_KEYUP, 0)
+    time.sleep(SEARCH_OPEN_WAIT_SEC)
+
+    # 열린 분리창 찾기
+    all_windows = list_chat_windows()
+    for w in all_windows:
+        if w["title"] == room_name:
+            return {"success": True, "message": f"opened '{room_name}'", "hwnd": w["hwnd"]}
+    for w in all_windows:
+        if room_name in w["title"]:
+            return {
+                "success": True,
+                "message": f"opened '{w['title']}' (searched '{room_name}')",
+                "hwnd": w["hwnd"],
+            }
+    if all_windows:
+        return {
+            "success": True,
+            "message": f"opened (title: '{all_windows[0]['title']}')",
+            "hwnd": all_windows[0]["hwnd"],
+        }
+
+    return {
+        "success": False,
+        "error": f"방 '{room_name}' 검색 후 분리창 못 찾음",
+    }
+
+
+# ─────────────────────────────────────────────
+# 메시지 송신 (Bot API fallback)
+# ─────────────────────────────────────────────
+def send_message_to_room(room_name: str, text: str) -> Dict:
+    """분리창 RICHEDIT50W 에 클립보드 paste + Enter.
+
+    봇 API 와 별개. 봇이 들어가지 않은 방에 직접 송신 가능.
+    """
+    hwnd = find_chat_window(room_name)
+    if hwnd is None:
+        return {"success": False, "error": f"분리창 '{room_name}' 없음"}
+
+    edit_hwnd = find_child_window_recursive(hwnd, KAKAO_EDIT_CLASS)
+    if edit_hwnd is None:
+        return {"success": False, "error": f"RICHEDIT50W 못 찾음 in '{room_name}'"}
+
+    bring_window_to_front(hwnd)
+    time.sleep(WINDOW_ACTIVATE_WAIT_SEC)
+
+    try:
+        rect = win32gui.GetWindowRect(edit_hwnd)
+        cx = (rect[0] + rect[2]) // 2
+        cy = (rect[1] + rect[3]) // 2
+        _user32.SetCursorPos(cx, cy)
+        _user32.mouse_event(0x0002, 0, 0, 0, 0)
+        _user32.mouse_event(0x0004, 0, 0, 0, 0)
+        time.sleep(EDIT_CLICK_WAIT_SEC)
+    except Exception:
+        pass
+
+    _set_clipboard_text(text)
+    time.sleep(0.05)
+    _send_ctrl_key_combo(VK_V)
+    time.sleep(0.05)
+    _user32.keybd_event(VK_RETURN, 0, 0, 0)
+    _user32.keybd_event(VK_RETURN, 0, KEYEVENTF_KEYUP, 0)
+    return {"success": True, "message": f"sent to '{room_name}'"}
+
+
+# ─────────────────────────────────────────────
+# 사진 cache 직접 추출 (서랍 자동화 우회)
+# ─────────────────────────────────────────────
+def get_kakao_user_hash_dir() -> Optional[str]:
+    """카톡 user 디렉토리 찾기 (SHA1 hash 폴더)."""
+    if not os.path.isdir(KAKAO_USERS_DIR):
+        return None
+    for entry in os.listdir(KAKAO_USERS_DIR):
+        full = os.path.join(KAKAO_USERS_DIR, entry)
+        if os.path.isdir(full) and len(entry) == 40:
+            return full
+    return None
+
+
+def download_recent_images(
+    output_dir: str,
+    max_images: int = 10,
+    min_mtime: float = 0.0,
+) -> Dict:
+    """카톡 cache 디렉토리에서 최근 이미지를 output_dir 로 복사.
+
+    Args:
+        output_dir: 저장 폴더
+        max_images: 복사할 최대 개수
+        min_mtime: 이 시간 이후 수정된 파일만 (0 이면 전체)
+
+    Returns: {'message': str, 'images': [{'source', 'destination', 'size'}, ...]}
+    """
+    user_dir = get_kakao_user_hash_dir()
+    if user_dir is None:
+        return {"error": "카톡 user 디렉토리 못 찾음"}
+
+    image_files: List[Dict] = []
+    for subdir in IMAGE_CACHE_SUBDIRS:
+        cache_path = os.path.join(user_dir, subdir)
+        if not os.path.isdir(cache_path):
+            continue
+        for fname in os.listdir(cache_path):
+            full_path = os.path.join(cache_path, fname)
+            if not os.path.isfile(full_path):
+                continue
+            try:
+                stat = os.stat(full_path)
+                if stat.st_size < 1024:
+                    continue
+                if stat.st_mtime < min_mtime:
+                    continue
+                image_files.append({
+                    "path": full_path,
+                    "name": fname,
+                    "mtime": stat.st_mtime,
+                    "size": stat.st_size,
+                })
+            except OSError:
+                continue
+
+    if not image_files:
+        return {"message": "no cached images", "images": []}
+
+    image_files.sort(key=lambda x: x["mtime"], reverse=True)
+    image_files = image_files[:max_images]
+
+    os.makedirs(output_dir, exist_ok=True)
+    copied: List[Dict] = []
+    for img in image_files:
+        dest_name = img["name"]
+        if not os.path.splitext(dest_name)[1]:
+            dest_name += ".jpg"
+        dest = os.path.join(output_dir, dest_name)
+        try:
+            shutil.copy2(img["path"], dest)
+            copied.append({
+                "source": img["path"],
+                "destination": dest,
+                "size": img["size"],
+            })
+        except OSError:
+            continue
+
+    return {
+        "message": f"downloaded {len(copied)} image(s) to {output_dir}",
+        "images": copied,
+    }
