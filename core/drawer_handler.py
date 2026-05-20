@@ -1435,27 +1435,66 @@ def _save_one_bundle(v_hwnd: int) -> bool:
                         candidates.sort(key=lambda c: (order.get(c[1], 99), -c[2]))
                         for h, cls, w in candidates:
                             if cls == "ComboBoxEx32":
-                                try:
-                                    edit_hwnd = win32gui.SendMessage(h, CBEM_GETEDITCONTROL, 0, 0) or h
-                                    set_method = f"Enum→ComboBoxEx32 (w={w})"
-                                    break
-                                except Exception:
-                                    edit_hwnd = h
-                                    set_method = f"Enum→ComboBoxEx32 direct (w={w})"
-                                    break
-                            elif cls in ("ComboBox", "Edit"):
+                                # ComboBoxEx32 → CBEM_GETEDITCONTROL 또는 child Edit
+                                inner = win32gui.SendMessage(h, CBEM_GETEDITCONTROL, 0, 0)
+                                if not inner:
+                                    inner = win32gui.FindWindowEx(h, 0, "Edit", None)
+                                edit_hwnd = inner or h
+                                set_method = f"Enum→ComboBoxEx32→Edit (w={w})"
+                                break
+                            elif cls == "ComboBox":
+                                # ComboBox 자체엔 WM_SETTEXT 안 먹힘 → child Edit 찾기
+                                inner = win32gui.FindWindowEx(h, 0, "Edit", None)
+                                edit_hwnd = inner or h
+                                set_method = f"Enum→ComboBox→Edit (w={w})"
+                                break
+                            elif cls == "Edit":
                                 edit_hwnd = h
-                                set_method = f"Enum→{cls} (w={w})"
+                                set_method = f"Enum→Edit (w={w})"
                                 break
 
                     if edit_hwnd:
+                        # 1차: WM_SETTEXT
                         win32gui.SendMessage(edit_hwnd, WM_SETTEXT, 0, unique_name)
                         time.sleep(0.1)
-                        # 검증
                         try:
                             buf = win32gui.GetWindowText(edit_hwnd)
                         except Exception:
-                            buf = "?"
+                            buf = ""
+                        # 2차 폴백: WM_SETTEXT 실패(빈 값) → clipboard paste
+                        if not buf:
+                            try:
+                                import win32clipboard
+                                win32clipboard.OpenClipboard()
+                                win32clipboard.EmptyClipboard()
+                                win32clipboard.SetClipboardText(unique_name, win32clipboard.CF_UNICODETEXT)
+                                win32clipboard.CloseClipboard()
+                                time.sleep(0.05)
+                                try:
+                                    win32gui.SetForegroundWindow(save_dlg)
+                                except Exception:
+                                    pass
+                                time.sleep(0.15)
+                                # Edit 클릭으로 포커스
+                                r = win32gui.GetWindowRect(edit_hwnd)
+                                cx, cy = (r[0] + r[2]) // 2, (r[1] + r[3]) // 2
+                                _u = __import__("ctypes").windll.user32
+                                _u.SetCursorPos(cx, cy)
+                                _u.mouse_event(0x0002, 0, 0, 0, 0)
+                                _u.mouse_event(0x0004, 0, 0, 0, 0)
+                                time.sleep(0.1)
+                                # Ctrl+A → Ctrl+V
+                                VK_CTRL, VK_A2, VK_V2 = 0x11, 0x41, 0x56
+                                _u.keybd_event(VK_CTRL, 0, 0, 0); _u.keybd_event(VK_A2, 0, 0, 0)
+                                _u.keybd_event(VK_A2, 0, 2, 0); _u.keybd_event(VK_CTRL, 0, 2, 0)
+                                time.sleep(0.05)
+                                _u.keybd_event(VK_CTRL, 0, 0, 0); _u.keybd_event(VK_V2, 0, 0, 0)
+                                _u.keybd_event(VK_V2, 0, 2, 0); _u.keybd_event(VK_CTRL, 0, 2, 0)
+                                time.sleep(0.2)
+                                buf = win32gui.GetWindowText(edit_hwnd)
+                                set_method += " +clipboard"
+                            except Exception as _ce:
+                                print(f"    [서랍] clipboard 폴백 실패: {_ce}", flush=True)
                         print(f"    [서랍] 파일명 자동 부여: {unique_name} via {set_method} "
                               f"(검증: {buf!r})", flush=True)
                     else:
