@@ -95,17 +95,34 @@ def _process_room_result(
     """방 하나의 처리 결과를 미러링+분석하는 공통 로직"""
     import time
 
+    import os as _os
+
     room_name = result["room_name"]
     delta = result["delta"]
     # 작업 시작 배너
     print(f"\n  ┌─ 🔧 작업방: [{room_name}] 신규 {len(delta)}자 ─")
 
-    # ── [사진] 감지 시 서랍에서 다운로드 ──
-    # 실제 메시지 경계 기반 카운트 (substring 카운트 아님).
-    # "사진 3장" 같은 묶음은 합산. 일반 텍스트에 "[사진]"이 끼어도 오탐 없음.
     from core.kakaowork_router import count_photo_messages
     downloaded_files = []
     photo_count = count_photo_messages(delta)
+
+    # ── 첫 가동/대량 baseline 가드 ──
+    # 첫 monitor 가동 시 카톡 전체 히스토리가 통째로 "신규(delta)"로 인식되어
+    # 미러 송신 폭주 + 사진 수천 장 다운로드. read_and_process_saved_file 이 이미
+    # _save_last_content 로 캐시를 갱신했으므로 여기서 송신만 스킵하면 다음 사이클부터
+    # 진짜 신규분만 처리됨. NENOVA_SEND_ALL=1 로 강제 전체 송신 가능.
+    #   - is_first_seen: 이 방을 monitor 가 처음 본 경우 (캐시 없음) → 무조건 baseline
+    #     (크기 무관 — 6800자 같은 중간 크기 첫 히스토리도 차단)
+    #   - 추가 안전망: 캐시 있어도 delta 가 비정상 과대면 baseline
+    BASELINE_CHAR_LIMIT = 8000
+    BASELINE_PHOTO_LIMIT = 30
+    if not _os.environ.get("NENOVA_SEND_ALL"):
+        is_first = result.get("is_first_seen", False)
+        if is_first or len(delta) > BASELINE_CHAR_LIMIT or photo_count > BASELINE_PHOTO_LIMIT:
+            reason = "첫 처리(캐시없음)" if is_first else f"delta {len(delta)}자/사진 {photo_count}장 과대"
+            print(f"  [BASELINE] {room_name}: {reason} → 송신 스킵 "
+                  f"(캐시 갱신됨, 다음 사이클부터 신규분만 송신)", flush=True)
+            return
     if photo_count > 0:
         print(f"     → [사진] {photo_count}개 감지 - 서랍 열기...")
         import win32gui

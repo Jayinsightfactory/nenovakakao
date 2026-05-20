@@ -609,6 +609,9 @@ def read_and_process_saved_file(file_path: Path) -> dict | None:
 
         # 이전 내용과 비교하여 델타(신규분만) 추출
         old_content = _get_last_content(room_name)
+        # 캐시(이전 내용) 없으면 = 이 방 첫 처리 → 전체가 delta 로 잡힘.
+        # main.py baseline 가드가 이 플래그로 첫 처리 방을 송신 스킵 (과거 히스토리 도배 방지).
+        is_first_seen = not bool(old_content and old_content.strip())
         delta = extract_delta(old_content, content)
 
         if not delta.strip():
@@ -626,6 +629,7 @@ def read_and_process_saved_file(file_path: Path) -> dict | None:
             "content": content,
             "delta": delta,
             "has_new": True,
+            "is_first_seen": is_first_seen,
             "timestamp": datetime.now().isoformat(),
             "file_path": str(current_path),
             "content_hash": content_hash,
