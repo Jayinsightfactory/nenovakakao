@@ -462,29 +462,43 @@ _BUMP_MIN_INTERVAL_SEC = 1.5
 _RATE_LIMITED_UNTIL = 0.0  # 429 발생 시 이 시각까지 모든 _send_single 호출 거부
 
 
-def _send_single(conv_id: str, text: str) -> bool:
-    """단일 메시지 전송 (내부용). 429 응답 시 즉시 거부 (재시도 없음)."""
+def _send_single(conv_id: str, text: str, max_retries: int = 3) -> bool:
+    """단일 메시지 전송 (내부용).
+
+    - 429 (rate limit): 재시도 금지, 30초 backoff (review 규칙 §4)
+    - ConnectionError / Timeout (RemoteDisconnected 등): exponential backoff 재시도
+      카카오워크가 대량/긴 메시지에 연결을 끊는 경우 대응 (2026-05-19 RemoteDisconnected 다발).
+    """
     global _RATE_LIMITED_UNTIL
     if time.time() < _RATE_LIMITED_UNTIL:
-        # 직전 429 후 backoff 구간 — 새 요청 침묵 거부
         return False
     payload = {"conversation_id": conv_id, "text": text}
-    try:
-        resp = requests.post(
-            f"{API_BASE}/messages.send",
-            headers=_headers(),
-            json=payload,
-            timeout=10,
-        )
-        if resp.status_code == 429:
-            # Bot API rate limit. 재시도 금지 (review 규칙 §4) — 30초 backoff.
-            _RATE_LIMITED_UNTIL = time.time() + 30.0
-            print("  [RATE-LIMIT] 카카오워크 Bot API 429 — 30초 송신 일시중단", flush=True)
+    for attempt in range(max_retries):
+        try:
+            resp = requests.post(
+                f"{API_BASE}/messages.send",
+                headers=_headers(),
+                json=payload,
+                timeout=15,
+            )
+            if resp.status_code == 429:
+                _RATE_LIMITED_UNTIL = time.time() + 30.0
+                print("  [RATE-LIMIT] 카카오워크 Bot API 429 — 30초 송신 일시중단", flush=True)
+                return False
+            return resp.json().get("success", False)
+        except (requests.ConnectionError, requests.Timeout) as e:
+            wait = 1.5 * (attempt + 1)  # 1.5, 3.0, 4.5
+            if attempt < max_retries - 1:
+                print(f"  [RETRY] 연결 실패 ({attempt+1}/{max_retries}) {wait:.1f}s 후 재시도: "
+                      f"{type(e).__name__}", flush=True)
+                time.sleep(wait)
+            else:
+                print(f"  [ERROR] 연결 실패 (재시도 {max_retries}회 소진): {type(e).__name__}", flush=True)
+                return False
+        except Exception as e:
+            print(f"  [ERROR] 전송 실패: {e}")
             return False
-        return resp.json().get("success", False)
-    except Exception as e:
-        print(f"  [ERROR] 전송 실패: {e}")
-        return False
+    return False
 
 
 def _bump(conv_id: str) -> bool:
