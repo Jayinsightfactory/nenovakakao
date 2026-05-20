@@ -241,6 +241,48 @@ def create_all_mirror_rooms() -> dict[str, str]:
     return mapping
 
 
+def send_reply_button(kakaotalk_name: str) -> bool:
+    """미러방에 [📤 카톡 답장] 버튼 메시지 1개 송신 (양방향 챗봇 트리거).
+
+    사용자가 이 버튼을 누르면 카카오워크가 reactive Request URL 호출 →
+    모달 → Callback URL → core.kakao_win32.send_message_to_room 으로 카톡 송신.
+    (core/kakaowork_reactive.py 참조)
+
+    value 는 'room=<카톡방이름>' — callback 에서 어느 카톡 방으로 보낼지 식별.
+    """
+    mapping = _load_room_mapping()
+    conv_id = mapping.get(kakaotalk_name)
+    if not conv_id:
+        normalized = kakaotalk_name.replace(" ", "")
+        for k, v in mapping.items():
+            if k.replace(" ", "") == normalized:
+                conv_id = v
+                break
+    if not conv_id:
+        return False
+    payload = {
+        "conversation_id": conv_id,
+        "text": f"💬 '{kakaotalk_name}' 방으로 답장",
+        "blocks": [
+            {
+                "type": "button",
+                "text": "📤 카톡 답장",
+                "action_type": "call_modal",
+                "value": f"room={kakaotalk_name}",
+            }
+        ],
+    }
+    try:
+        resp = requests.post(
+            f"{API_BASE}/messages.send",
+            headers=_headers(), json=payload, timeout=10,
+        )
+        return resp.json().get("success", False)
+    except Exception as e:
+        print(f"  [REPLY-BTN] {kakaotalk_name} 버튼 송신 실패: {e}", flush=True)
+        return False
+
+
 def send_to_mirror_room(kakaotalk_name: str, text: str, max_length: int = 3000) -> bool:
     """
     카카오톡 방 이름에 대응하는 카카오워크 방에 메시지 전송.
@@ -1059,6 +1101,13 @@ def send_delta_interleaved(
                 else:
                     print(f"  [ABORT] 꼬리 사진 {len(remaining)}장 vision 검증 실패 - 중단", flush=True)
                     stats["photos_missing"] += len(remaining)
+
+    # 양방향: 미러방에 [📤 카톡 답장] 버튼 첨부 (텍스트 전송된 경우만)
+    if stats.get("text_sent", 0) > 0:
+        try:
+            send_reply_button(kakaotalk_name)
+        except Exception as e:
+            print(f"  [REPLY-BTN] 첨부 실패: {e}", flush=True)
 
     return stats
 
