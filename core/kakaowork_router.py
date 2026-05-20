@@ -24,9 +24,8 @@ DATA_DIR = Path(__file__).parent.parent / "data"
 ROOM_MAP_FILE = DATA_DIR / "room_mapping.json"
 DETECTED_FILE = DATA_DIR / "rooms_detected.json"
 
-# 관리자 유저 ID (네노바 - Nenovabusiness1@gmail.com, 표시명 "네노바")
-# 이전 11826656 (dlaww584@gmail.com) 은 워크스페이스에서 빠진 계정 — 2026-05-11 정정
-ADMIN_USER_ID = 11854018
+# 관리자 유저 ID (임재용 - dlaww584@gmail.com)
+ADMIN_USER_ID = 11826656
 
 API_BASE = "https://api.kakaowork.com/v1"
 
@@ -496,72 +495,6 @@ def send_image_block(conv_id: str, image_url: str) -> bool:
         return False
 
 
-def send_image_preview_and_link(conv_id: str, image_url: str, *, delay: float = 0.3) -> bool:
-    """
-    이미지를 **미리보기 + 링크 두 개 메시지로 분리** 송신.
-
-    - 메시지 1 (미리보기): `blocks.image_link` — 인라인 썸네일. 즉시 보임.
-    - 메시지 2 (링크): `text=image_url` — 카카오워크 auto link preview 카드.
-      카드 클릭 시 브라우저로 원본 이미지 열림 (확대/저장 가능).
-
-    배경: `image_link` 블록 단독으로는 썸네일 클릭 시 '일정등록' UX 한계가 있고,
-    text URL 단독은 카드만 보여서 즉시성이 떨어짐. 둘을 분리해서 양쪽 장점 모두 제공.
-    (2026-05-11 관리자 요청)
-
-    Args:
-        conv_id: 대상 conversation_id
-        image_url: 공개 접근 가능한 이미지 URL
-        delay: 두 메시지 사이 딜레이 (초) — rate-limit 보호 + 도착 순서 보존
-
-    Returns:
-        둘 다 성공해야 True. 한쪽이라도 실패하면 False (호출자가 재시도/격리 결정).
-    """
-    # ── 메시지 1: 미리보기 (image_link 블록) ──
-    preview_payload = {
-        "conversation_id": conv_id,
-        "text": "​",  # zero-width space — 본문 비우고 블록만 보이게
-        "blocks": [{"type": "image_link", "url": image_url}],
-    }
-    ok_preview = False
-    try:
-        r1 = requests.post(
-            f"{API_BASE}/messages.send",
-            headers=_headers(),
-            json=preview_payload,
-            timeout=15,
-        )
-        result = r1.json()
-        ok_preview = bool(result.get("success"))
-        if not ok_preview:
-            print(f"  [PREVIEW] 미리보기 송신 실패: {result}", flush=True)
-    except Exception as e:
-        print(f"  [PREVIEW] 예외: {e}", flush=True)
-
-    time.sleep(delay)
-
-    # ── 메시지 2: 링크 (text URL) ──
-    link_payload = {
-        "conversation_id": conv_id,
-        "text": image_url,
-    }
-    ok_link = False
-    try:
-        r2 = requests.post(
-            f"{API_BASE}/messages.send",
-            headers=_headers(),
-            json=link_payload,
-            timeout=15,
-        )
-        result = r2.json()
-        ok_link = bool(result.get("success"))
-        if not ok_link:
-            print(f"  [LINK] 링크 송신 실패: {result}", flush=True)
-    except Exception as e:
-        print(f"  [LINK] 예외: {e}", flush=True)
-
-    return ok_preview and ok_link
-
-
 def send_image_to_mirror(kakaotalk_name: str, image_url: str, caption: str = "") -> bool:
     """카톡방 이름으로 미러 방 찾아서 이미지만 전송 (caption 무시)."""
     mapping = _load_room_mapping()
@@ -576,130 +509,6 @@ def send_image_to_mirror(kakaotalk_name: str, image_url: str, caption: str = "")
         print(f"  [WARN] '{kakaotalk_name}' 미러 매핑 없음")
         return False
     return send_image_block(conv_id, image_url)
-
-
-# ═══════════════════════════════════════════════════════════════════
-# 진짜 이미지 첨부 (image_link 한계 회피) — conversations.upload + send_attachments
-# 발견 2026-05-07: image_link 블록은 클릭 시 일정등록 UX 한계.
-# conversations.upload 로 파일 업로드 → attachment_id 획득 →
-# messages.send_attachments 로 진짜 이미지 첨부하면 정상 뷰어로 확대 가능.
-# ═══════════════════════════════════════════════════════════════════
-
-def upload_attachments(conv_id: str, image_paths: list) -> list:
-    """
-    conversations.upload — multipart 로 이미지 파일 업로드.
-
-    Args:
-        conv_id: 대상 대화방 (업로드 권한 검증용)
-        image_paths: 업로드할 파일 경로 리스트 (최대 5개, 각 이미지 15MB 한도)
-
-    Returns:
-        attachment 객체 리스트: [{attachment_id, url, file_name, access_key}, ...]
-        실패 시 빈 리스트.
-    """
-    from pathlib import Path
-    if not image_paths:
-        return []
-    if len(image_paths) > 5:
-        print(f"  [UPLOAD] 5개 초과 — 처음 5개만", flush=True)
-        image_paths = image_paths[:5]
-
-    files_param = []
-    metas_list = []
-    for i, p in enumerate(image_paths):
-        path = Path(p)
-        if not path.exists():
-            print(f"  [UPLOAD] 파일 없음: {p}", flush=True)
-            continue
-        # 카카오워크 API 정확한 형식 (공식 cURL 예제 기준):
-        #   multipart 필드명 = 'attachments[]' (배열 표기)
-        #   form 데이터 'metas' = [{"file_name", "file_type", "file_size"}, ...] JSON
-        ext = path.suffix.lower().lstrip(".") or "jpg"
-        ctype = "image/png" if ext == "png" else f"image/{ext}"
-        size = path.stat().st_size
-        files_param.append(
-            ("attachments[]", (path.name, open(path, "rb"), ctype))
-        )
-        metas_list.append({
-            "file_name": path.name,
-            "file_type": "image",
-            "file_size": size,
-        })
-    if not files_param:
-        return []
-
-    try:
-        headers = {"Authorization": f"Bearer {os.getenv('KAKAOWORK_BOT_TOKEN','')}"}
-        # multipart 라 Content-Type 명시 X (requests 가 boundary 자동 생성)
-        resp = requests.post(
-            f"{API_BASE}/conversations/{conv_id}/upload",
-            headers=headers,
-            files=files_param,
-            data={"metas": json.dumps(metas_list)},
-            timeout=60,
-        )
-        data = resp.json()
-        if not data.get("success"):
-            print(f"  [UPLOAD] 실패: {data}", flush=True)
-            return []
-        attachments = data.get("attachments") or data.get("attachment") or []
-        if isinstance(attachments, dict):
-            attachments = [attachments]
-        print(f"  [UPLOAD] {len(attachments)}개 업로드 성공", flush=True)
-        return attachments
-    except Exception as e:
-        print(f"  [UPLOAD] 예외: {e}", flush=True)
-        return []
-    finally:
-        # multipart 파일 핸들 정리
-        for _, (_, fobj, _) in files_param:
-            try:
-                fobj.close()
-            except Exception:
-                pass
-
-
-def send_image_via_attachments(conv_id: str, image_paths: list) -> bool:
-    """
-    이미지 파일들을 conversations.upload → messages.send_attachments 로 진짜 첨부 발송.
-
-    Args:
-        conv_id: 대상 대화방
-        image_paths: 이미지 파일 경로 리스트 (최대 5장)
-
-    Returns:
-        True 성공, False 실패.
-    """
-    attachments = upload_attachments(conv_id, image_paths)
-    if not attachments:
-        return False
-
-    attachment_ids = [a.get("attachment_id") or a.get("id") for a in attachments if a.get("attachment_id") or a.get("id")]
-    if not attachment_ids:
-        print(f"  [SEND-ATT] attachment_id 추출 실패: {attachments}", flush=True)
-        return False
-
-    payload = {
-        "conversation_id": int(conv_id),
-        "type": "image",
-        "attachment": {"attachment_ids": attachment_ids},
-    }
-    try:
-        resp = requests.post(
-            f"{API_BASE}/messages.send_attachments",
-            headers=_headers(),
-            json=payload,
-            timeout=15,
-        )
-        result = resp.json()
-        if result.get("success"):
-            print(f"  [SEND-ATT] {len(attachment_ids)}장 첨부 발송 OK", flush=True)
-            return True
-        print(f"  [SEND-ATT] 실패: {result}", flush=True)
-        return False
-    except Exception as e:
-        print(f"  [SEND-ATT] 예외: {e}", flush=True)
-        return False
 
 
 def send_delta_interleaved(
@@ -1040,14 +849,13 @@ def send_delta_interleaved(
                     break
 
             if not photos_for_this:
-                # 캡쳐 미러 패턴 (2026-05-12~): 사진은 _process_room_result 끝에서
-                # 카톡 창 화면 1장으로 별도 송신. 여기서는 시간순 보존 위해 헤더만.
-                fallback = f"[{sender}] [{tstr}] [사진 {want}장]"
+                # 다운로드된 파일 없음 — 실패 텍스트로 남김
+                fallback = f"[{sender}] [{tstr}] [사진 {want}장 — 다운로드 실패]"
                 if _send_single(conv_id, fallback):
                     stats["text_sent"] += 1
                 else:
                     stats["text_failed"] += 1
-                # 실패 아님 — photos_missing 카운트 X (캡쳐 미러로 보완됨)
+                stats["photos_missing"] += want
                 time.sleep(delay)
                 continue
 
@@ -1075,11 +883,11 @@ def send_delta_interleaved(
                     if _send_single(conv_id, header_txt):
                         stats["text_sent"] += 1
                     time.sleep(delay)
-                    # 각 사진 nenovaweb 업로드 + (미리보기 + 링크) 분리 송신 + 성공시 서버에서 삭제
+                    # 각 사진 nenovaweb 업로드 + image_link 블록 전송 + 성공시 서버에서 삭제
                     urls = _nw_upload_many(photos_for_this, room=kakaotalk_name)
                     for j, (f, url) in enumerate(zip(photos_for_this, urls)):
                         if url:
-                            work_sent = send_image_preview_and_link(conv_id, url)
+                            work_sent = send_image_block(conv_id, url)
                             if work_sent:
                                 stats["photos_uploaded"] += 1
                                 # 워크 전송 성공 → nenovaweb 서버 용량 관리 위해 즉시 삭제
@@ -1223,7 +1031,7 @@ def send_delta_interleaved(
             print(f"  [꼬리] {len(remaining)}장 nenovaweb 경로", flush=True)
             urls = _nw_um(remaining, room=kakaotalk_name)
             for f, url in zip(remaining, urls):
-                if url and send_image_preview_and_link(conv_id, url):
+                if url and send_image_block(conv_id, url):
                     stats["trailing_uploaded"] += 1
                     stats["photos_uploaded"] += 1
                     try:

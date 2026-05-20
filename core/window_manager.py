@@ -33,8 +33,7 @@ KAKAOWORK_TITLE = "카카오워크"
 
 # 카톡 메인창 고정 좌표 (x, y, w, h)
 # 사진 파이프라인 안정화 위해 900x900 이상 필요
-# (0,0)은 PyAutoGUI fail-safe 모서리와 겹쳐서 자동화 즉시 정지 — 50px 안쪽으로 이동 (2026-05-11)
-KAKAOTALK_FIXED_POS = (50, 50, 900, 900)
+KAKAOTALK_FIXED_POS = (0, 0, 900, 900)
 
 
 def force_foreground(hwnd: int) -> bool:

@@ -62,69 +62,24 @@ def _record_call(success: bool):
             print(f"  [CU] 연속 실패 {CONSEC_FAIL_LIMIT}회 → {COOLDOWN_AFTER_FAILS}s 쿨다운", flush=True)
 MAX_TOKENS = 4096
 MAX_LOOP = 20          # 자율 액션 최대 횟수 (12→20 확장)
-# 카톡 900x900 정사각형 → 1024x1024 정사각형 리사이즈 (비율 보존)
-# 1920x1080 으로 늘리면 가로 왜곡 → Claude 좌표 인식 실패
-DISPLAY_W = 1024
-DISPLAY_H = 1024
-
-# 카톡 영역만 캡쳐/조작 모드 (전체 화면 대신 카톡만 → Claude 가 다른 앱 안 봄)
-_KAKAOTALK_ONLY_MODE = True
-
-
-def _get_kakaotalk_bbox() -> tuple[int, int, int, int] | None:
-    """카톡 메인창의 (left, top, right, bottom) 반환. 없으면 None."""
-    try:
-        import win32gui
-        hwnds: list[int] = []
-        def _cb(h, lst):
-            if win32gui.IsWindowVisible(h) and win32gui.GetWindowText(h) == "카카오톡":
-                lst.append(h)
-        win32gui.EnumWindows(_cb, hwnds)
-        if not hwnds:
-            return None
-        return win32gui.GetWindowRect(hwnds[0])
-    except Exception:
-        return None
-
-
-def _claude_to_screen_coord(cx: int, cy: int) -> tuple[int, int]:
-    """Claude 가 본 1920×1080 이미지 좌표 → 실제 화면 좌표 변환.
-    카톡 영역만 캡쳐 + 1920×1080 으로 리사이즈했으므로 비율 역변환.
-    """
-    if not _KAKAOTALK_ONLY_MODE:
-        return cx, cy
-    bbox = _get_kakaotalk_bbox()
-    if not bbox:
-        return cx, cy
-    left, top, right, bottom = bbox
-    kw = right - left
-    kh = bottom - top
-    sx = left + int(cx * kw / DISPLAY_W)
-    sy = top + int(cy * kh / DISPLAY_H)
-    return sx, sy
+DISPLAY_W = 1920
+DISPLAY_H = 1080
 
 
 def _screenshot_b64() -> str | None:
-    """카톡 영역만 캡쳐 → 1920×1080 리사이즈 → base64.
-    Claude 가 카톡 밖 다른 앱 안 보이게.
-    """
+    """현재 화면 → base64 PNG. mss 사용."""
     try:
-        from PIL import Image, ImageGrab
-        if _KAKAOTALK_ONLY_MODE:
-            bbox = _get_kakaotalk_bbox()
-            if bbox:
-                # 카톡 영역만
-                img = ImageGrab.grab(bbox=bbox)
-            else:
-                img = ImageGrab.grab()
-        else:
-            img = ImageGrab.grab()
-        # 1920×1080 으로 리사이즈 (Claude Computer Use 권장)
-        if img.size != (DISPLAY_W, DISPLAY_H):
-            img = img.resize((DISPLAY_W, DISPLAY_H), Image.Resampling.LANCZOS)
-        buf = io.BytesIO()
-        img.save(buf, format="PNG")
-        return base64.standard_b64encode(buf.getvalue()).decode()
+        import mss
+        from PIL import Image
+        with mss.mss() as sct:
+            img = sct.grab(sct.monitors[0])
+            pil = Image.frombytes("RGB", img.size, img.rgb)
+            # 1920x1080 표준에 맞춰 리사이즈 (Claude Computer Use 권장 해상도)
+            if pil.size != (DISPLAY_W, DISPLAY_H):
+                pil = pil.resize((DISPLAY_W, DISPLAY_H), Image.Resampling.LANCZOS)
+            buf = io.BytesIO()
+            pil.save(buf, format="PNG")
+            return base64.standard_b64encode(buf.getvalue()).decode()
     except Exception as e:
         print(f"  [CU] screenshot 실패: {e}", flush=True)
         return None
@@ -148,43 +103,36 @@ def _execute_computer_action(action: str, params: dict) -> dict:
             }
         elif action == "left_click":
             coord = params.get("coordinate") or [0, 0]
-            sx, sy = _claude_to_screen_coord(coord[0], coord[1])
-            pyautogui.click(sx, sy)
+            pyautogui.click(coord[0], coord[1])
             time.sleep(0.3)
-            return {"type": "text", "text": f"left_click claude={coord} → screen=({sx},{sy})"}
+            return {"type": "text", "text": f"left_click at {coord}"}
         elif action == "right_click":
             coord = params.get("coordinate") or [0, 0]
-            sx, sy = _claude_to_screen_coord(coord[0], coord[1])
-            pyautogui.rightClick(sx, sy)
+            pyautogui.rightClick(coord[0], coord[1])
             time.sleep(0.3)
-            return {"type": "text", "text": f"right_click claude={coord} → screen=({sx},{sy})"}
+            return {"type": "text", "text": f"right_click at {coord}"}
         elif action == "double_click":
             coord = params.get("coordinate") or [0, 0]
-            sx, sy = _claude_to_screen_coord(coord[0], coord[1])
-            pyautogui.doubleClick(sx, sy)
+            pyautogui.doubleClick(coord[0], coord[1])
             time.sleep(0.3)
-            return {"type": "text", "text": f"double_click claude={coord} → screen=({sx},{sy})"}
+            return {"type": "text", "text": f"double_click at {coord}"}
         elif action == "triple_click":
             coord = params.get("coordinate") or [0, 0]
-            sx, sy = _claude_to_screen_coord(coord[0], coord[1])
-            pyautogui.tripleClick(sx, sy)
+            pyautogui.tripleClick(coord[0], coord[1])
             time.sleep(0.3)
-            return {"type": "text", "text": f"triple_click claude={coord} → screen=({sx},{sy})"}
+            return {"type": "text", "text": f"triple_click at {coord}"}
         elif action == "mouse_move":
             coord = params.get("coordinate") or [0, 0]
-            sx, sy = _claude_to_screen_coord(coord[0], coord[1])
-            pyautogui.moveTo(sx, sy)
+            pyautogui.moveTo(coord[0], coord[1])
             time.sleep(0.2)
-            return {"type": "text", "text": f"mouse_move claude={coord} → screen=({sx},{sy})"}
+            return {"type": "text", "text": f"mouse_move to {coord}"}
         elif action == "left_click_drag":
             start = params.get("start_coordinate") or params.get("coordinate") or [0, 0]
             end = params.get("coordinate") or [0, 0]
-            ssx, ssy = _claude_to_screen_coord(start[0], start[1])
-            sex, sey = _claude_to_screen_coord(end[0], end[1])
-            pyautogui.moveTo(ssx, ssy)
-            pyautogui.dragTo(sex, sey, button="left")
+            pyautogui.moveTo(start[0], start[1])
+            pyautogui.dragTo(end[0], end[1], button="left")
             time.sleep(0.3)
-            return {"type": "text", "text": f"drag screen ({ssx},{ssy}) → ({sex},{sey})"}
+            return {"type": "text", "text": f"drag {start} → {end}"}
         elif action == "key":
             key = params.get("text", "")
             # "ctrl+s" 같은 조합도 처리

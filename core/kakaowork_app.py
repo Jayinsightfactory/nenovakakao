@@ -636,188 +636,77 @@ def upload_to_nv_room(kakaotalk_room_name: str, files: list[Path]):
 
 
 # ═══════════════════════════════════════════════════════════════════
-# 채팅방 이름 변경 자동화 (⚙️ 톱니바퀴 → ✏️ 볼펜 → 입력 → 저장)
-# 검증 완료 2026-05-07 — kw_v8 시리즈 캡처로 시퀀스 확정
+# 채팅방 이름 변경 자동화 (⚙️ 톱니바퀴 → ✏️ 볼펜 → 입력)
 # ═══════════════════════════════════════════════════════════════════
 
-# 워크 앱 데스크탑 정확한 hwnd 찾기 — 브라우저 탭 ('카카오워크 관리자 서비스') 제외
-def _find_kakaowork_desktop_hwnd():
-    import win32gui
-    candidates = []
-    def cb(h, _):
-        if not win32gui.IsWindowVisible(h):
-            return
-        cls = win32gui.GetClassName(h) or ''
-        title = win32gui.GetWindowText(h) or ''
-        # 데스크탑 앱 클래스 시그니처: HwndWrapper[KakaoWork.exe;...]
-        if 'KakaoWork' not in cls:
-            return
-        rect = win32gui.GetWindowRect(h)
-        w, h2 = rect[2]-rect[0], rect[3]-rect[1]
-        if w < 200 or h2 < 200:
-            return
-        if 'Toast' in title:
-            return
-        # 타이틀이 '카카오워크' 인 메인창 우선, 빈 타이틀은 보조
-        candidates.append((h, title, w * h2))
-    win32gui.EnumWindows(cb, None)
-    if not candidates:
-        return None
-    # title='카카오워크' 우선
-    main = [c for c in candidates if c[1] == '카카오워크']
-    if main:
-        return main[0][0]
-    return max(candidates, key=lambda c: c[2])[0]
-
-
-def _force_foreground(hwnd):
-    """다른 프로세스 창을 강제 활성화 (AttachThreadInput 트릭)."""
-    import ctypes, win32gui, win32con, win32api, win32process
-    fg = win32gui.GetForegroundWindow()
-    if fg == hwnd:
-        return True
-    try:
-        fg_th, _ = win32process.GetWindowThreadProcessId(fg)
-        cur_th = win32api.GetCurrentThreadId()
-        tgt_th, _ = win32process.GetWindowThreadProcessId(hwnd)
-        ctypes.windll.user32.AttachThreadInput(cur_th, fg_th, True)
-        ctypes.windll.user32.AttachThreadInput(tgt_th, fg_th, True)
-        try:
-            win32gui.ShowWindow(hwnd, win32con.SW_RESTORE)
-            win32gui.BringWindowToTop(hwnd)
-            ctypes.windll.user32.SetForegroundWindow(hwnd)
-            time.sleep(0.3)
-        finally:
-            ctypes.windll.user32.AttachThreadInput(cur_th, fg_th, False)
-            ctypes.windll.user32.AttachThreadInput(tgt_th, fg_th, False)
-    except Exception as e:
-        print(f"  [FG] 활성화 예외: {e}", flush=True)
-        return False
-    return win32gui.GetForegroundWindow() == hwnd
-
-
-def _detect_pencil_x(panel_img_path, *, y_band=(155, 185), x_search=(700, 880)):
-    """패널 캡처에서 ✏️ 볼펜 픽셀 X 좌표 검출 (워크 앱 로컬 좌표)."""
-    from PIL import Image
-    import numpy as np
-    img = Image.open(panel_img_path).convert("RGB")
-    arr = np.asarray(img)
-    dark_xs = []
-    y0, y1 = y_band
-    x0, x1 = x_search
-    for y in range(y0, y1):
-        for x in range(x0, x1):
-            r, g, b = arr[y, x]
-            if r < 130 and g < 130 and b < 130:
-                dark_xs.append(x)
-    if not dark_xs:
-        return None
-    rightmost = max(dark_xs)
-    return rightmost - 6  # ✏️ 너비 약 12px → 중심
-
-
-def rename_room_via_app(
-    conv_id: str | None,
-    new_name: str,
-    *,
-    dry_run: bool = False,
-    room_xy_local: tuple = None,
-) -> bool:
+def rename_room_via_app(conv_id: str, new_name: str, *, dry_run: bool = False) -> bool:
     """
     워크 앱 UI 자동화로 채팅방 이름 변경.
 
-    검증된 시퀀스 (2026-05-07):
-      1) 데스크탑 앱 hwnd 찾기 (브라우저 제외) + AttachThreadInput 강제 활성화
-      2) 대상 방 클릭 — room_xy_local 지정 시 그 좌표, 아니면 봇 _bump → 첫 방
-      3) ⚙️ 톱니바퀴 클릭 (워크 앱 로컬 (right - 52, 80))
-      4) 패널 캡처 → ✏️ 볼펜 픽셀 자동 검출 → 클릭
-      5) 입력란 클릭 → Ctrl+A → 클립보드 → Ctrl+V → 저장 버튼 클릭
+    시퀀스:
+      1) Bot API _bump → 대상 방을 목록 맨 위로
+      2) 워크 앱 활성화 → 첫 번째 방 클릭 (window+80, 60)
+      3) 채팅창 우상단 ⚙️ 톱니바퀴 클릭 → 채팅방 설정 패널 펼침
+      4) 패널 안 채팅방 이름 옆 ✏️ 볼펜 클릭 → 입력란 활성화
+      5) Ctrl+A 로 기존 텍스트 선택 → 클립보드 복사 → Ctrl+V → Enter
       6) ESC 로 패널 닫기
 
-    Args:
-        conv_id: 봇 _bump 용 (room_xy_local 지정 시 무시)
-        new_name: 새 채팅방 이름 (모든 멤버에게 공유됨)
-        room_xy_local: (x, y) 워크 앱 로컬 좌표 — 직접 클릭. None 이면 _bump + 첫 방.
+    좌표는 창 우측/상단 기준 상대값으로 환경변수 오버라이드 가능:
+      NENOVA_GEAR_FROM_RIGHT / NENOVA_GEAR_FROM_TOP
+      NENOVA_PENCIL_FROM_RIGHT / NENOVA_PENCIL_FROM_TOP
     """
-    import win32gui
     print(f"  [RENAME-APP] conv={conv_id} → '{new_name}' (dry_run={dry_run})", flush=True)
 
-    # 1) 데스크탑 앱 hwnd 찾기 + 활성화
-    hwnd = _find_kakaowork_desktop_hwnd()
-    if not hwnd:
-        print(f"    [ERROR] 카카오워크 데스크탑 앱 미실행", flush=True)
+    # 1) bump
+    if not dry_run:
+        ok = _send_bot_api(conv_id, "⁣")  # invisible char (zero-width non-joiner U+2063)
+        print(f"    [1/6] _bump OK={ok}", flush=True)
+        time.sleep(1.2)
+
+    # 2) 워크 앱 활성화 + 첫 방 클릭
+    try:
+        win = find_kakaowork_window()
+    except Exception as e:
+        print(f"    [ERROR] 워크 앱 창 없음: {e}", flush=True)
         return False
-    if not _force_foreground(hwnd):
-        print(f"    [WARN] foreground 활성화 실패 — 계속 시도", flush=True)
-    time.sleep(0.5)
-    rect = win32gui.GetWindowRect(hwnd)
-    left, top, right, bot = rect
-    w, h = right - left, bot - top
-    print(f"    [1/7] 워크 앱: ({left},{top}) {w}x{h}", flush=True)
+    print(f"    [2/6] 워크 앱 활성화: left={win.left}, top={win.top}, w={win.width}, h={win.height}", flush=True)
 
-    if dry_run:
-        print(f"    (dry-run — 실제 클릭 없음)", flush=True)
-        return True
+    first_xy = (win.left + FIRST_ROOM_X_OFFSET, win.top + FIRST_ROOM_Y_OFFSET)
+    if not dry_run:
+        pyautogui.click(*first_xy)
+        time.sleep(1.2)
+    print(f"    [2/6] 첫 방 클릭 xy={first_xy}", flush=True)
 
-    # 잔여 ESC
-    pyautogui.press("escape")
-    time.sleep(0.3)
+    # 3) ⚙️ 톱니바퀴 클릭
+    gear_xy = (win.left + win.width - GEAR_FROM_RIGHT, win.top + GEAR_FROM_TOP)
+    if not dry_run:
+        pyautogui.click(*gear_xy)
+        time.sleep(1.0)
+    print(f"    [3/6] 톱니바퀴 클릭 xy={gear_xy}", flush=True)
 
-    # 2) 대상 방 클릭
-    if room_xy_local:
-        rx, ry = room_xy_local
-        target = (left + rx, top + ry)
-        print(f"    [2/7] 방 직접 클릭 (local={room_xy_local}): {target}", flush=True)
-    else:
-        # _bump → 첫 방 (단, 봇 메시지가 클라이언트 미도달 시엔 효과 없음)
-        if conv_id:
-            _send_bot_api(conv_id, "⁣")
-            time.sleep(1.2)
-        target = (left + 200, top + 131)  # 첫 방 추정
-        print(f"    [2/7] 첫 방 클릭: {target}", flush=True)
-    pyautogui.click(*target)
-    time.sleep(1.2)
+    # 4) ✏️ 볼펜 클릭
+    pencil_xy = (win.left + win.width - PENCIL_FROM_RIGHT, win.top + PENCIL_FROM_TOP)
+    if not dry_run:
+        pyautogui.click(*pencil_xy)
+        time.sleep(0.8)
+    print(f"    [4/6] 볼펜 클릭 xy={pencil_xy}", flush=True)
 
-    # 3) ⚙️ 톱니바퀴 (워크 앱 로컬 right - 52, 80)
-    gear = (right - 52, top + 80)
-    pyautogui.click(*gear)
-    time.sleep(1.0)
-    print(f"    [3/7] ⚙️ 클릭 {gear}", flush=True)
+    # 5) Ctrl+A → Ctrl+V → Enter
+    if not dry_run:
+        pyautogui.hotkey('ctrl', 'a')
+        time.sleep(0.2)
+        pyperclip.copy(new_name)
+        time.sleep(0.2)
+        pyautogui.hotkey('ctrl', 'v')
+        time.sleep(0.3)
+        pyautogui.press('enter')
+        time.sleep(0.8)
+    print(f"    [5/6] 입력 + Enter (text='{new_name}')", flush=True)
 
-    # 4) 패널 캡처 → ✏️ x 검출
-    panel_path = Path("captures") / "_panel_temp.png"
-    panel_path.parent.mkdir(parents=True, exist_ok=True)
-    pyautogui.screenshot(region=(left, top, w, h)).save(panel_path)
-    pencil_x_local = _detect_pencil_x(panel_path)
-    if pencil_x_local is None:
-        # 폴백: 추정 좌표
-        pencil_x_local = w - 95
-        print(f"    [4/7] ✏️ 검출 실패 → 폴백 x={pencil_x_local}", flush=True)
-    pencil = (left + pencil_x_local, top + 174)
-    pyautogui.click(*pencil)
-    time.sleep(0.8)
-    print(f"    [4/7] ✏️ 클릭 {pencil}", flush=True)
-
-    # 5) 입력란 클릭 (포커스 확실화) → Ctrl+A → Ctrl+V → 저장 버튼
-    pyautogui.click(left + 750, top + 160)  # 입력란 영역
-    time.sleep(0.3)
-    pyautogui.hotkey("ctrl", "a")
-    time.sleep(0.2)
-    pyperclip.copy(new_name)
-    time.sleep(0.2)
-    pyautogui.hotkey("ctrl", "v")
-    time.sleep(0.4)
-    print(f"    [5/7] 입력 '{new_name}'", flush=True)
-
-    # 6) 저장 버튼 클릭 (워크 앱 로컬 ~ (683, 870))
-    save_btn = (left + 683, top + 870)
-    pyautogui.click(*save_btn)
-    time.sleep(1.2)
-    print(f"    [6/7] 저장 버튼 클릭 {save_btn}", flush=True)
-
-    # 7) ESC
-    pyautogui.press("escape")
-    time.sleep(0.4)
-    print(f"    [7/7] ESC", flush=True)
+    # 6) ESC 로 패널 닫기
+    if not dry_run:
+        pyautogui.press('escape')
+        time.sleep(0.4)
+    print(f"    [6/6] ESC 로 패널 닫기", flush=True)
 
     return True

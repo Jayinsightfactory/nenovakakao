@@ -53,33 +53,20 @@ def agentic_collect_unread_rooms(window, save_dir: Path) -> list[Path]:
     before = {p.name for p in save_dir.glob("*.txt")}
 
     goal = (
-        f"화면은 카카오톡 PC 메인창 (정사각형 1024×1024).\n"
-        f"좌측 약 0~330 폭 = 채팅 리스트 (각 행 한 줄에 방 이름 + 우측 끝에 빨간 동그라미 뱃지/시간).\n"
-        f"중앙~우측 = 채팅 내용 패널.\n"
-        f"좌측 사이드바 (x<55) = 카톡 탭 아이콘.\n\n"
-        f"📌 카톡 저장 폴더 = {save_dir}. 이미 설정돼 있음. 경로 paste 불필요.\n\n"
-        f"수행 (한 사이클 = 한 방씩):\n"
-        f"  Step 1. screenshot → 좌측 채팅 리스트에서 **빨간 원형 뱃지** (안 읽음 카운트 숫자) 가 있는 방을\n"
-        f"          캡쳐로 직접 찾아. 가장 위에 있는 뱃지 방을 선택.\n"
-        f"          못 찾으면 답변 'DONE' (한 단어).\n"
-        f"  Step 2. 그 방 이름이 표시된 줄의 **가운데를 더블클릭** (한 번에 정확히).\n"
-        f"          더블클릭 = double_click action. 좌표는 캡쳐에서 실제 본 위치.\n"
-        f"  Step 3. screenshot → 채팅창이 열렸는지 (우측 패널에 대화 표시 또는 별도 분리창) 확인.\n"
-        f"          안 열렸으면 다른 방 시도 (Step 1 부터).\n"
-        f"  Step 4. 채팅창 열림 확인되면 → key action: 'ctrl+s'\n"
-        f"  Step 5. screenshot → '다른 이름으로 저장' 다이얼로그 떴는지 확인.\n"
-        f"          떴으면 → **즉시 key action: 'Return'** (Enter 키)\n"
-        f"          ⛔ type / click / triple_click 절대 X. 파일명 필드 절대 건드리지 마.\n"
-        f"  Step 6. screenshot → 다이얼로그 사라지고 카톡 메인 보이면 성공. 답변 'DONE'.\n"
-        f"          (또는 다음 안 읽은 방 처리하려면 Step 1 부터 반복)\n\n"
-        f"⚠️ 절대 규칙:\n"
-        f"- Ctrl+S 후엔 무조건 key 'Return' 단발. 다른 키/클릭 X.\n"
-        f"- 친구 추가 / 통합검색 다이얼로그 뜨면 즉시 key 'Escape' 2번.\n"
-        f"- 광고 영역 (하단) 클릭 금지.\n"
-        f"- 같은 좌표 2번 이상 시도해서 안 되면 다른 행 시도."
+        f"카카오톡 메인창에서 다음 작업을 수행해줘:\n"
+        f"1. 빨간 뱃지(안 읽은 메시지)가 있는 모든 방을 위에서부터 차례로 더블클릭으로 열어줘.\n"
+        f"2. 방이 열리면 Ctrl+S를 눌러 텍스트로 저장 다이얼로그를 띄워.\n"
+        f"3. 저장 다이얼로그가 뜨면 파일명 필드에 절대경로 형식으로 입력:\n"
+        f"   {save_dir}/{{timestamp_ms}}.txt (timestamp_ms는 현재 시각의 밀리초)\n"
+        f"4. Enter로 저장. '이미 있습니다 - 바꾸시겠습니까' 팝업 뜨면 'Y' 누름.\n"
+        f"5. 다음 방 처리. 모든 안 읽은 방 처리 완료하면 'DONE'.\n\n"
+        f"중요:\n"
+        f"- 카톡 광고 영역(화면 하단)은 절대 클릭 금지.\n"
+        f"- 친구 추가/비밀번호 변경 등 모달이 뜨면 즉시 ESC로 닫고 진행.\n"
+        f"- 사용자의 다른 앱(브라우저, VSCode)은 건드리지 말 것."
     )
-    # max_loop 30 (한 방 처리 6 step + 여유)
-    ok = agentic_action(goal, max_loop=30)
+    # max_loop 작게 (rate limit 대응 + 한 cycle 한 방씩)
+    ok = agentic_action(goal, max_loop=15)
 
     after = {p.name for p in save_dir.glob("*.txt")}
     new_files = [save_dir / n for n in (after - before)]

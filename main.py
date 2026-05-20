@@ -107,8 +107,7 @@ def _process_room_result(
     downloaded_files = []
     photo_count = count_photo_messages(delta)
     if photo_count > 0:
-        # 캡쳐 미러 패턴 (2026-05-12~): 사진 다운로드 우회. 카톡 창 화면 캡쳐로 대체.
-        print(f"     → [사진] {photo_count}개 감지 - 캡쳐 미러로 대체 (다운로드 우회)")
+        print(f"     → [사진] {photo_count}개 감지 - 서랍 열기...")
         import win32gui
         norm_room = room_name.replace(" ", "")
 
@@ -240,8 +239,7 @@ def _process_room_result(
         if downloaded_files:
             print(f"     → {len(downloaded_files)}개 사진 다운로드 완료")
         else:
-            # 캡쳐 미러 패턴 — extract_photos_from_room 이 [] 반환 (정상 동작)
-            print(f"     → 사진 {photo_count}장 — 다운로드 우회 (캡쳐 미러로 대체)")
+            print(f"     → 사진 다운로드 실패/없음 (요청 {photo_count}장)")
 
         from core.message_extractor import close_chat_room
         close_chat_room()
@@ -288,24 +286,12 @@ def _process_room_result(
     # 텍스트는 Bot API, 사진은 카카오워크 앱 Ctrl+T 업로드.
     # 각 사진 직전에 "[발신자] [시각] [사진]" 헤더를 Bot API로 선전송 →
     # 도착시간·발신자·첨부파일이 실제 카톡 순서대로 미러 방에 표시됨.
-    # watchdog beat helper — 무거운 IO (구글시트/워크 API/nenovaweb) 도중 진행 신호
-    def _wd_beat(label: str) -> None:
-        try:
-            import builtins as _b
-            wd = getattr(_b, "_nenova_watchdog", None)
-            if wd:
-                wd.beat(label)
-        except Exception:
-            pass
-
     from core.kakaowork_router import send_delta_interleaved
     r = None
     try:
         if downloaded_files:
             focus_kakaowork()
-        _wd_beat(f"send_start:{room_name}")
         r = send_delta_interleaved(room_name, delta, downloaded_files)
-        _wd_beat(f"send_done:{room_name}")
         print(
             f"     → 워크 전송 완료: 텍스트 {r['text_sent']}건 / "
             f"사진 {r['photos_uploaded']}장 "
@@ -320,71 +306,15 @@ def _process_room_result(
         if downloaded_files:
             return_to_kakaotalk()
 
-    # ── 캡쳐 미러 패턴: 카톡 창 화면을 1장 캡쳐 → 미러방으로 송신 ──
-    # 사진 다운로드 흐름 우회 (extract_photos_from_room 이 [] 반환).
-    # 시각 정보 (텍스트 메시지 + 첨부 이미지 미리보기 + UI 상태) 그대로 보존.
-    cap_ok = False
-    try:
-        from PIL import ImageGrab
-        from core.window_manager import KAKAOTALK_FIXED_POS
-        from core.photo_uploader import upload_many as _cap_upload
-        from core.kakaowork_router import (
-            send_image_preview_and_link as _cap_send,
-            _load_room_mapping as _cap_load_map,
-            _send_single as _cap_send_text,
-        )
-        import datetime as _dt
-
-        x_, y_, w_, h_ = KAKAOTALK_FIXED_POS
-        # 카톡 분리창이 있으면 그 영역 우선 (활성 채팅 분리창)
-        cap_bbox = (x_, y_, x_ + w_, y_ + h_)
-        chat_img = ImageGrab.grab(bbox=cap_bbox)
-
-        cap_dir = ROOT / "data" / "monitor_captures"
-        cap_dir.mkdir(exist_ok=True, parents=True)
-        safe = (
-            room_name.replace("/", "_").replace(" ", "")
-            .replace(",", "_").replace("&", "").replace("?", "")[:15]
-        )
-        cap_path = cap_dir / f"CAP_{int(time.time())}_{safe}.png"
-        chat_img.save(cap_path)
-
-        mapping = _cap_load_map()
-        conv_id = mapping.get(room_name)
-        if not conv_id:
-            print(f"     → 캡쳐 미러: 매핑 없음 ({room_name}) — 스킵", flush=True)
-        else:
-            urls = _cap_upload([cap_path], room=room_name)
-            _wd_beat(f"capture_upload:{room_name}")
-            if urls and urls[0]:
-                ts_str = _dt.datetime.now().strftime("%H:%M:%S")
-                _cap_send_text(conv_id, f"[방 화면 캡쳐 {ts_str}] {room_name}")
-                cap_ok = _cap_send(conv_id, urls[0])
-                _wd_beat(f"capture_send:{room_name}")
-                print(
-                    f"     → 캡쳐 미러: {'✅' if cap_ok else '❌'} ({cap_path.stat().st_size:,}B)",
-                    flush=True,
-                )
-            else:
-                print(f"     → 캡쳐 미러: nenovaweb 업로드 실패", flush=True)
-        try:
-            cap_path.unlink()
-        except Exception:
-            pass
-    except Exception as _e:
-        print(f"     → 캡쳐 미러 예외: {type(_e).__name__}: {_e}", flush=True)
-
     # 작업 완료 배너 — 한 줄 요약
     if r:
         status = "✅" if r['photos_missing'] == 0 else "⚠️"
-        cap_mark = " 📸" if cap_ok else ""
         print(
-            f"  └─ {status}{cap_mark} [{room_name}] 감지:{photo_count} "
-            f"워크텍스트:{r['text_sent']} 누락:{r['photos_missing']}\n"
+            f"  └─ {status} [{room_name}] 감지:{photo_count} 다운:{len(downloaded_files)} "
+            f"워크텍스트:{r['text_sent']} 워크사진:{r['photos_uploaded']} 누락:{r['photos_missing']}\n"
         )
     else:
-        cap_mark = " 📸" if cap_ok else ""
-        print(f"  └─ ❌{cap_mark} [{room_name}] 텍스트 전송 실패 (캡쳐만 송신 시도)\n")
+        print(f"  └─ ❌ [{room_name}] 워크 전송 실패\n")
 
     return room_name
 
@@ -406,15 +336,6 @@ def cmd_monitor(*, with_recorder: bool = False) -> int:
     install_pyautogui_hooks()
     _log("감시 모드 시작", "INFO")
 
-    # ── 정지 버튼 (우상단 [🛑 즉시 정지]) — 누르면 모든 monitor 동작 멈춤 ──
-    try:
-        from core.stop_button import start_stop_button
-        start_stop_button()
-        print("  [STOP] 우상단 정지 버튼 활성. 누르면 monitor 즉시 중단.", flush=True)
-        _log("정지 버튼 활성", "INFO")
-    except Exception as _e:
-        print(f"  [STOP] 정지 버튼 띄우기 실패 (무시): {_e}", flush=True)
-
     if with_recorder:
         from datetime import datetime
         from core.learning_recorder import LearningRecorder, set_recorder
@@ -425,15 +346,6 @@ def cmd_monitor(*, with_recorder: bool = False) -> int:
 
     # Windows: 다른 프로세스 창 활성화 허용
     ctypes.windll.user32.AllowSetForegroundWindow(-1)
-
-    # PyAutoGUI fail-safe 회피 — 시작 시점에 마우스가 모서리 근처면 자동화 즉시 정지.
-    # 화면 중앙으로 강제 이동해서 안전 영역 확보. (2026-05-11 fail-safe 사고 대응)
-    try:
-        import pyautogui as _pag
-        _sw, _sh = _pag.size()
-        _pag.moveTo(_sw // 2, _sh // 2, duration=0)
-    except Exception as _e:
-        print(f"  [SAFETY] 마우스 중앙 이동 실패 (무시): {_e}", flush=True)
     from core.window_detector import (
         capture_room_list, scroll_room_list_to_top,
     )
@@ -451,17 +363,17 @@ def cmd_monitor(*, with_recorder: bool = False) -> int:
     )
 
     def extract_photos_from_room(chat_hwnd, photo_count=0, room_name=""):
-        """
-        캡쳐 미러 패턴 통합 (2026-05-12) — 사진 다운로드 흐름 **완전 비활성**.
-
-        이전: 서랍 → 묶음저장 → 다이얼로그 → nenovaweb → 카카오워크 송신.
-              사진 30+장 처리 시 다이얼로그 충돌/retry 폭주 + 미러 송신 0건 위험.
-        현재: 사진 다운로드 우회. _process_room_result 끝에서 카톡 창 화면을
-              **1장 캡쳐 → nenovaweb → 미리보기+링크 송신** (시각 정보 그대로 보존).
-
-        layout 기반 흐름은 비상 시 복귀 가능하도록 코드 자체는 import 만 보존.
-        """
-        return []
+        """layout 기반만 사용. 실패 시 빈 리스트 반환 (서랍 스크롤 없음)."""
+        if not LAYOUT_FILE.exists():
+            print(f"     → layout 파일 없음, 사진 스킵 (measure_drawer_layout.py 실행 필요)", flush=True)
+            return []
+        try:
+            return extract_photos_from_chat_via_layout(
+                chat_hwnd, photo_count=photo_count, room_name=room_name,
+            )
+        except Exception as e:
+            print(f"     → 레이아웃 기반 에러({e}), 사진 스킵", flush=True)
+            return []
     from core.status_overlay import get_overlay
     from core.issue_reporter import report_issue
     from core.gsheet_sync import classify_and_log_delta, process_admin_feedback
@@ -620,49 +532,15 @@ def cmd_monitor(*, with_recorder: bool = False) -> int:
     # 이전 [19→0] 순서는 안읽음 방 적을 때 빈 영역 헛클릭 반복했음.
     PAGES = list(range(0, 20))  # [0, 1, ..., 19] — 맨 위부터
 
-    # ── 화면 정체 워치독 가동 (2026-05-12) ──
-    # 카톡 창 영역 픽셀 변화를 1초마다 감시. 120초 동안 화면+beat 둘 다 없으면 stall →
-    # SIGINT 자기 PID 송신 → monitor 정상 종료. 무한 retry/클릭 폭주 자동 차단.
-    #
-    # stall_seconds=120: 한 방 처리가 무거운 경우 (구글시트 100+건 기록 등) 90초까지
-    # 걸리는 케이스 있음. 명시 beat() 호출로 한 방 처리 중에도 진행 신호 갱신.
-    try:
-        from core.screen_watchdog import ScreenWatchdog, stall_kill_self
-        _watchdog = ScreenWatchdog(
-            on_stall=stall_kill_self,
-            stall_seconds=120.0,
-            poll_interval=1.0,
-            diff_threshold=2.5,
-        )
-        _watchdog.start()
-        # 전역 접근용 (_process_room_result 안에서 beat() 호출하도록)
-        import builtins as _b
-        _b._nenova_watchdog = _watchdog
-        print("[WATCHDOG] 화면 정체 감지 가동 (120초 정체 → 자동 정지)", flush=True)
-    except Exception as _wde:
-        print(f"[WATCHDOG] 가동 실패 (무시): {_wde}", flush=True)
-        _watchdog = None
-
     try:
         while True:
-            # ── 중지 버튼 체크 (overlay + 새 stop_button 둘 다) ──
+            # ── 중지 버튼 체크 ──
             if overlay.should_stop:
                 print("[MONITOR] 중지 버튼 클릭 -- 감시 종료")
                 break
-            try:
-                from core.stop_button import is_stop_requested
-                if is_stop_requested():
-                    print("[MONITOR] 정지 버튼 (우상단) 누름 -- 감시 종료")
-                    break
-            except Exception:
-                pass
 
             cycle += 1
             overlay.set_idle()
-
-            # watchdog beat — 매 사이클 진입 = 명시적 진행 신호 (long idle 일 때도 OK)
-            if _watchdog:
-                _watchdog.beat(f"cycle_{cycle}")
 
             # 이번 사이클에서 처리된 방 이름 추적
             processed_this_cycle: set[str] = set()
@@ -1011,24 +889,6 @@ def cmd_monitor(*, with_recorder: bool = False) -> int:
 
     except KeyboardInterrupt:
         print("\n[MONITOR] Ctrl+C 감지. 감시 종료.")
-    except Exception as _main_exc:
-        # PyAutoGUI fail-safe (사용자 마우스 모서리 이동) 또는 기타 자동화 정지 신호
-        # → 정상 종료 흐름으로 cleanup (overlay/watchdog stop, 카톡 창 위치 복귀)
-        _exc_name = type(_main_exc).__name__
-        if "FailSafe" in _exc_name:
-            print(f"\n[MONITOR] PyAutoGUI fail-safe (마우스 모서리) 감지. 정상 종료.")
-        else:
-            import traceback
-            print(f"\n[MONITOR] 예기치 못한 예외 ({_exc_name}): {_main_exc}")
-            traceback.print_exc()
-
-    # watchdog 정리
-    try:
-        if _watchdog:
-            _watchdog.stop()
-            print("[WATCHDOG] 종료", flush=True)
-    except Exception:
-        pass
 
     # 공통 종료 처리 (중지버튼/Ctrl+C 모두)
     try:
@@ -1057,180 +917,6 @@ def cmd_monitor(*, with_recorder: bool = False) -> int:
         reflect_and_write_report()
     except Exception as e:
         print(f"[REFLECT] 회고 err: {e}")
-    # 정지 버튼 창 정리
-    try:
-        from core.stop_button import stop_button_close
-        stop_button_close()
-    except Exception:
-        pass
-    return 0
-
-
-def cmd_monitor_win32(argv: list[str]) -> int:
-    """win32 child window 직접 자동화 monitor (kakao-mcp 채택).
-
-    검증 완료 (2026-05-18):
-      - is_kakaotalk_running / find_chat_window / list_chat_windows
-      - read_chat_messages (Ctrl+A + Ctrl+C 클립보드 추출) → 1633자 정확 추출
-      - search_and_open_room (Ctrl+F → WM_CHAR → Enter) → '주광 담당' 자동 진입 OK
-      - 부작용 0 (친구추가/통합검색 안 뜸, 좌표 매번 다름 X)
-
-    흐름:
-      1. 카톡 활성화 + 정지 버튼 띄움
-      2. 폴링 (5초):
-         a. list_chat_windows() — 현재 떠있는 분리창 모두
-         b. 각 분리창: read_chat_messages → 클립보드 텍스트
-         c. 이전 캐시 비교 → 델타 추출
-         d. mapping 일치하는 방이면 봇 API 미러방 송신
-      3. 정지 버튼 / Ctrl+C 시 종료
-
-    사용자 흐름:
-      - 사용자가 안 읽음 탭에서 처리할 방 1~N 개를 미리 더블클릭으로 분리창 띄움
-      - monitor 가 그 분리창들에서 자동으로 텍스트 읽고 미러방 송신
-      - 새 안 읽은 방 발견 시 사용자가 추가로 더블클릭 → monitor 가 자동 픽업
-
-    옵션:
-      --interval N   폴링 주기 초 (기본 5)
-      --auto-open    mapping 의 27 방 중 안 읽은 것 자동 검색+열기 (실험적)
-    """
-    import time
-    import json
-    from pathlib import Path
-
-    from core.kakao_win32 import (
-        is_kakaotalk_running, list_chat_windows, read_chat_messages,
-    )
-    from core.stop_button import (
-        start_stop_button, stop_button_close, is_stop_requested, set_status,
-    )
-    from core.kakaowork_router import send_to_mirror_room
-    from core.window_manager import lock_kakaotalk_window
-
-    interval = 5
-    if "--interval" in argv:
-        i = argv.index("--interval")
-        if i + 1 < len(argv):
-            try:
-                interval = max(2, int(argv[i + 1]))
-            except ValueError:
-                pass
-
-    print("[MONITOR-WIN32] 시작 — win32 child window 직접 자동화")
-    print(f"          폴링 주기: {interval}초")
-    print(f"          정지 버튼: 우상단 [🛑 즉시 정지]")
-    print()
-    print("사용 흐름:")
-    print("  1. 카톡에서 안 읽은 메시지 있는 방을 더블클릭으로 분리창 띄움")
-    print("  2. monitor 가 그 분리창에서 텍스트 자동 추출 → 봇 API 미러방 송신")
-    print("  3. 새 안 읽은 방 발견 시 추가로 더블클릭")
-    print()
-
-    # FAIL-SAFE 우회: 마우스 중앙 (win32 직접)
-    try:
-        import ctypes as _ct
-        _u = _ct.windll.user32
-        _u.SetCursorPos(_u.GetSystemMetrics(0) // 2, _u.GetSystemMetrics(1) // 2)
-        time.sleep(0.2)
-    except Exception:
-        pass
-
-    state = is_kakaotalk_running()
-    if not state["running"]:
-        print("[ERROR] 카톡 미실행. 먼저 카톡 PC 실행해주세요.")
-        return 1
-    print(f"          카톡 메인 hwnd={state['hwnd']} pid={state['pid']}")
-
-    # 카톡 (50, 50, 900, 900) 으로 lock (기존 좌표 정책 유지)
-    try:
-        lock_kakaotalk_window()
-        time.sleep(0.3)
-    except Exception as e:
-        print(f"          [WARN] 카톡 lock 실패: {e}")
-
-    start_stop_button()
-
-    # 매핑 로드
-    mapping_path = Path(__file__).parent / "data" / "room_mapping.json"
-    if not mapping_path.exists():
-        print(f"[ERROR] {mapping_path} 없음")
-        stop_button_close()
-        return 1
-    mapping: dict[str, str] = json.loads(mapping_path.read_text(encoding="utf-8"))
-    print(f"          mapping 로드: {len(mapping)} keys")
-
-    # 캐시 (room_name → 마지막 클립보드 텍스트)
-    last_text: dict[str, str] = {}
-    cycle = 0
-    sent_count = 0
-
-    try:
-        while True:
-            if is_stop_requested():
-                print("[STOP] 정지 버튼 — 종료")
-                break
-            cycle += 1
-            set_status(f"cycle {cycle} — 분리창 polling")
-
-            windows = list_chat_windows()
-            mapped_windows = [w for w in windows if w["title"] in mapping]
-            unmapped = [w for w in windows if w["title"] not in mapping]
-            if cycle == 1 or cycle % 12 == 0:
-                print(f"[{cycle}] 분리창 {len(windows)}개 "
-                      f"(매핑 {len(mapped_windows)}, 미등록 {len(unmapped)})")
-                if unmapped:
-                    print(f"      미등록 (송신 대상 아님): "
-                          f"{[w['title'] for w in unmapped[:5]]}")
-
-            for w in mapped_windows:
-                if is_stop_requested():
-                    break
-                name = w["title"]
-                set_status(f"cycle {cycle}: read '{name[:30]}'")
-                try:
-                    res = read_chat_messages(name)
-                except Exception as e:
-                    print(f"      [ERR] read '{name}': {type(e).__name__}: {e}")
-                    continue
-                if not res.get("success"):
-                    continue
-                raw = res.get("raw_text") or ""
-                if not raw:
-                    continue
-                # 델타 추출
-                prev = last_text.get(name, "")
-                if prev and raw.startswith(prev):
-                    delta = raw[len(prev):].strip()
-                elif prev == raw:
-                    delta = ""
-                else:
-                    # 처음 또는 prefix 안 맞음 — 전체 vs 처음 변화
-                    delta = raw if not prev else raw  # 그냥 전체로
-                last_text[name] = raw
-                if not delta or len(delta) < 5:
-                    continue
-
-                # 봇 API 송신 (긴 메시지는 분할)
-                print(f"  ✉  {name}: 신규 {len(delta)}자")
-                preview = delta[:80].replace("\n", " ")
-                print(f"     {preview}...")
-                try:
-                    chunks = [delta[i:i+2000] for i in range(0, len(delta), 2000)]
-                    for ch in chunks:
-                        send_to_mirror_room(name, ch)
-                    sent_count += 1
-                    print(f"     ✅ 미러 송신 (총 {sent_count}건)")
-                except Exception as e:
-                    print(f"     ❌ 송신 실패: {type(e).__name__}: {e}")
-
-            time.sleep(interval)
-    except KeyboardInterrupt:
-        print("\n[STOP] Ctrl+C")
-    finally:
-        try:
-            stop_button_close()
-        except Exception:
-            pass
-    print(f"\n[MONITOR-WIN32] 종료 (cycle={cycle}, sent={sent_count})")
     return 0
 
 
@@ -1253,36 +939,11 @@ def cmd_monitor_agentic() -> int:
 
     print("[AGENTIC-MONITOR] 완전 Agentic 감시 모드 시작")
     print(f"          폴링 간격: {5}초 / UI 액션 100% Claude Computer Use")
-    print(f"          비용 한도: 시간당 30 호출, 연속 5 실패 시 30분 쿨다운")
-
-    # FAIL-SAFE 회피: 마우스 중앙 이동 (win32 직접 → pyautogui fail-safe 검사 우회)
-    try:
-        import ctypes as _ct
-        _user32 = _ct.windll.user32
-        _sw = _user32.GetSystemMetrics(0)
-        _sh = _user32.GetSystemMetrics(1)
-        _user32.SetCursorPos(_sw // 2, _sh // 2)
-        time.sleep(0.3)
-    except Exception as _e:
-        print(f"          [FAILSAFE] 마우스 중앙 이동 실패 (무시): {_e}")
-
-    # 정지 버튼 (우상단 [🛑 즉시 정지])
-    try:
-        from core.stop_button import start_stop_button
-        start_stop_button()
-        print("          정지 버튼 활성 (우상단)")
-    except Exception as _e:
-        print(f"          [STOP] 정지 버튼 띄우기 실패 (무시): {_e}")
 
     try:
         window = focus_kakaotalk()
     except Exception as e:
         print(f"[ERROR] 카톡 활성화 실패: {e}")
-        try:
-            from core.stop_button import stop_button_close
-            stop_button_close()
-        except Exception:
-            pass
         return 1
 
     print(f"          창: ({window.left},{window.top}) {window.width}x{window.height}\n")
@@ -1291,15 +952,6 @@ def cmd_monitor_agentic() -> int:
     cycle = 0
     try:
         while True:
-            # 정지 버튼 / STOP 파일 체크
-            try:
-                from core.stop_button import is_stop_requested
-                if is_stop_requested():
-                    print("[AGENTIC-MONITOR] 정지 버튼 (우상단) 누름 — 종료")
-                    break
-            except Exception:
-                pass
-
             cycle += 1
             try:
                 window = focus_kakaotalk()
@@ -1341,7 +993,6 @@ def cmd_monitor_agentic() -> int:
             time.sleep(5)
     except KeyboardInterrupt:
         print("\n[AGENTIC-MONITOR] Ctrl+C 종료")
-    finally:
         try:
             from core.failed_frame_analyzer import analyze_recent
             analyze_recent(within_seconds=7200)
@@ -1352,12 +1003,7 @@ def cmd_monitor_agentic() -> int:
             reflect_and_write_report()
         except Exception:
             pass
-        try:
-            from core.stop_button import stop_button_close
-            stop_button_close()
-        except Exception:
-            pass
-    return 0
+        return 0
 
 
 def cmd_run() -> int:
@@ -1610,15 +1256,6 @@ def cmd_invite_member(argv: list[str]) -> int:
 
 
 def main(argv: list[str]) -> int:
-    # PyAutoGUI fail-safe 공통 회피 — 모든 cmd 시작 전 마우스를 화면 중앙으로
-    # (0,0/모서리 근처에 있으면 자동화 즉시 정지. 2026-05-11~ 적용)
-    try:
-        import pyautogui as _pag
-        _sw, _sh = _pag.size()
-        _pag.moveTo(_sw // 2, _sh // 2, duration=0)
-    except Exception:
-        pass
-
     if len(argv) < 2:
         return cmd_monitor()
 
@@ -1664,8 +1301,6 @@ def main(argv: list[str]) -> int:
         return cmd_unlock(argv)
     elif cmd == "calibrate":
         return cmd_calibrate(argv)
-    elif cmd in ("monitor-win32", "monitor_win32"):
-        return cmd_monitor_win32(argv)
     elif cmd == "monitor-agentic":
         return cmd_monitor_agentic()
     elif cmd in ("learn-uploads", "learn_uploads", "upload-stats"):
