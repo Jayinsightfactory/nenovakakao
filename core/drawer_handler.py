@@ -1372,20 +1372,94 @@ def _save_one_bundle(v_hwnd: int) -> bool:
                     pass
 
                 # 파일명 입력란에 unique timestamp 부여 → "이미 있습니다" 팝업 회피
-                # Save As 다이얼로그 표준 컨트롤 ID:
-                #   1148 (0x47C) = cmb13 = 파일명 ComboBoxEx32 (Vista+)
-                # 그 안의 Edit 자식에 SetText
+                # Save As 다이얼로그 컨트롤:
+                #   1148 (cmb13) = 파일명 ComboBoxEx32 (Vista+ 표준)
+                #   ↑ Windows 11 등에서 다른 ID 일 수 있음 → EnumChildWindows 폴백
                 try:
                     import time as _t
+                    import win32con as _wc
+                    CBEM_GETEDITCONTROL = 0x040B  # ComboBoxEx → Edit hwnd
+                    WM_SETTEXT = 0x000C
                     unique_name = f"PHOTO_{int(_t.time()*1000)}.jpg"
-                    # 1148 = cmb13 (Vista+ 표준)
-                    name_combo = win32gui.GetDlgItem(save_dlg, 1148)
+
+                    edit_hwnd = None
+                    set_method = "none"
+
+                    # 1차: GetDlgItem(1148)
+                    try:
+                        name_combo = win32gui.GetDlgItem(save_dlg, 1148)
+                    except Exception:
+                        name_combo = None
                     if name_combo:
-                        # ComboBoxEx → child ComboBox → child Edit
-                        # 직접 SetWindowText 시도 (ComboBoxEx 가 Edit 까지 위임)
-                        win32gui.SendMessage(name_combo, 0x000C, 0, unique_name)  # WM_SETTEXT
+                        # ComboBoxEx → child Edit hwnd
+                        try:
+                            edit_hwnd = win32gui.SendMessage(name_combo, CBEM_GETEDITCONTROL, 0, 0)
+                            set_method = "GetDlgItem(1148)→CBEM_GETEDITCONTROL"
+                        except Exception:
+                            edit_hwnd = name_combo
+                            set_method = "GetDlgItem(1148) direct"
+
+                    # 2차: 다른 표준 ID
+                    if not edit_hwnd:
+                        for alt_id in (1152, 1001, 1153, 1149):
+                            try:
+                                h = win32gui.GetDlgItem(save_dlg, alt_id)
+                                if h:
+                                    edit_hwnd = h
+                                    set_method = f"GetDlgItem({alt_id})"
+                                    break
+                            except Exception:
+                                pass
+
+                    # 3차: EnumChildWindows 폴백 — ComboBoxEx32 / ComboBox / Edit 자동 찾기
+                    if not edit_hwnd:
+                        candidates: list[tuple] = []
+                        def _enum_cb(h, _):
+                            try:
+                                if not win32gui.IsWindowVisible(h):
+                                    return True
+                                cls = win32gui.GetClassName(h) or ""
+                                if cls in ("ComboBoxEx32", "ComboBox", "Edit"):
+                                    r = win32gui.GetWindowRect(h)
+                                    w = r[2] - r[0]
+                                    candidates.append((h, cls, w))
+                            except Exception:
+                                pass
+                            return True
+                        try:
+                            win32gui.EnumChildWindows(save_dlg, _enum_cb, None)
+                        except Exception:
+                            pass
+                        # ComboBoxEx32 우선, 너비 큰 순
+                        order = {"ComboBoxEx32": 0, "ComboBox": 1, "Edit": 2}
+                        candidates.sort(key=lambda c: (order.get(c[1], 99), -c[2]))
+                        for h, cls, w in candidates:
+                            if cls == "ComboBoxEx32":
+                                try:
+                                    edit_hwnd = win32gui.SendMessage(h, CBEM_GETEDITCONTROL, 0, 0) or h
+                                    set_method = f"Enum→ComboBoxEx32 (w={w})"
+                                    break
+                                except Exception:
+                                    edit_hwnd = h
+                                    set_method = f"Enum→ComboBoxEx32 direct (w={w})"
+                                    break
+                            elif cls in ("ComboBox", "Edit"):
+                                edit_hwnd = h
+                                set_method = f"Enum→{cls} (w={w})"
+                                break
+
+                    if edit_hwnd:
+                        win32gui.SendMessage(edit_hwnd, WM_SETTEXT, 0, unique_name)
                         time.sleep(0.1)
-                        print(f"    [서랍] 파일명 자동 부여: {unique_name}", flush=True)
+                        # 검증
+                        try:
+                            buf = win32gui.GetWindowText(edit_hwnd)
+                        except Exception:
+                            buf = "?"
+                        print(f"    [서랍] 파일명 자동 부여: {unique_name} via {set_method} "
+                              f"(검증: {buf!r})", flush=True)
+                    else:
+                        print(f"    [서랍] 파일명 부여 실패 — 입력 컨트롤 못 찾음", flush=True)
                 except Exception as e:
                     print(f"    [서랍] 파일명 부여 스킵 ({e})", flush=True)
 
@@ -1395,26 +1469,79 @@ def _save_one_bundle(v_hwnd: int) -> bool:
                 if btn:
                     print(f"    [서랍] ↓ 메뉴 없음 → 다이얼로그 IDOK 직접 송출", flush=True)
                     win32gui.SendMessage(btn, BM_CLICK, 0, 0)
-                    time.sleep(1.0)
-                    # 덮어쓰기 확인 팝업 처리
+                    time.sleep(0.6)
+
+                    # 덮어쓰기 확인 팝업 처리 — 최대 3초 폴링 + 광범위 매칭 + 다중 폴백
+                    OVR_KEYWORDS = (
+                        "확인", "바꾸", "있습니다", "이미", "덮어", "다시",
+                        "동일한", "같은 이름", "기존 파일",
+                        "Confirm Save As", "Confirm", "Overwrite", "Save As",
+                    )
                     confirm_dlg = None
-                    def _find_ovr(h, _):
-                        nonlocal confirm_dlg
-                        if confirm_dlg or not win32gui.IsWindowVisible(h):
-                            return
-                        t = win32gui.GetWindowText(h) or ""
-                        if any(k in t for k in ("확인", "바꾸", "있습니다")):
+                    for poll in range(15):  # 0.2s * 15 = 3s
+                        def _find_ovr(h, _):
+                            nonlocal confirm_dlg
+                            if confirm_dlg or not win32gui.IsWindowVisible(h):
+                                return
+                            t = win32gui.GetWindowText(h) or ""
                             cls = win32gui.GetClassName(h) or ""
-                            if cls == "#32770":
-                                confirm_dlg = h
-                    win32gui.EnumWindows(_find_ovr, None)
+                            # 표준 다이얼로그 클래스 + 키워드 OR 짧은 confirm 다이얼로그
+                            if any(k in t for k in OVR_KEYWORDS):
+                                if cls in ("#32770", "Win32 Common Dialog"):
+                                    confirm_dlg = h
+                                    return
+                        win32gui.EnumWindows(_find_ovr, None)
+                        if confirm_dlg:
+                            break
+                        time.sleep(0.2)
                     if confirm_dlg:
-                        # IDYES = 6
-                        ybtn = win32gui.GetDlgItem(confirm_dlg, 6)
-                        if ybtn:
-                            print(f"    [서랍] 덮어쓰기 IDYES 송출", flush=True)
-                            win32gui.SendMessage(ybtn, BM_CLICK, 0, 0)
-                            time.sleep(0.5)
+                        t = win32gui.GetWindowText(confirm_dlg)
+                        print(f"    [서랍] 덮어쓰기 다이얼로그 감지: '{t}' (hwnd={confirm_dlg})", flush=True)
+                        # 시도 1: IDYES (6) 버튼 SendMessage
+                        success = False
+                        for btn_id in (6, 1):  # IDYES=6, IDOK=1
+                            ybtn = win32gui.GetDlgItem(confirm_dlg, btn_id)
+                            if ybtn:
+                                try:
+                                    print(f"    [서랍] 덮어쓰기 IDYES({btn_id}) 송출", flush=True)
+                                    win32gui.SendMessage(ybtn, BM_CLICK, 0, 0)
+                                    time.sleep(0.4)
+                                    if not win32gui.IsWindow(confirm_dlg) or not win32gui.IsWindowVisible(confirm_dlg):
+                                        success = True
+                                        break
+                                except Exception as _e:
+                                    print(f"    [서랍] IDYES({btn_id}) 실패: {_e}", flush=True)
+                        # 시도 2 (폴백): Enter 키 송출 (다이얼로그 기본 버튼 = 예)
+                        if not success:
+                            try:
+                                print(f"    [서랍] 폴백: Enter 키 송출", flush=True)
+                                # 다이얼로그 활성화 + Enter
+                                win32gui.SetForegroundWindow(confirm_dlg)
+                                time.sleep(0.2)
+                                import ctypes as _ct
+                                _u = _ct.windll.user32
+                                _u.keybd_event(0x0D, 0, 0, 0)  # VK_RETURN
+                                _u.keybd_event(0x0D, 0, 0x0002, 0)  # KEYUP
+                                time.sleep(0.4)
+                                if not win32gui.IsWindow(confirm_dlg) or not win32gui.IsWindowVisible(confirm_dlg):
+                                    success = True
+                            except Exception as _e:
+                                print(f"    [서랍] Enter 폴백 실패: {_e}", flush=True)
+                        # 시도 3 (최후): Y 키
+                        if not success:
+                            try:
+                                print(f"    [서랍] 최후 폴백: Y 키 송출", flush=True)
+                                win32gui.SetForegroundWindow(confirm_dlg)
+                                time.sleep(0.2)
+                                import ctypes as _ct
+                                _u = _ct.windll.user32
+                                _u.keybd_event(0x59, 0, 0, 0)  # VK_Y
+                                _u.keybd_event(0x59, 0, 0x0002, 0)
+                                time.sleep(0.4)
+                            except Exception:
+                                pass
+                    else:
+                        print(f"    [서랍] 덮어쓰기 다이얼로그 미감지 (3s 폴링)", flush=True)
                     print(f"    [서랍] 단일 저장 모드 완료 — 다이얼로그 우회 성공", flush=True)
                     return True  # 저장 성공 (호출자가 파일 스냅샷으로 검증)
         except Exception as e:
