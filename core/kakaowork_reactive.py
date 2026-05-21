@@ -138,6 +138,14 @@ def create_app():
             return ("", 200)  # 200 안 주면 카카오워크가 에러 표시
 
         # 카톡 원본 방으로 송신 (분리창 없으면 검색해서 열기)
+        # 충돌 방지: monitor 와 같은 카톡 창을 다투지 않도록 락 획득(우선순위).
+        #   request() → monitor 가 현재 방 끝낸 뒤 양보 → acquire → 송신 → release.
+        from core import kakao_lock as _klock
+        _klock.request()
+        _got_lock = _klock.acquire("reactive", timeout=60, respect_request=False)
+        if not _got_lock:
+            print(f"  [REACTIVE] 카톡 락 획득 실패(60s) — 강제 진행", flush=True)
+            _log({"endpoint": "callback", "result": "lock_timeout", "room": room})
         try:
             from core import kakao_win32 as kw
             hwnd = kw.find_chat_window(room)
@@ -157,6 +165,11 @@ def create_app():
         except Exception as e:
             print(f"  [REACTIVE] 카톡 송신 예외: {type(e).__name__}: {e}", flush=True)
             _log({"endpoint": "callback", "result": "exception", "error": str(e)})
+        finally:
+            # 락/요청 해제 — monitor 재개
+            if _got_lock:
+                _klock.release("reactive")
+            _klock.clear_request()
 
         return ("", 200)
 

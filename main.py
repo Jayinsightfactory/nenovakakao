@@ -582,6 +582,8 @@ def cmd_monitor(*, with_recorder: bool = False) -> int:
     # 오버레이 stub 모드(NENOVA_NO_OVERLAY=1)에서는 overlay.should_stop 이 항상 False 라
     # 자동화가 실수로 못 누르는 파일 기반 정지를 함께 검사한다.
     from core.stop_button import is_stop_requested as _stop_requested
+    # 워크→카톡 답장과 카톡 창 제어 충돌 방지 락
+    from core import kakao_lock as _klock
 
     try:
         while True:
@@ -589,6 +591,15 @@ def cmd_monitor(*, with_recorder: bool = False) -> int:
             if overlay.should_stop or _stop_requested():
                 print("[MONITOR] 중지 요청 감지 (버튼/_STOP) -- 감시 종료", flush=True)
                 break
+
+            # ── 워크→카톡 답장 진행 중이면 이번 사이클 시작 보류 (충돌 방지) ──
+            # reactive 가 우선 요청을 남기면 답장이 끝날 때까지 카톡을 양보한다.
+            _yield_waited = 0.0
+            while _klock.is_requested() and _yield_waited < 30 and not _stop_requested():
+                if _yield_waited == 0.0:
+                    print("[MONITOR] 워크 답장 진행 중 — 카톡 양보 대기", flush=True)
+                time.sleep(0.5)
+                _yield_waited += 0.5
 
             cycle += 1
             overlay.set_idle()
@@ -780,6 +791,10 @@ def cmd_monitor(*, with_recorder: bool = False) -> int:
             for p_i, page_idx in enumerate(PAGES, 1):
                 if overlay.should_stop or _stop_requested():
                     break
+                # 워크 답장 우선 요청 → 남은 페이지 양보 (사이클 종료 후 재대기)
+                if _klock.is_requested():
+                    print("[MONITOR] 워크 답장 우선 — 남은 페이지 양보", flush=True)
+                    break
 
                 overlay.set_status(f"페이지 {p_i}/{n_pages} (p{page_idx})")
                 total_scroll = page_idx * PAGE_SCROLL
@@ -803,11 +818,16 @@ def cmd_monitor(*, with_recorder: bool = False) -> int:
 
                         overlay.set_status(f"p{p_i}/{n_pages} 행{iter_idx}/{ROWS_PER_PAGE} (y={row_y})")
 
-                        # 매 행마다 재스크롤 + 해당 행 클릭
-                        _force_kakao_main_foreground_inline()
-                        _scroll_to_page(window, page_idx)
+                        # 카톡 제어 락 획득 — 워크 답장이 우선 요청이면 양보(이 행/페이지 스킵)
+                        if not _klock.acquire("monitor", timeout=20, respect_request=True):
+                            print(f"     [p{page_idx} r{iter_idx}] 워크 답장 우선 — 행 양보", flush=True)
+                            break
 
                         try:
+                            # 매 행마다 재스크롤 + 해당 행 클릭
+                            _force_kakao_main_foreground_inline()
+                            _scroll_to_page(window, page_idx)
+
                             t0 = time.time()
                             result = extract_from_room(CLICK_X, row_y, skip_titles=processed_this_cycle)
                             time.sleep(DELAY)
@@ -873,6 +893,9 @@ def cmd_monitor(*, with_recorder: bool = False) -> int:
                             cleanup_popups()
                             time.sleep(DELAY)
                             continue
+                        finally:
+                            # 방 처리 끝(성공/스킵/에러 무관) → 카톡 락 해제 → 답장 차례
+                            _klock.release("monitor")
 
                 except Exception as e:
                     error_detail = f"페이지 {page_idx} 에러\n{traceback.format_exc()}"
