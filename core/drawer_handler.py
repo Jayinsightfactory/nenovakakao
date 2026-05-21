@@ -809,14 +809,20 @@ def _open_drawer_impl(chat_hwnd: int) -> int | None:
         print(f"    [서랍] 최소화 후 chat_hwnd 무효 → 실패", flush=True)
         return None
 
-    # 분리창을 E2E 검증된 고정 크기 (910, 50, 600, 800) 로 강제.
+    # 분리창을 고정 위치/크기로 강제 (window_positions.json 의 chatroom).
+    # 기본 (100,50,600,800) — E2E 검증값. ≡ 좌표는 rect 상대라 위치 바뀌면 따라감.
+    try:
+        from core.window_manager import get_pos_tuple as _gpt
+        _chat_x, _chat_y, _chat_w, _chat_h = _gpt("chatroom")
+    except Exception:
+        _chat_x, _chat_y, _chat_w, _chat_h = 100, 50, 600, 800
     try:
         import win32con as _wc
         # 혹시 최소화 상태면 복원
         if win32gui.IsIconic(chat_hwnd):
             win32gui.ShowWindow(chat_hwnd, _wc.SW_RESTORE)
             time.sleep(0.3)
-        win32gui.MoveWindow(chat_hwnd, 100, 50, 600, 800, True)
+        win32gui.MoveWindow(chat_hwnd, _chat_x, _chat_y, _chat_w, _chat_h, True)
         time.sleep(0.3)
         SWP = _wc.SWP_NOMOVE | _wc.SWP_NOSIZE | _wc.SWP_SHOWWINDOW
         win32gui.SetWindowPos(chat_hwnd, -1, 0, 0, 0, 0, SWP)
@@ -856,16 +862,16 @@ def _open_drawer_impl(chat_hwnd: int) -> int | None:
     print(f"    [서랍] 분리창 rect={rect} size={rect[2]-rect[0]}x{rect[3]-rect[1]}", flush=True)
     mark("open_drawer.focus", "after", {"rect": rect})
 
-    # rect 가 기대값과 크게 다르면 경고 + 한 번 더 시도
-    expected_w = 600
-    expected_h = 800
+    # rect 가 기대값과 크게 다르면 경고 + 한 번 더 시도 (기대값 = config chatroom)
+    expected_w = _chat_w
+    expected_h = _chat_h
     actual_w = rect[2] - rect[0]
     actual_h = rect[3] - rect[1]
     if abs(actual_w - expected_w) > 20 or abs(actual_h - expected_h) > 20:
         print(f"    [서랍] 크기 불일치 (기대 {expected_w}x{expected_h}) → 재시도", flush=True)
         try:
             import win32con as _wc
-            win32gui.MoveWindow(chat_hwnd, 100, 50, 600, 800, True)
+            win32gui.MoveWindow(chat_hwnd, _chat_x, _chat_y, _chat_w, _chat_h, True)
             time.sleep(0.5)
             rect = win32gui.GetWindowRect(chat_hwnd)
             print(f"    [서랍] 재시도 후 rect={rect}", flush=True)
@@ -1362,12 +1368,12 @@ def _save_one_bundle(v_hwnd: int) -> bool:
                         save_dlg = h
             win32gui.EnumWindows(_find_dlg, None)
             if save_dlg:
-                # 다이얼로그를 화면 안으로 복원 (이전 MoveWindow 로 -3000 이동됐을 수도)
+                # 저장창 위치 고정 (window_positions.json 의 save_dialog)
+                # — 화면 밖(-3000)으로 밀린 좀비도 복원되고 항상 같은 자리로.
                 try:
-                    r = win32gui.GetWindowRect(save_dlg)
-                    if r[0] < 0:
-                        win32gui.MoveWindow(save_dlg, 200, 100, r[2]-r[0], r[3]-r[1], True)
-                        time.sleep(0.2)
+                    from core.window_manager import fix_save_dialog_position
+                    fix_save_dialog_position(save_dlg)
+                    time.sleep(0.2)
                 except Exception:
                     pass
 
@@ -1664,6 +1670,14 @@ def _save_one_bundle(v_hwnd: int) -> bool:
 
     if dialog_hwnd:
         mark("download.save_dialog_opened", "after", {"title": dialog_title})
+        # 저장창 위치 고정 (window_positions.json 의 save_dialog)
+        try:
+            from core.window_manager import fix_save_dialog_position
+            if fix_save_dialog_position(dialog_hwnd):
+                print(f"    [서랍] 저장창 위치 고정", flush=True)
+                time.sleep(0.2)
+        except Exception as e:
+            print(f"    [서랍] 저장창 고정 예외(무시): {e}", flush=True)
         # 다이얼로그에 명시적 포커스 → Enter
         try:
             win32gui.SetForegroundWindow(dialog_hwnd)

@@ -99,6 +99,16 @@ def _process_room_result(
 
     room_name = result["room_name"]
     delta = result["delta"]
+
+    # 정지 요청이면 즉시 반환 (자동화 시작 안 함)
+    try:
+        from core.stop_button import is_stop_requested as _sr
+    except Exception:
+        _sr = lambda: False
+    if _sr():
+        print(f"  [STOP] {room_name} 처리 전 정지 요청 — 스킵", flush=True)
+        return
+
     # 작업 시작 배너
     print(f"\n  ┌─ 🔧 작업방: [{room_name}] 신규 {len(delta)}자 ─")
 
@@ -123,6 +133,9 @@ def _process_room_result(
             print(f"  [BASELINE] {room_name}: {reason} → 송신 스킵 "
                   f"(캐시 갱신됨, 다음 사이클부터 신규분만 송신)", flush=True)
             return
+    if photo_count > 0 and _sr():
+        print(f"  [STOP] {room_name} 사진 다운로드 전 정지 요청 — 사진 스킵", flush=True)
+        photo_count = 0
     if photo_count > 0:
         print(f"     → [사진] {photo_count}개 감지 - 서랍 열기...")
         import win32gui
@@ -373,7 +386,11 @@ def cmd_monitor(*, with_recorder: bool = False) -> int:
     from core.message_extractor import extract_from_room
     from core.kakaowork_router import send_to_mirror_room, send_delta_interleaved
     # upload_to_nv_room은 send_delta_interleaved 내부에서 lazy import
-    # 레이아웃 기반 일괄 다운로드만 사용 (legacy 드로어 검증/좌측 스크롤 제거)
+    # ── 사진: 검증된 서랍 '저장' 경로 (5/7 방식) ──
+    # 카톡 cache 는 암호화된 .cng (AES-128-CBC) 라 직접 복사 시 표시 불가.
+    # 서랍 '저장' 은 카톡이 복호화해서 내보내므로 실제 이미지가 나온다.
+    # 레이아웃 기반 일괄 다운로드만 사용 (legacy 드로어 검증/좌측 스크롤 제거).
+    # 파일명/저장 다이얼로그 멈춤은 drawer_handler 수정(f4dba71)으로 완화됨.
     from core.drawer_layout_auto import (
         extract_photos_from_chat_via_layout,
         LAYOUT_FILE,
@@ -434,8 +451,20 @@ def cmd_monitor(*, with_recorder: bool = False) -> int:
         selected_rooms = json.load(f)
     selected_names = {r["name"] for r in selected_rooms}
 
-    # 상태 오버레이 시작
+    # 상태 오버레이 시작 (NENOVA_NO_OVERLAY=1 이면 stub — 자동화 오클릭 방지)
     overlay = get_overlay()
+
+    # 🛑 정지 버튼은 액션로그 창(get_logger)에 통합되어 있다.
+    # (별도 Tk 창은 Tcl_AsyncDelete 크래시 유발 → 단일 Tk 루트로 통합)
+    # 버튼 클릭 → core.stop_button.request_stop() → 플래그+_STOP 파일 →
+    # 루프가 _stop_requested() 로 감지. 정지 신호는 시작 시 깨끗이 초기화.
+    try:
+        from core.stop_button import _stop_flag, STOP_FILE
+        _stop_flag.clear()
+        if STOP_FILE.exists():
+            STOP_FILE.unlink()
+    except Exception:
+        pass
 
     print("[MONITOR] 네노바 AI 에이전트 v2.1 감시 모드 시작")
     print(f"          폴링 간격: {POLL_INTERVAL}초 / 전체 스윕: 매 {SWEEP_EVERY}사이클")
@@ -549,11 +578,16 @@ def cmd_monitor(*, with_recorder: bool = False) -> int:
     # 이전 [19→0] 순서는 안읽음 방 적을 때 빈 영역 헛클릭 반복했음.
     PAGES = list(range(0, 20))  # [0, 1, ..., 19] — 맨 위부터
 
+    # 안전한 정지 신호: data/_STOP 파일 (stop_nenova.bat 가 생성).
+    # 오버레이 stub 모드(NENOVA_NO_OVERLAY=1)에서는 overlay.should_stop 이 항상 False 라
+    # 자동화가 실수로 못 누르는 파일 기반 정지를 함께 검사한다.
+    from core.stop_button import is_stop_requested as _stop_requested
+
     try:
         while True:
-            # ── 중지 버튼 체크 ──
-            if overlay.should_stop:
-                print("[MONITOR] 중지 버튼 클릭 -- 감시 종료")
+            # ── 중지 체크 (오버레이 버튼 OR data/_STOP 파일) ──
+            if overlay.should_stop or _stop_requested():
+                print("[MONITOR] 중지 요청 감지 (버튼/_STOP) -- 감시 종료", flush=True)
                 break
 
             cycle += 1
@@ -744,7 +778,7 @@ def cmd_monitor(*, with_recorder: bool = False) -> int:
             BOTTOM_ROW_Y = _tp + 35 + (ROWS_PER_PAGE - 1) * SWEEP_ROW_HEIGHT  # y=614
 
             for p_i, page_idx in enumerate(PAGES, 1):
-                if overlay.should_stop:
+                if overlay.should_stop or _stop_requested():
                     break
 
                 overlay.set_status(f"페이지 {p_i}/{n_pages} (p{page_idx})")
@@ -764,7 +798,7 @@ def cmd_monitor(*, with_recorder: bool = False) -> int:
                     MAX_CONSECUTIVE_MISSES = 3
 
                     for iter_idx, row_y in enumerate(rows_desc, 1):
-                        if overlay.should_stop:
+                        if overlay.should_stop or _stop_requested():
                             break
 
                         overlay.set_status(f"p{p_i}/{n_pages} 행{iter_idx}/{ROWS_PER_PAGE} (y={row_y})")
@@ -822,6 +856,11 @@ def cmd_monitor(*, with_recorder: bool = False) -> int:
                             eta = ROOM_ETA_BASE + n_photos * ROOM_ETA_PHOTO
                             print(f"     [p{page_idx} r{iter_idx}] {room_name} - 신규 (사진 {n_photos}장 / 예상 {eta}초)", flush=True)
                             overlay.set_status(f"p{p_i}/{n_pages} r{iter_idx} {room_name[:10]} ({eta}s)")
+
+                            # 방 처리 직전 정지 체크 (extract 동안 들어온 정지 요청 반영)
+                            if _stop_requested():
+                                print("[MONITOR] 정지 요청 감지 — 방 처리 중단", flush=True)
+                                break
 
                             _process_room_result(result, CLICK_X, row_y, **process_deps)
                             processed_this_cycle.add(room_name)
@@ -912,6 +951,16 @@ def cmd_monitor(*, with_recorder: bool = False) -> int:
         overlay.stop()
     except Exception:
         pass
+
+    # 사용자가 🛑 정지(또는 _STOP)로 멈춘 경우엔 무거운 후처리(LLM 프레임분석/회고)를
+    # 건너뛰어 즉시·크레딧 없이 종료. (Ctrl+C/자연 종료는 기존대로 후처리 수행)
+    stopped_by_user = False
+    try:
+        from core.stop_button import is_stop_requested as _isr
+        stopped_by_user = _isr()
+    except Exception:
+        pass
+
     if with_recorder:
         try:
             from core.learning_recorder import get_recorder, set_recorder
@@ -921,6 +970,11 @@ def cmd_monitor(*, with_recorder: bool = False) -> int:
             set_recorder(None)
         except Exception as e:
             print(f"[MONITOR] recorder stop err: {e}")
+
+    if stopped_by_user:
+        print("[MONITOR] 사용자 정지 — 후처리(프레임분석/회고) 생략하고 즉시 종료", flush=True)
+        return 0
+
     # 실패 프레임 자동 분석 (스텝별 최신 캡처 → Claude로 원인 한 줄 요약)
     try:
         from core.failed_frame_analyzer import analyze_recent

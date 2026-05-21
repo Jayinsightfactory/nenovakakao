@@ -444,6 +444,10 @@ def download_recent_images(
 ) -> Dict:
     """카톡 cache 디렉토리에서 최근 이미지를 output_dir 로 복사.
 
+    ⚠ 주의: 카톡 cache 의 이미지는 암호화된 .cng (AES-128-CBC) 라서
+    그대로 복사하면 표시 불가. 실제 이미지가 필요하면 서랍 '저장' 경로 사용.
+    (이 함수는 포렌식/디버그용으로만 유지)
+
     Args:
         output_dir: 저장 폴더
         max_images: 복사할 최대 개수

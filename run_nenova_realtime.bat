@@ -21,6 +21,11 @@ set CF=C:\Users\USER\AppData\Local\Microsoft\WinGet\Packages\Cloudflare.cloudfla
 
 cd /d "%PROJ%"
 
+REM 우하단 상태 오버레이의 '중지' 버튼을 자동화 스크롤/클릭이 실수로 눌러
+REM 프로세스가 os._exit(1) 되는 버그 방지 → 오버레이를 no-op stub 으로.
+REM 정지는 data\_STOP 파일(=stop_nenova.bat)로 안전하게 수행.
+set NENOVA_NO_OVERLAY=1
+
 REM 이전 STOP 신호 제거
 if exist "%PROJ%\data\_STOP" del "%PROJ%\data\_STOP"
 

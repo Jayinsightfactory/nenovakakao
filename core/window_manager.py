@@ -36,6 +36,59 @@ KAKAOWORK_TITLE = "카카오워크"
 # (0,0) 은 PyAutoGUI fail-safe 모서리 → 자동화 즉시 정지 → 50px 안쪽 (2026-05-11 사고)
 KAKAOTALK_FIXED_POS = (50, 50, 900, 900)
 
+# ── 창 위치 설정 (조절 가능) ──────────────────────────────────
+# data/window_positions.json 으로 메인창/채팅 분리창/저장창 위치를 한 곳에서 조절.
+# 파일이 없으면 아래 기본값 사용 (현재 동작과 동일 → 무회귀).
+# 값을 바꾸면 다음 사이클부터 자동 반영 (mtime 기반 재로딩, 재시작 불필요).
+import json as _json
+from pathlib import Path as _Path
+
+_WINDOW_POS_FILE = _Path(__file__).resolve().parent.parent / "data" / "window_positions.json"
+
+_DEFAULT_WINDOW_POS = {
+    "kakaotalk_main": {"x": 50,  "y": 50,  "w": 900, "h": 900},
+    "chatroom":       {"x": 100, "y": 50,  "w": 600, "h": 800},
+    "save_dialog":    {"x": 980, "y": 120, "w": 860, "h": 600},
+}
+
+_wp_cache: dict = {"mtime": -1.0, "data": None}
+
+
+def get_window_positions() -> dict:
+    """data/window_positions.json 로드 (mtime 캐시 재로딩). 없으면 기본값.
+
+    각 항목은 {"x","y","w","h"}. 누락 키는 기본값으로 보충.
+    """
+    try:
+        mt = _WINDOW_POS_FILE.stat().st_mtime
+    except OSError:
+        mt = 0.0
+    if _wp_cache["data"] is not None and mt == _wp_cache["mtime"]:
+        return _wp_cache["data"]
+
+    data = {k: dict(v) for k, v in _DEFAULT_WINDOW_POS.items()}
+    if mt:
+        try:
+            loaded = _json.loads(_WINDOW_POS_FILE.read_text(encoding="utf-8"))
+            for key in _DEFAULT_WINDOW_POS:
+                ov = loaded.get(key)
+                if isinstance(ov, dict):
+                    for k in ("x", "y", "w", "h"):
+                        if isinstance(ov.get(k), (int, float)):
+                            data[key][k] = int(ov[k])
+        except Exception as e:
+            print(f"  [WIN-POS] config 로드 실패, 기본값 사용: {e}", flush=True)
+
+    _wp_cache["mtime"] = mt
+    _wp_cache["data"] = data
+    return data
+
+
+def get_pos_tuple(key: str) -> tuple[int, int, int, int]:
+    """설정에서 (x, y, w, h) 튜플 반환. 알 수 없는 key 면 chatroom 폴백."""
+    p = get_window_positions().get(key) or _DEFAULT_WINDOW_POS.get(key) or _DEFAULT_WINDOW_POS["chatroom"]
+    return (p["x"], p["y"], p["w"], p["h"])
+
 
 def force_foreground(hwnd: int) -> bool:
     """AttachThreadInput 해킹으로 강제 포그라운드 탈취.
@@ -85,13 +138,16 @@ def force_foreground(hwnd: int) -> bool:
         return False
 
 
-def lock_kakaotalk_window(pos: tuple[int, int, int, int] = KAKAOTALK_FIXED_POS) -> bool:
+def lock_kakaotalk_window(pos: tuple[int, int, int, int] | None = None) -> bool:
     """카톡 메인창을 고정 좌표/크기로 강제 이동·리사이즈.
 
     스크롤/클릭 좌표가 창 위치에 의존하므로, 사용자가 창을 옮겨도
-    매번 같은 자리로 끌어온다.
+    매번 같은 자리로 끌어온다. pos=None 이면 window_positions.json 의
+    'kakaotalk_main' 설정을 사용 (없으면 기본 50,50,900,900).
     """
     import win32con
+    if pos is None:
+        pos = get_pos_tuple("kakaotalk_main")
     x, y, w, h = pos
     hwnds: list[int] = []
 
@@ -181,34 +237,30 @@ def fix_chat_window_position(
     hwnd: int,
     x: int | None = None,
     y: int | None = None,
-    w: int = 600,
-    h: int = 800,
+    w: int | None = None,
+    h: int | None = None,
 ) -> bool:
-    """카톡 채팅 분리창을 안전한 위치로 이동/리사이즈 + TOPMOST.
+    """카톡 채팅 분리창을 고정 위치로 이동/리사이즈 + TOPMOST.
 
-    위치 선정: 화면 해상도를 보고 Claude/기타 앱과 겹치지 않는 곳 선택.
-    카톡 메인(0,0,900,900)과 겹쳐도 OK — 분리창은 TOPMOST 이므로 위에 올라옴.
-    Claude(우측), 데스크탑 오른쪽 절반 피함.
+    인자 미지정 시 window_positions.json 의 'chatroom' 설정 사용
+    (없으면 기본 100,50,600,800). 사용자가 창을 옮겨도 매 사이클 같은 자리로 끌어옴.
+    카톡 메인과 겹쳐도 OK — 분리창은 TOPMOST 이므로 위에 올라옴.
     """
     try:
         import win32gui
         import win32con
         import ctypes
 
-        # 화면 해상도
+        cx, cy, cw, ch = get_pos_tuple("chatroom")
+        if x is None: x = cx
+        if y is None: y = cy
+        if w is None: w = cw
+        if h is None: h = ch
+
+        # 화면 해상도 — 경계 보정 (화면 밖 나가면 끌어당김)
         user32 = ctypes.windll.user32
         screen_w = user32.GetSystemMetrics(0)
         screen_h = user32.GetSystemMetrics(1)
-
-        # 기본 위치: 메인 카톡 오른쪽 옆 (메인은 0,0,900,900 에 TOPMOST 로 고정).
-        # 분리창을 메인과 겹치지 않게 x=910 으로 두면 TOPMOST Z-order 충돌 회피.
-        # Claude(1160+)/KakaoWork 등은 TOPMOST 아니므로 분리창 TOPMOST 가 이김.
-        if x is None:
-            x = 100
-        if y is None:
-            y = 50
-
-        # 경계 보정: 화면 밖 나가면 끌어당김
         if x + w > screen_w - 20:
             x = max(0, screen_w - w - 20)
         if y + h > screen_h - 80:  # 작업표시줄 고려
@@ -227,6 +279,80 @@ def fix_chat_window_position(
         return True
     except Exception as e:
         print(f"  [WIN] 분리창 고정 실패: {e}", flush=True)
+        return False
+
+
+# 저장/폴더 선택 다이얼로그 제목 키워드
+SAVE_DIALOG_KEYWORDS = (
+    "다른 이름으로 저장", "Save As", "폴더 선택",
+    "Select Folder", "Browse For Folder", "파일 저장",
+)
+
+
+def find_save_dialog_hwnd() -> int | None:
+    """현재 떠 있는 '다른 이름으로 저장' / '폴더 선택' 다이얼로그 hwnd 탐색.
+
+    visible + 제목에 저장/폴더 키워드 포함 + 폭 300+ 인 실제 다이얼로그만.
+    """
+    found: list[int] = []
+
+    def _f(h, _):
+        if not win32gui.IsWindow(h) or not win32gui.IsWindowVisible(h):
+            return
+        t = win32gui.GetWindowText(h) or ""
+        if not any(k in t for k in SAVE_DIALOG_KEYWORDS):
+            return
+        r = win32gui.GetWindowRect(h)
+        if (r[2] - r[0]) > 300 and (r[3] - r[1]) > 200:
+            found.append(h)
+
+    win32gui.EnumWindows(_f, None)
+    return found[0] if found else None
+
+
+def fix_save_dialog_position(
+    hwnd: int | None = None,
+    pos: tuple[int, int, int, int] | None = None,
+) -> bool:
+    """저장 다이얼로그('다른 이름으로 저장' 등)를 고정 위치로 이동.
+
+    hwnd=None 이면 자동 탐색. pos=None 이면 window_positions.json 의
+    'save_dialog' 설정 사용 (없으면 기본 980,120,860,600).
+    포커스를 유지하므로 파일명 입력/Enter 흐름에 영향 없음.
+    """
+    try:
+        import win32con
+        import ctypes
+
+        if hwnd is None:
+            hwnd = find_save_dialog_hwnd()
+        if not hwnd or not win32gui.IsWindow(hwnd):
+            return False
+
+        x, y, w, h = pos if pos is not None else get_pos_tuple("save_dialog")
+
+        # 경계 보정
+        user32 = ctypes.windll.user32
+        screen_w = user32.GetSystemMetrics(0)
+        screen_h = user32.GetSystemMetrics(1)
+        if x + w > screen_w - 20:
+            x = max(0, screen_w - w - 20)
+        if y + h > screen_h - 80:
+            y = max(0, screen_h - h - 80)
+
+        placement = win32gui.GetWindowPlacement(hwnd)
+        if placement[1] == win32con.SW_SHOWMINIMIZED:
+            win32gui.ShowWindow(hwnd, win32con.SW_RESTORE)
+            time.sleep(0.1)
+        win32gui.MoveWindow(hwnd, x, y, w, h, True)
+        # 다이얼로그를 위로 올리되 포커스 유지
+        try:
+            win32gui.SetForegroundWindow(hwnd)
+        except Exception:
+            pass
+        return True
+    except Exception as e:
+        print(f"  [WIN] 저장창 고정 실패: {e}", flush=True)
         return False
 
 
@@ -330,8 +456,8 @@ def focus_kakaotalk(*, ensure_min_size: tuple[int, int] = (900, 900), retries: i
     else:
         raise last_err  # type: ignore[misc]
 
-    # 항상 고정 좌표로 락 (좌표 자동화 기준선 유지)
-    x, y, w, h = KAKAOTALK_FIXED_POS
+    # 항상 고정 좌표로 락 (좌표 자동화 기준선 유지) — 설정 파일 우선
+    x, y, w, h = get_pos_tuple("kakaotalk_main")
     if (window.left, window.top, window.width, window.height) != (x, y, w, h):
         if lock_kakaotalk_window():
             time.sleep(0.3)

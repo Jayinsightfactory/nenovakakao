@@ -246,6 +246,14 @@ def click_download_and_confirm(max_wait: int = 15) -> list[Path]:
     print(f"  [DRAWER] 다이얼로그 체크: foreground='{ft}'", flush=True)
     if any(k in ft for k in ["저장", "Save", "다른 이름"]):
         mark("drawer.save_dialog", "after", {"title": ft})
+        # 저장창 위치 고정 (window_positions.json 의 save_dialog) — 포커스 유지
+        try:
+            from core.window_manager import fix_save_dialog_position
+            if fix_save_dialog_position(fg):
+                print(f"  [DRAWER] 저장창 위치 고정", flush=True)
+                time.sleep(0.2)
+        except Exception as e:
+            print(f"  [DRAWER] 저장창 고정 예외(무시): {e}", flush=True)
         pyautogui.press("enter")
         time.sleep(1.5)
 

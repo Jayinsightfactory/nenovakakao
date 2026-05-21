@@ -90,6 +90,23 @@ class ActionLogger:
             font=("맑은 고딕", 9), bd=0, padx=10,
             command=self._clear_log,
         ).pack(side=tk.LEFT, padx=(5, 0))
+        # 🛑 정지 — 자동화 모든 동작 중지 (graceful stop, _STOP 신호)
+        self._stop_btn = tk.Button(
+            btn_frame, text="🛑 정지", fg="white", bg="#CC0000",
+            activebackground="#a51d2d", activeforeground="white",
+            font=("맑은 고딕", 9, "bold"), bd=0, padx=12,
+            command=self._request_stop,
+        )
+        self._stop_btn.pack(side=tk.LEFT, padx=(5, 0))
+        # 💀 강제정지 — 진행 중 작업까지 즉시 중단 (os._exit). 오클릭 방지 위해
+        # 우측에 분리 배치 + 검은색. graceful 🛑 정지와 떨어뜨림.
+        self._hardkill_btn = tk.Button(
+            btn_frame, text="💀 강제정지", fg="white", bg="#000000",
+            activebackground="#330000", activeforeground="white",
+            font=("맑은 고딕", 9, "bold"), bd=0, padx=10,
+            command=self._hard_kill,
+        )
+        self._hardkill_btn.pack(side=tk.RIGHT, padx=(5, 0))
         self._file_label = tk.Label(
             btn_frame, text="", fg="#888", bg="#0a0a0a",
             font=("Consolas", 8),
@@ -179,6 +196,38 @@ class ActionLogger:
             self._file_label.config(text=f"→ {self._log_file.name}")
         except Exception:
             pass
+
+    def _request_stop(self):
+        """🛑 정지 버튼 → 자동화 graceful stop 요청 (플래그 + _STOP 파일).
+        os._exit 가 아니라 신호만 보내므로 안전 — 루프가 다음 체크포인트에서 종료.
+        """
+        try:
+            from core.stop_button import request_stop
+            request_stop()
+            self.log("🛑 정지 버튼 클릭 — 자동화 중지 요청 전송", "ERR")
+            try:
+                self._stop_btn.config(text="정지 요청됨", bg="#6c757d", state=tk.DISABLED)
+            except Exception:
+                pass
+        except Exception as e:
+            self.log(f"정지 요청 실패: {e}", "ERR")
+
+    def _hard_kill(self):
+        """💀 강제정지 — 진행 중 작업(사진 다운로드 등)까지 즉시 중단하고
+        프로세스를 바로 종료한다. graceful 정지가 안 먹힐 때의 최후 수단.
+        _STOP 신호도 남겨 재시작/외부 로직과 일관성 유지.
+        """
+        try:
+            from core.stop_button import request_stop
+            request_stop()
+        except Exception:
+            pass
+        try:
+            print("[MONITOR] 💀 강제정지 버튼 — os._exit(1) 즉시 종료", flush=True)
+        except Exception:
+            pass
+        import os
+        os._exit(1)
 
     def _fg_watcher(self):
         """포그라운드 창 변화 감시 → 변할 때마다 로그."""
