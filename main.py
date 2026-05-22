@@ -381,6 +381,7 @@ def cmd_monitor(*, with_recorder: bool = False) -> int:
     )
     from core.window_manager import (
         cleanup_popups, focus_kakaotalk, focus_kakaowork, return_to_kakaotalk,
+        get_room_list_click_y_offset,
     )
     from core.badge_monitor import detect_badge_positions, badge_y_to_absolute
     from core.message_extractor import extract_from_room
@@ -803,7 +804,9 @@ def cmd_monitor(*, with_recorder: bool = False) -> int:
                 try:
                     # 9행 처리 — 아래(row 9, y=614) → 위(row 1, y=134)
                     # 매 행마다 리스트 리셋되므로 재스크롤 필수
-                    row_ys = [_tp + 35 + i * SWEEP_ROW_HEIGHT for i in range(ROWS_PER_PAGE)]
+                    # 방 클릭 Y 보정: 목록 맨 위 공지/배너 회피용 (window_positions.json)
+                    _row_y_off = get_room_list_click_y_offset()
+                    row_ys = [_tp + 35 + _row_y_off + i * SWEEP_ROW_HEIGHT for i in range(ROWS_PER_PAGE)]
                     # 위→아래 순회: 안읽음 방이 적을 때 상위 방부터 처리
                     # (이전: 하위부터 → 빈 영역 3회 스킵 → 실제 방 못 건드림)
                     rows_desc = row_ys  # 위→아래
@@ -844,6 +847,11 @@ def cmd_monitor(*, with_recorder: bool = False) -> int:
                                 continue
                             # 결과가 있으면 연속 카운터 리셋
                             consecutive_misses = 0
+
+                            # 워크 답장 우선 양보 (저장 전 감지) → 즉시 락 풀고 답장 처리
+                            if result.get("_yielded"):
+                                print(f"     [p{page_idx} r{iter_idx}] 워크 답장 우선 — 사이클 양보", flush=True)
+                                break
 
                             if result.get("_duplicate"):
                                 _log_issue("duplicate_skip", cycle=cycle, page=page_idx, row=iter_idx,

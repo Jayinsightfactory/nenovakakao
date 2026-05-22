@@ -90,6 +90,24 @@ def get_pos_tuple(key: str) -> tuple[int, int, int, int]:
     return (p["x"], p["y"], p["w"], p["h"])
 
 
+def get_room_list_click_y_offset() -> int:
+    """방 리스트에서 방을 클릭할 때 Y 좌표 보정(px, 아래로 +).
+
+    카톡 방 목록 맨 위에 공지/배너가 떠 있으면 첫 줄 클릭이 거기에 닿아
+    방이 안 열리고 저장이 실패한다. 이 값만큼 클릭을 아래로 내려 배너를 피한다.
+    window_positions.json 의 'room_list_click_y_offset' (없으면 0).
+    파일이 작아 매번 직접 읽음(편집 즉시 반영).
+    """
+    try:
+        loaded = _json.loads(_WINDOW_POS_FILE.read_text(encoding="utf-8"))
+        raw = loaded.get("room_list_click_y_offset")
+        if isinstance(raw, (int, float)):
+            return int(raw)
+    except Exception:
+        pass
+    return 0
+
+
 def force_foreground(hwnd: int) -> bool:
     """AttachThreadInput 해킹으로 강제 포그라운드 탈취.
 

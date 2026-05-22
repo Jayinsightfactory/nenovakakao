@@ -28,8 +28,10 @@
 from __future__ import annotations
 
 import json
+import queue
 import secrets
 import sys
+import threading
 import time
 from pathlib import Path
 
@@ -81,8 +83,77 @@ def _conv_id_to_room(conv_id: str) -> str | None:
     return None
 
 
+# ─────────────────────────────────────────────
+# 송신 큐 + 백그라운드 워커
+#   콜백은 (방, 텍스트)를 큐에 넣고 즉시 200 반환 → 카카오워크 webhook 타임아웃
+#   ("일시적으로 서버에 접속할 수 없습니다") 방지. 실제 카톡 송신은 워커 1개가
+#   순서대로(직렬) 처리하며 monitor 와 락으로 조정한다.
+# ─────────────────────────────────────────────
+_send_q: "queue.Queue[tuple[str, str]]" = queue.Queue()
+_worker_started = False
+_worker_lock = threading.Lock()
+
+
+def _process_send(room: str, reply_text: str) -> None:
+    """실제 카톡 송신 (워커 스레드에서 호출). 락으로 monitor 와 조정."""
+    from core import kakao_lock as _klock
+    from core import kakao_win32 as kw
+
+    _klock.request()  # monitor 에 우선 양보 신호
+    got = _klock.acquire("reactive", timeout=180, respect_request=False)
+    if not got:
+        # monitor 가 180초 내내 안 놓음(비정상) → 충돌 방지 위해 송신 보류(스킵)
+        print(f"  [REACTIVE-WORKER] 락 획득 실패(180s) — 송신 보류: {room!r}", flush=True)
+        _log({"endpoint": "worker", "result": "lock_timeout", "room": room})
+        _klock.clear_request()
+        return
+    try:
+        hwnd = kw.find_chat_window(room)
+        if hwnd is None:
+            res = kw.search_and_open_room(room)
+            if not res.get("success"):
+                print(f"  [REACTIVE-WORKER] 방 진입 실패: {res.get('error')}", flush=True)
+                _log({"endpoint": "worker", "result": "open_failed", "room": room})
+                return
+            time.sleep(0.5)
+        send_res = kw.send_message_to_room(room, reply_text)
+        ok = send_res.get("success")
+        print(f"  [REACTIVE-WORKER] 카톡 송신: {'OK' if ok else 'FAIL'} {send_res.get('error', '')}", flush=True)
+        _log({"endpoint": "worker", "result": "sent" if ok else "send_failed",
+              "room": room, "detail": send_res})
+    except Exception as e:
+        print(f"  [REACTIVE-WORKER] 예외: {type(e).__name__}: {e}", flush=True)
+        _log({"endpoint": "worker", "result": "exception", "error": str(e)})
+    finally:
+        _klock.release("reactive")
+        _klock.clear_request()
+
+
+def _send_worker() -> None:
+    """큐에서 (방, 텍스트)를 꺼내 순서대로 송신."""
+    while True:
+        room, reply_text = _send_q.get()
+        try:
+            _process_send(room, reply_text)
+        except Exception as e:
+            print(f"  [REACTIVE-WORKER] 루프 예외: {e}", flush=True)
+        finally:
+            _send_q.task_done()
+
+
+def _ensure_worker() -> None:
+    global _worker_started
+    with _worker_lock:
+        if _worker_started:
+            return
+        t = threading.Thread(target=_send_worker, daemon=True, name="reactive-send-worker")
+        t.start()
+        _worker_started = True
+
+
 def create_app():
     from flask import Flask, request, jsonify
+    _ensure_worker()
 
     app = Flask(__name__)
     secret = _get_secret()
@@ -137,40 +208,12 @@ def create_app():
             _log({"endpoint": "callback", "result": "skip", "room": room, "text_len": len(reply_text)})
             return ("", 200)  # 200 안 주면 카카오워크가 에러 표시
 
-        # 카톡 원본 방으로 송신 (분리창 없으면 검색해서 열기)
-        # 충돌 방지: monitor 와 같은 카톡 창을 다투지 않도록 락 획득(우선순위).
-        #   request() → monitor 가 현재 방 끝낸 뒤 양보 → acquire → 송신 → release.
-        from core import kakao_lock as _klock
-        _klock.request()
-        _got_lock = _klock.acquire("reactive", timeout=60, respect_request=False)
-        if not _got_lock:
-            print(f"  [REACTIVE] 카톡 락 획득 실패(60s) — 강제 진행", flush=True)
-            _log({"endpoint": "callback", "result": "lock_timeout", "room": room})
-        try:
-            from core import kakao_win32 as kw
-            hwnd = kw.find_chat_window(room)
-            if hwnd is None:
-                res = kw.search_and_open_room(room)
-                if not res.get("success"):
-                    print(f"  [REACTIVE] 방 진입 실패: {res.get('error')}", flush=True)
-                    _log({"endpoint": "callback", "result": "open_failed", "room": room})
-                    return ("", 200)
-                # room 이름 그대로 유지 (search 의 message 는 'opened X' 라 방 이름 아님)
-                time.sleep(0.5)
-            send_res = kw.send_message_to_room(room, reply_text)
-            ok = send_res.get("success")
-            print(f"  [REACTIVE] 카톡 송신: {'OK' if ok else 'FAIL'} {send_res.get('error', '')}", flush=True)
-            _log({"endpoint": "callback", "result": "sent" if ok else "send_failed",
-                  "room": room, "detail": send_res})
-        except Exception as e:
-            print(f"  [REACTIVE] 카톡 송신 예외: {type(e).__name__}: {e}", flush=True)
-            _log({"endpoint": "callback", "result": "exception", "error": str(e)})
-        finally:
-            # 락/요청 해제 — monitor 재개
-            if _got_lock:
-                _klock.release("reactive")
-            _klock.clear_request()
-
+        # 큐에 적재하고 즉시 200 반환 → webhook 타임아웃("서버 접속 불가") 방지.
+        # 실제 카톡 송신은 백그라운드 워커가 순서대로 처리 (monitor 와 락 조정).
+        _send_q.put((room, reply_text))
+        qsize = _send_q.qsize()
+        print(f"  [REACTIVE] 큐 적재 → 즉시 200 (대기 {qsize}건): room={room!r} text={reply_text[:30]!r}", flush=True)
+        _log({"endpoint": "callback", "result": "queued", "room": room, "qsize": qsize})
         return ("", 200)
 
     return app, secret

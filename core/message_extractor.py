@@ -341,6 +341,105 @@ def _snapshot_txt_files() -> set[str]:
     return result
 
 
+def _dismiss_export_complete_popup(timeout: float = 4.0) -> bool:
+    """'대화내보내기가 완료되었습니다' 등 저장 완료 확인 팝업을 견고하게 닫는다.
+
+    기존 방식(get_foreground_title + 글로벌 Enter)은 (1) 팝업 창 제목이 '카카오톡'/
+    빈 값이고 완료 문구가 child static 에 있어 매칭 실패, (2) 팝업이 foreground 가
+    아니면 Enter 가 엉뚱한 창으로 가는 문제로 들쭉날쭉했다.
+
+    개선: EnumWindows 로 작은 모달을 찾되 **child 텍스트까지** 검사 →
+    확인 버튼을 BM_CLICK(포커스 무관) → 안 닫히면 force_foreground+Enter →
+    그래도 남으면 WM_CLOSE. 최대 timeout 초 폴링(늦게 뜨는 팝업 대응).
+
+    Returns: 팝업을 찾아 닫았으면 True.
+    """
+    import win32gui
+    import win32con
+
+    # 완료 신호가 분명한 문구만 (단독 '내보내기'는 메뉴 오탐 위험 → 제외)
+    COMPLETE_PHRASES = ("완료되었", "저장되었", "완료 되었", "내보내기가 완료",
+                        "내보내기 완료", "내보내졌")
+    BTN_TEXTS = ("확인", "닫기", "예", "OK")
+    BM_CLICK = 0x00F5
+
+    t0 = time.time()
+    while time.time() - t0 < timeout:
+        target_hwnd = None
+        target_btn = None
+
+        def _scan(hwnd, _):
+            nonlocal target_hwnd, target_btn
+            if target_hwnd or not win32gui.IsWindowVisible(hwnd):
+                return
+            try:
+                r = win32gui.GetWindowRect(hwnd)
+                w, h = r[2] - r[0], r[3] - r[1]
+            except Exception:
+                return
+            # 작은 모달만 (메인 앱/분리창 방어)
+            if w <= 0 or w > 700 or h <= 0 or h > 500:
+                return
+            texts: list[str] = []
+            btn_found: list[int] = []
+
+            def _child(ch, __):
+                try:
+                    cls = win32gui.GetClassName(ch) or ""
+                    txt = win32gui.GetWindowText(ch) or ""
+                except Exception:
+                    return True
+                if txt:
+                    texts.append(txt)
+                    if cls == "Button" and any(b in txt for b in BTN_TEXTS) and not btn_found:
+                        btn_found.append(ch)
+                return True
+
+            try:
+                win32gui.EnumChildWindows(hwnd, _child, None)
+            except Exception:
+                pass
+            joined = " ".join(texts) + " " + (win32gui.GetWindowText(hwnd) or "")
+            if any(p in joined for p in COMPLETE_PHRASES):
+                target_hwnd = hwnd
+                target_btn = btn_found[0] if btn_found else None
+
+        try:
+            win32gui.EnumWindows(_scan, None)
+        except Exception:
+            pass
+
+        if target_hwnd:
+            # 1) 확인 버튼 BM_CLICK (포커스 무관 — 가장 견고)
+            if target_btn:
+                try:
+                    win32gui.SendMessage(target_btn, BM_CLICK, 0, 0)
+                    time.sleep(0.3)
+                except Exception:
+                    pass
+            # 2) 아직 살아있으면 force_foreground + Enter
+            if win32gui.IsWindow(target_hwnd) and win32gui.IsWindowVisible(target_hwnd):
+                try:
+                    from core.window_manager import force_foreground
+                    force_foreground(target_hwnd)
+                    time.sleep(0.1)
+                    pyautogui.press("enter")
+                    time.sleep(0.3)
+                except Exception:
+                    pass
+            # 3) 그래도 남으면 WM_CLOSE
+            if win32gui.IsWindow(target_hwnd) and win32gui.IsWindowVisible(target_hwnd):
+                try:
+                    win32gui.PostMessage(target_hwnd, win32con.WM_CLOSE, 0, 0)
+                    time.sleep(0.2)
+                except Exception:
+                    pass
+            _status("대화 내보내기 완료 팝업 닫음")
+            return True
+        time.sleep(0.2)
+    return False
+
+
 def save_chat_with_ctrl_s(room_name: str | None = None, chat_hwnd: int | None = None) -> Path | None:
     """
     현재 열린 채팅방에서 Ctrl+S → 저장 다이얼로그 → 절대경로 강제 입력 → Enter.
@@ -472,19 +571,10 @@ def save_chat_with_ctrl_s(room_name: str | None = None, chat_hwnd: int | None = 
             time.sleep(1.0)
             mark("ctrl_s.overwrite_y", "after")
 
-        # "대화내보내기 완료되었습니다" 확인 팝업 닫기 (Enter 또는 ESC)
-        # 카톡이 저장 성공 후 출력하는 confirmation popup — 닫지 않으면 후속 작업 차단
-        time.sleep(1.0)
-        for _ in range(3):
-            ft2 = get_foreground_title()
-            if any(k in ft2 for k in ["완료", "내보내기", "완료되었", "저장되었"]):
-                try:
-                    pyautogui.press("enter")
-                    time.sleep(0.3)
-                except Exception:
-                    pass
-            else:
-                break
+        # "대화내보내기가 완료되었습니다" 확인 팝업 닫기 — 견고한 전용 처리.
+        # (제목 무관, child 텍스트 검사 + 확인버튼 BM_CLICK → Enter → WM_CLOSE)
+        # 닫지 않으면 후속 작업 차단되므로 최대 4초 폴링.
+        _dismiss_export_complete_popup(timeout=4.0)
 
     except SafetyAbort as e:
         mark("ctrl_s.aborted", "fail", {"reason": str(e)})
@@ -716,6 +806,19 @@ def extract_from_room(
 
     if not room_name:
         room_name = opened_title
+
+    # ── 워크→카톡 답장 최우선 양보 ──
+    # Ctrl+S 는 대화의 신규분(델타)을 "소비"한다(캐시 갱신). 따라서 답장 요청이
+    # 들어와 있으면 Ctrl+S **전에** 양보해야 메시지 유실이 없다. 이 방은 닫고
+    # _yielded 로 표시 → 다음 사이클에 그대로 다시 처리된다.
+    try:
+        from core import kakao_lock as _klock
+        if _klock.is_requested():
+            _status(f"워크 답장 우선 — 양보(저장 전): {opened_title[:18]}")
+            close_chat_room(room_title=opened_title)
+            return {"room_name": opened_title, "delta": "", "has_new": False, "_yielded": True}
+    except Exception:
+        pass
 
     saved_file = save_chat_with_ctrl_s(room_name=room_name, chat_hwnd=chat_hwnd)
     _status("파일 읽기 + 델타 추출")
