@@ -116,6 +116,13 @@ def _process_room_result(
     downloaded_files = []
     photo_count = count_photo_messages(delta)
 
+    # 사진 다운로드 스킵 토글 — 드로어(서랍) 저장이 불안정하면 사진 단계가
+    # 무한 재시도하며 락을 오래 쥐어 답장·텍스트미러를 막는다.
+    # NENOVA_SKIP_PHOTOS=1 이면 텍스트만 미러(안정), 사진은 건너뜀.
+    if _os.environ.get("NENOVA_SKIP_PHOTOS") == "1" and photo_count > 0:
+        print(f"     → [사진] {photo_count}개 감지 — NENOVA_SKIP_PHOTOS=1 → 사진 스킵(텍스트만)", flush=True)
+        photo_count = 0
+
     # ── 첫 가동/대량 baseline 가드 ──
     # 첫 monitor 가동 시 카톡 전체 히스토리가 통째로 "신규(delta)"로 인식되어
     # 미러 송신 폭주 + 사진 수천 장 다운로드. read_and_process_saved_file 이 이미
