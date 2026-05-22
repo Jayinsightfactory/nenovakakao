@@ -400,8 +400,19 @@ def search_and_open_room(room_name: str) -> Dict:
     #    순서대로 시도해 '정규화 일치' 창이 열릴 때까지 반복 (잘못된 방 송신 방지)
     is_group = ", " in room_name
     if is_group:
-        candidates = [m.strip() for m in room_name.split(",")
-                      if m.strip() and m.strip() != "..."]
+        members = [m.strip() for m in room_name.split(",")
+                   if m.strip() and m.strip() != "..."]
+        # 접두 조합(앞 2~3명)을 먼저 시도 — 방 제목 앞부분과 매칭돼 정확한 방을
+        # 열 확률이 높음. 그 다음 개별 멤버(폴백, 다른 방이 열릴 수 있음).
+        candidates = []
+        if len(members) >= 2:
+            candidates.append(", ".join(members[:2]))   # "A, B"
+        if len(members) >= 3:
+            candidates.append(", ".join(members[:3]))   # "A, B, C"
+        candidates += members
+        # 중복 제거(순서 유지)
+        seen = set()
+        candidates = [c for c in candidates if not (c in seen or seen.add(c))]
     else:
         candidates = [room_name]
 
