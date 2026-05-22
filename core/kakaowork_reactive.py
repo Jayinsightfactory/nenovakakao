@@ -63,9 +63,15 @@ def _log(event: dict) -> None:
 
 
 def _parse_room_from_value(value: str) -> str | None:
-    """button value 'room=수입방' → '수입방'."""
+    """modal/button value → 카톡 방 이름.
+
+    'cid=<미러conv_id>' → reverse 매핑으로 방 이름 (짧고 안전 — 권장)
+    'room=<방이름>'     → 그대로 (구버전 버튼 호환)
+    """
     if not value:
         return None
+    if value.startswith("cid="):
+        return _conv_id_to_room(value[len("cid="):])
     if value.startswith("room="):
         return value[len("room="):]
     return value or None
@@ -196,15 +202,20 @@ def create_app():
         # 카톡 방 이름: value 우선 → conv_id reverse
         room = _parse_room_from_value(value) or _conv_id_to_room(conv_id) or "?"
         print(f"  [REACTIVE] request_modal: room={room!r} conv_id={conv_id}", flush=True)
-        # 모달 JSON 응답
+        # 모달은 '짧고 안전한' 필드만 사용한다. 방 이름이 길거나 특수문자(쉼표/&/+//)
+        # 가 있으면 카카오워크가 모달 응답을 거부해 "서버 오류"가 났음(방마다 다름).
+        # → callback 식별자는 conv_id(짧은 숫자)로 전달, 제목에는 방 이름 제거,
+        #   라벨의 방 이름은 짧게 잘라 안전화.
+        modal_value = f"cid={conv_id}" if conv_id else f"room={room}"
+        safe_room = (room or "?")[:18]
         return jsonify({
             "view": {
-                "title": f"카톡 답장 → {room[:20]}",
+                "title": "카톡 답장",
                 "accept": "보내기",
                 "decline": "취소",
-                "value": f"room={room}",  # callback 에서 받을 값
+                "value": modal_value,  # callback 에서 받을 값 (cid=숫자)
                 "blocks": [
-                    {"type": "label", "text": f"카톡 '{room}' 방으로 보낼 메시지", "markdown": False},
+                    {"type": "label", "text": f"'{safe_room}' 방으로 보낼 메시지", "markdown": False},
                     {
                         "type": "input",
                         "name": "reply_text",
