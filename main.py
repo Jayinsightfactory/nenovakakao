@@ -676,6 +676,14 @@ def cmd_monitor(*, with_recorder: bool = False) -> int:
                 if n_closed:
                     print(f"[{cycle}] 이전 분리창 {n_closed}개 정리", flush=True)
 
+                # 검색창 잔류 텍스트 비우기 — 워크 답장 검색이 남긴 방이름으로
+                # 목록이 필터된 채면 좌표 클릭이 빗나가므로 매 사이클 초기화.
+                try:
+                    from core.kakao_win32 import clear_chat_search
+                    clear_chat_search()
+                except Exception:
+                    pass
+
                 # 보강 A: selected_rooms 에 없는 분리창 (개인톡 등) 도 강제 정리
                 stray_seps = []
                 def _find_strays(h, _):
@@ -1357,6 +1365,154 @@ def cmd_invite_member(argv: list[str]) -> int:
     return 0
 
 
+def cmd_backfill(argv: list[str]) -> int:
+    """전체 톡방 백필 — 각 미러방에 해당 카톡방 '전체 대화'를 1회 분할 전송.
+
+    - 대상: room_mapping.json 의 매핑된 방 전체
+    - 오늘 작업한 방(last_content mtime == 오늘)은 제외
+    - 탭 전환 없이 검색(Ctrl+F)으로 각 방을 연다 (검색은 전체 채팅 대상)
+    - Ctrl+S 로 전체 대화 저장 → 파일 내용을 2800자씩 분할해 미러방에 전송
+    - 전송한 방은 last_content 갱신 → 재실행 시 '오늘 작업'으로 스킵(멱등)
+
+    플래그: --dry-run (대상/제외 목록만 출력, 전송 안 함)
+    """
+    import json as _json
+    import os as _os
+    import time as _time
+    from datetime import datetime as _dt, date as _date
+
+    # 우하단 상태 오버레이의 '중지' 버튼을 자동화가 실수로 눌러 os._exit 되는
+    # 버그 방지 — 백필 동안 오버레이를 stub 으로 강제 (monitor 와 동일).
+    _os.environ["NENOVA_NO_OVERLAY"] = "1"
+
+    dry_run = "--dry-run" in argv
+
+    from core.window_manager import focus_kakaotalk
+    from core import kakao_win32 as kw
+    from core.kakao_win32 import clear_chat_search
+    from core.message_extractor import (
+        save_chat_with_ctrl_s, close_chat_room,
+        LAST_CONTENT_DIR, _safe_filename, _save_last_content,
+    )
+    from core.kakaowork_router import _send_single, parse_delta_to_messages
+    import win32gui
+
+    mapping_path = ROOT / "data" / "room_mapping.json"
+    if not mapping_path.exists():
+        print("[BACKFILL] room_mapping.json 없음")
+        return 1
+    mapping = _json.loads(mapping_path.read_text(encoding="utf-8"))
+    today = _date.today()
+
+    def _worked_today(name: str) -> bool:
+        p = LAST_CONTENT_DIR / f"{_safe_filename(name)}.txt"
+        try:
+            if p.exists():
+                return _dt.fromtimestamp(p.stat().st_mtime).date() == today
+        except Exception:
+            pass
+        return False
+
+    all_rooms = list(mapping.keys())
+    # 명시 타깃 파일이 있으면 그 목록을 사용 (오늘작업 제외 무시) — 재백필/특정방 지정용
+    targets_file = ROOT / "data" / "_backfill_targets.json"
+    if targets_file.exists():
+        try:
+            explicit = _json.loads(targets_file.read_text(encoding="utf-8"))
+            targets = [r for r in explicit if r in mapping]
+            skipped = []
+            print(f"[BACKFILL] 명시 타깃 파일 사용 ({targets_file.name}): {len(targets)}개")
+        except Exception as e:
+            print(f"[BACKFILL] 타깃 파일 로드 실패({e}) → 자동 모드")
+            targets = [r for r in all_rooms if not _worked_today(r)]
+            skipped = [r for r in all_rooms if _worked_today(r)]
+    else:
+        targets = [r for r in all_rooms if not _worked_today(r)]
+        skipped = [r for r in all_rooms if _worked_today(r)]
+
+    print(f"\n{'='*60}")
+    print(f"[BACKFILL] 매핑 {len(all_rooms)}개 / 대상 {len(targets)}개 / 오늘작업 제외 {len(skipped)}개")
+    print(f"{'='*60}")
+    for r in skipped:
+        print(f"  [제외-오늘] {r}")
+    for r in targets:
+        print(f"  [대상] {r}")
+    print(f"{'='*60}\n")
+
+    if dry_run:
+        print("[BACKFILL] --dry-run: 실제 전송 안 함. 위 '대상' 방들이 백필됩니다.")
+        return 0
+
+    if not targets:
+        print("[BACKFILL] 대상 없음 (모두 오늘 작업됨)")
+        return 0
+
+    try:
+        focus_kakaotalk()
+    except Exception as e:
+        print(f"[BACKFILL] 카톡 활성화 실패: {e}")
+        return 1
+
+    from core import kakao_lock as _klock
+    done = 0
+    for name in targets:
+        conv_id = str(mapping[name])
+        got = _klock.acquire("monitor", timeout=120)
+        try:
+            clear_chat_search()
+            res = kw.search_and_open_room(name)
+            hwnd = kw.find_chat_window(name)
+            if hwnd is None:
+                oh = res.get("hwnd")
+                if oh and win32gui.IsWindow(oh) and (win32gui.GetWindowText(oh) or "") == name:
+                    hwnd = oh
+            if hwnd is None:
+                print(f"  [BACKFILL] {name}: 정확한 분리창 못 엶 → 스킵", flush=True)
+                continue
+            saved = save_chat_with_ctrl_s(room_name=name, chat_hwnd=hwnd)
+            close_chat_room(room_title=name)
+            if not saved or not saved.exists():
+                print(f"  [BACKFILL] {name}: 저장 실패 → 스킵", flush=True)
+                continue
+            content = saved.read_text(encoding="utf-8", errors="ignore").strip()
+            if not content:
+                print(f"  [BACKFILL] {name}: 빈 내용 → 스킵", flush=True)
+                continue
+            # 대화를 메시지 1건씩 분할 (날짜선/시스템/연속줄 처리) → 개별 전송
+            msgs = parse_delta_to_messages(content)
+            if not msgs:
+                print(f"  [BACKFILL] {name}: 파싱된 메시지 0건 → 스킵", flush=True)
+                continue
+            print(f"  [BACKFILL] {name}: {len(content)}자 → 메시지 {len(msgs)}건 개별 전송", flush=True)
+            _send_single(conv_id, f"📦 [백필] {name} 전체 대화 {len(msgs)}건")
+            _time.sleep(0.4)
+            sent = 0
+            for m in msgs:
+                body = (m.get("content") or "").strip()
+                if not body:
+                    continue
+                line = f"[{m.get('sender','')}] [{m.get('time','')}] {body}"
+                _send_single(conv_id, line)
+                sent += 1
+                _time.sleep(0.4)  # 과도한 burst 방지 (429 시 _send_single 이 30s backoff)
+            _save_last_content(name, content)  # 오늘 작업으로 기록 (멱등)
+            done += 1
+            print(f"  [BACKFILL] {name}: 완료 ({sent}건 전송)", flush=True)
+        except Exception as e:
+            print(f"  [BACKFILL] {name}: 에러 {e}", flush=True)
+            try:
+                close_chat_room(room_title=name)
+            except Exception:
+                pass
+        finally:
+            if got:
+                _klock.release("monitor")
+        _time.sleep(1.0)
+
+    print(f"\n[BACKFILL] 완료: {done}/{len(targets)}개 방 백필")
+    return 0
+
+
 def main(argv: list[str]) -> int:
     if len(argv) < 2:
         return cmd_monitor()
@@ -1375,6 +1531,8 @@ def main(argv: list[str]) -> int:
         return cmd_run()
     elif cmd == "monitor":
         return cmd_monitor(with_recorder=with_recorder)
+    elif cmd == "backfill":
+        return cmd_backfill(argv)
     elif cmd == "learn":
         return cmd_learn()
     elif cmd == "anchors":

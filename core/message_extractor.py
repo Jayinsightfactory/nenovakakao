@@ -576,6 +576,14 @@ def save_chat_with_ctrl_s(room_name: str | None = None, chat_hwnd: int | None = 
         # 닫지 않으면 후속 작업 차단되므로 최대 4초 폴링.
         _dismiss_export_complete_popup(timeout=4.0)
 
+        # 내보내기 후 채팅 검색창 비우기 — 잔류 텍스트로 목록 필터/다음 검색이
+        # 막히는 문제 방지 (사용자 보고). 메인창 검색 Edit 의 텍스트만 제거.
+        try:
+            from core.kakao_win32 import clear_chat_search
+            clear_chat_search()
+        except Exception:
+            pass
+
     except SafetyAbort as e:
         mark("ctrl_s.aborted", "fail", {"reason": str(e)})
         print(f"  [SAFE-ABORT] save_chat_with_ctrl_s: {e} → 스킵 (agentic 비활성화)", flush=True)

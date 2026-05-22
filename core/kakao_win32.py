@@ -104,15 +104,43 @@ def is_kakaotalk_running() -> Dict:
     return {"running": True, "hwnd": hwnd, "pid": pid}
 
 
+def _norm_room_title(t: str) -> str:
+    """그룹방 제목 비교용 정규화.
+
+    멤버목록 그룹방은 창 제목 끝에 ', ...'(잘림 표시)가 붙어
+    매핑 이름과 exact 매칭이 안 된다 (예: '김다혜, 전정식, ..., 이진수, ...').
+    트레일링 '...'/'…'/', '/공백을 제거해 비교한다.
+    일반 방('네노바 영업' 등)은 변화 없음 → 오매칭 위험 없음.
+    """
+    t = (t or "").strip()
+    prev = None
+    while t != prev:
+        prev = t
+        for suf in ("...", "…"):
+            if t.endswith(suf):
+                t = t[: -len(suf)].rstrip()
+        t = t.rstrip(", ").rstrip()
+    return t
+
+
+def _title_matches_room(title: str, room_name: str) -> bool:
+    """창 제목이 방 이름과 일치하는가 (트레일링 ', ...' 허용)."""
+    if not title:
+        return False
+    if title == room_name:
+        return True
+    return _norm_room_title(title) == _norm_room_title(room_name)
+
+
 def find_chat_window(room_name: str) -> Optional[int]:
-    """방 이름 정확 일치하는 분리창 hwnd. 없으면 None."""
+    """방 이름 일치하는 분리창 hwnd. 그룹방 제목의 트레일링 ', ...' 허용. 없으면 None."""
     results: List[int] = []
 
     def _cb(hwnd, _):
         if win32gui.IsWindowVisible(hwnd):
             cls = win32gui.GetClassName(hwnd)
             title = win32gui.GetWindowText(hwnd)
-            if cls == KAKAO_CHAT_WINDOW_CLASS and title == room_name:
+            if cls == KAKAO_CHAT_WINDOW_CLASS and _title_matches_room(title, room_name):
                 results.append(hwnd)
         return True
 
@@ -319,6 +347,34 @@ def _activate_search_and_get_edit(main_hwnd: int) -> Optional[int]:
     return edit_hwnd
 
 
+def clear_chat_search() -> bool:
+    """채팅탭 검색 Edit 의 텍스트를 비운다 (목록 필터 해제).
+
+    검색창에 이전 방이름이 남아 목록이 필터된 채로 있으면:
+      - monitor 의 좌표 클릭이 엉뚱한 방을 누르고
+      - 다음 검색(워크→카톡)도 막힌다.
+    텍스트만 비우면 검색 필터가 풀려 원래 목록이 복원된다(탭은 유지).
+    """
+    main_hwnd = win32gui.FindWindow(KAKAO_MAIN_WINDOW_CLASS, KAKAO_MAIN_WINDOW_TITLE)
+    if main_hwnd == 0:
+        return False
+    clv = _find_chat_list_view(main_hwnd)
+    if clv is None:
+        return False
+    edit_hwnd = find_child_window_recursive(clv, "Edit")
+    if edit_hwnd is None:
+        return False
+    try:
+        win32api.SendMessage(edit_hwnd, EM_SETSEL, 0, -1)
+        win32api.SendMessage(edit_hwnd, WM_CLEAR, 0, 0)
+        win32api.SendMessage(edit_hwnd, WM_SETTEXT, 0, "")
+        _log("검색창 비움")
+        return True
+    except Exception as e:
+        _log(f"검색창 비우기 실패: {e}")
+        return False
+
+
 def _ensure_foreground(hwnd: int) -> bool:
     bring_window_to_front(hwnd)
     time.sleep(WINDOW_ACTIVATE_WAIT_SEC)
@@ -338,50 +394,67 @@ def search_and_open_room(room_name: str) -> Dict:
     if not _ensure_foreground(main_hwnd):
         _log("warn: 카톡 포그라운드 실패")
 
-    edit_hwnd = _activate_search_and_get_edit(main_hwnd)
-    if edit_hwnd is None:
-        return {"success": False, "error": "검색 Edit 못 찾음 (Ctrl+F 후)"}
+    # 검색 후보 결정:
+    #  - 일반 방: 방 이름 그대로 1회 시도 (+ substring/any 폴백)
+    #  - 멤버목록(쉼표) 그룹방: 전체 문자열로는 검색이 안 되므로 멤버 이름들을
+    #    순서대로 시도해 '정규화 일치' 창이 열릴 때까지 반복 (잘못된 방 송신 방지)
+    is_group = ", " in room_name
+    if is_group:
+        candidates = [m.strip() for m in room_name.split(",")
+                      if m.strip() and m.strip() != "..."]
+    else:
+        candidates = [room_name]
 
-    # 기존 텍스트 제거
-    win32api.SendMessage(edit_hwnd, EM_SETSEL, 0, -1)
-    win32api.SendMessage(edit_hwnd, WM_CLEAR, 0, 0)
-    time.sleep(EDIT_CLICK_WAIT_SEC)
+    def _search_once(q: str) -> list:
+        """검색 재활성화 → q 입력 → Enter → 열린 분리창 목록 반환."""
+        _ensure_foreground(main_hwnd)
+        eh = _activate_search_and_get_edit(main_hwnd)
+        if eh is None:
+            return []
+        win32api.SendMessage(eh, EM_SETSEL, 0, -1)
+        win32api.SendMessage(eh, WM_CLEAR, 0, 0)
+        win32api.SendMessage(eh, WM_SETTEXT, 0, "")
+        time.sleep(EDIT_CLICK_WAIT_SEC)
+        for ch in q:
+            win32api.SendMessage(eh, WM_CHAR, ord(ch), 0)
+            time.sleep(SEARCH_CHAR_INTERVAL_SEC)
+        time.sleep(SEARCH_RESULTS_WAIT_SEC)
+        _user32.keybd_event(VK_RETURN, 0, 0, 0)
+        _user32.keybd_event(VK_RETURN, 0, KEYEVENTF_KEYUP, 0)
+        time.sleep(SEARCH_OPEN_WAIT_SEC)
+        return list_chat_windows()
 
-    # WM_CHAR 글자별 송신 (IME 회피)
-    for ch in room_name:
-        win32api.SendMessage(edit_hwnd, WM_CHAR, ord(ch), 0)
-        time.sleep(SEARCH_CHAR_INTERVAL_SEC)
-    _log(f"WM_CHAR 송신 완료: '{room_name}'")
-    time.sleep(SEARCH_RESULTS_WAIT_SEC)
+    result = None
+    for q in candidates:
+        all_windows = _search_once(q)
+        _log(f"검색 시도 '{q}' (대상 '{room_name}') → 창 {len(all_windows)}개")
+        # 정규화 일치 (트레일링 ', ...' 허용)
+        for w in all_windows:
+            if _title_matches_room(w["title"], room_name):
+                result = {"success": True, "message": f"opened '{w['title']}'", "hwnd": w["hwnd"]}
+                break
+        if result:
+            break
+        # 일반 방은 substring/any 폴백 1회 (그룹방은 오송신 방지 위해 정규화만)
+        if not is_group:
+            for w in all_windows:
+                if room_name in w["title"]:
+                    result = {"success": True,
+                              "message": f"opened '{w['title']}' (substr)",
+                              "hwnd": w["hwnd"]}
+                    break
+            if result is None and all_windows:
+                result = {"success": True,
+                          "message": f"opened (title: '{all_windows[0]['title']}')",
+                          "hwnd": all_windows[0]["hwnd"]}
+            break  # 일반 방은 1회만
 
-    # Enter → 첫 결과 열기
-    _user32.keybd_event(VK_RETURN, 0, 0, 0)
-    _user32.keybd_event(VK_RETURN, 0, KEYEVENTF_KEYUP, 0)
-    time.sleep(SEARCH_OPEN_WAIT_SEC)
+    if result is None:
+        result = {"success": False, "error": f"방 '{room_name}' 검색 후 분리창 못 찾음"}
 
-    # 열린 분리창 찾기
-    all_windows = list_chat_windows()
-    for w in all_windows:
-        if w["title"] == room_name:
-            return {"success": True, "message": f"opened '{room_name}'", "hwnd": w["hwnd"]}
-    for w in all_windows:
-        if room_name in w["title"]:
-            return {
-                "success": True,
-                "message": f"opened '{w['title']}' (searched '{room_name}')",
-                "hwnd": w["hwnd"],
-            }
-    if all_windows:
-        return {
-            "success": True,
-            "message": f"opened (title: '{all_windows[0]['title']}')",
-            "hwnd": all_windows[0]["hwnd"],
-        }
-
-    return {
-        "success": False,
-        "error": f"방 '{room_name}' 검색 후 분리창 못 찾음",
-    }
+    # 검색창 텍스트 비우기 — 잔류 시 다음 검색/monitor 목록 필터를 방해함
+    clear_chat_search()
+    return result
 
 
 # ─────────────────────────────────────────────

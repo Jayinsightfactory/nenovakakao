@@ -108,6 +108,7 @@ def _process_send(room: str, reply_text: str) -> None:
         _klock.clear_request()
         return
     try:
+        import win32gui as _w32
         hwnd = kw.find_chat_window(room)
         if hwnd is None:
             res = kw.search_and_open_room(room)
@@ -115,12 +116,35 @@ def _process_send(room: str, reply_text: str) -> None:
                 print(f"  [REACTIVE-WORKER] 방 진입 실패: {res.get('error')}", flush=True)
                 _log({"endpoint": "worker", "result": "open_failed", "room": room})
                 return
-            time.sleep(0.5)
+            # 검색 후 '정확한 제목' 분리창이 뜰 때까지 잠깐 재확인 (지연/타이밍 대응).
+            # 잘못된 방 송신 방지를 위해 '정확 일치' 분리창만 사용한다.
+            for _ in range(8):  # ~2.4s
+                hwnd = kw.find_chat_window(room)
+                if hwnd:
+                    break
+                oh = res.get("hwnd")
+                if oh and _w32.IsWindow(oh) and (_w32.GetWindowText(oh) or "") == room:
+                    hwnd = oh
+                    break
+                time.sleep(0.3)
+            if hwnd is None:
+                print(f"  [REACTIVE-WORKER] 카톡 송신: FAIL 정확한 분리창 '{room}' 못 엶 "
+                      f"(이름 모호/미생성) — 잘못된 방 송신 방지로 중단", flush=True)
+                _log({"endpoint": "worker", "result": "exact_window_not_found", "room": room})
+                return
         send_res = kw.send_message_to_room(room, reply_text)
         ok = send_res.get("success")
         print(f"  [REACTIVE-WORKER] 카톡 송신: {'OK' if ok else 'FAIL'} {send_res.get('error', '')}", flush=True)
         _log({"endpoint": "worker", "result": "sent" if ok else "send_failed",
               "room": room, "detail": send_res})
+
+        # 워크 미러방에도 답장 기록 남기기 (보낸 내용을 워크에서도 확인 가능하게)
+        if ok:
+            try:
+                from core.kakaowork_router import send_to_mirror_room
+                send_to_mirror_room(room, f"📤 카톡으로 전송: {reply_text}")
+            except Exception as e:
+                print(f"  [REACTIVE-WORKER] 워크방 기록 실패(무시): {e}", flush=True)
     except Exception as e:
         print(f"  [REACTIVE-WORKER] 예외: {type(e).__name__}: {e}", flush=True)
         _log({"endpoint": "worker", "result": "exception", "error": str(e)})
