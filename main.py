@@ -1484,20 +1484,39 @@ def cmd_backfill(argv: list[str]) -> int:
                 print(f"  [BACKFILL] {name}: 파싱된 메시지 0건 → 스킵", flush=True)
                 continue
             print(f"  [BACKFILL] {name}: {len(content)}자 → 메시지 {len(msgs)}건 개별 전송", flush=True)
-            _send_single(conv_id, f"📦 [백필] {name} 전체 대화 {len(msgs)}건")
+
+            def _send_verified(text: str) -> bool:
+                """전송 성공(success=True) 할 때까지 재시도. 실패는 카운트 안 함.
+                _send_single 은 429 시 30s backoff(False 반환), ConnectionError 시 내부
+                재시도 → 그래도 False 면 여기서 대기 후 재시도(대량 RemoteDisconnected 대응)."""
+                for attempt in range(6):
+                    try:
+                        if _send_single(conv_id, text):
+                            return True
+                    except Exception:
+                        pass
+                    _time.sleep(5.0)  # rate-limit(30s)/연결오류 회복 대기 (누적 30s)
+                return False
+
+            _send_verified(f"📦 [백필] {name} 전체 대화 {len(msgs)}건")
             _time.sleep(0.4)
-            sent = 0
+            sent = miss = 0
             for m in msgs:
                 body = (m.get("content") or "").strip()
                 if not body:
                     continue
                 line = f"[{m.get('sender','')}] [{m.get('time','')}] {body}"
-                _send_single(conv_id, line)
-                sent += 1
-                _time.sleep(0.4)  # 과도한 burst 방지 (429 시 _send_single 이 30s backoff)
-            _save_last_content(name, content)  # 오늘 작업으로 기록 (멱등)
+                if _send_verified(line):
+                    sent += 1
+                else:
+                    miss += 1
+                    print(f"  [BACKFILL] {name}: 1건 전송 실패(재시도 소진)", flush=True)
+                _time.sleep(0.4)
+            # 전부 성공했을 때만 '오늘 작업'으로 기록 (일부 실패 시 재실행에서 다시 시도)
+            if miss == 0:
+                _save_last_content(name, content)
             done += 1
-            print(f"  [BACKFILL] {name}: 완료 ({sent}건 전송)", flush=True)
+            print(f"  [BACKFILL] {name}: 완료 (성공 {sent} / 실패 {miss})", flush=True)
         except Exception as e:
             print(f"  [BACKFILL] {name}: 에러 {e}", flush=True)
             try:
