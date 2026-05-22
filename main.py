@@ -1513,6 +1513,49 @@ def cmd_backfill(argv: list[str]) -> int:
     return 0
 
 
+def cmd_reply_buttons(argv: list[str]) -> int:
+    """모든 워크 미러방에 [📤 카톡 답장] 버튼을 1개씩 송신 (상시 답장 진입점).
+
+    Bot API(messages.send + button block)만 사용 — 화면 자동화 없음, monitor 와 무관.
+    버튼 클릭 → reactive Request URL → 모달 → Callback → 카톡 송신.
+    플래그: --dry-run (대상 목록만)
+    """
+    import json as _json
+    import time as _time
+    from core.kakaowork_router import send_reply_button
+
+    dry = "--dry-run" in argv
+    mapping_path = ROOT / "data" / "room_mapping.json"
+    if not mapping_path.exists():
+        print("[REPLY-BTN] room_mapping.json 없음")
+        return 1
+    mapping = _json.loads(mapping_path.read_text(encoding="utf-8"))
+
+    print(f"[REPLY-BTN] {len(mapping)}개 미러방에 답장 버튼 송신"
+          + (" (dry-run)" if dry else ""))
+    if dry:
+        for n in mapping:
+            print(f"  [대상] {n}")
+        return 0
+
+    ok = fail = 0
+    for name in mapping:
+        try:
+            r = send_reply_button(name)
+        except Exception as e:
+            r = False
+            print(f"  ❌ {name}: {e}", flush=True)
+        if r:
+            ok += 1
+            print(f"  ✅ {name}", flush=True)
+        else:
+            fail += 1
+            print(f"  ❌ {name} (송신 실패)", flush=True)
+        _time.sleep(0.4)
+    print(f"[REPLY-BTN] 완료: 성공 {ok} / 실패 {fail}")
+    return 0
+
+
 def main(argv: list[str]) -> int:
     if len(argv) < 2:
         return cmd_monitor()
@@ -1533,6 +1576,8 @@ def main(argv: list[str]) -> int:
         return cmd_monitor(with_recorder=with_recorder)
     elif cmd == "backfill":
         return cmd_backfill(argv)
+    elif cmd in ("reply-buttons", "reply_buttons"):
+        return cmd_reply_buttons(argv)
     elif cmd == "learn":
         return cmd_learn()
     elif cmd == "anchors":
