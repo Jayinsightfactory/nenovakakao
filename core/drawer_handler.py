@@ -1191,6 +1191,32 @@ def _save_one_bundle(v_hwnd: int) -> bool:
     vr = win32gui.GetWindowRect(v_hwnd)
     print(f"    [서랍] 뷰어 rect={vr}", flush=True)
 
+    # ── 클립보드 우선 저장 (저장 다이얼로그 우회) ──
+    # KakaoTalk 이미지 뷰어는 Ctrl+C 로 '복호화된' 이미지를 클립보드에 올린다.
+    # → PIL 로 grab 해서 KAKAO_DOWNLOAD_DIR 에 파일로 저장하면, 호출자의 폴더
+    #   스냅샷이 새 파일로 감지한다. 파일명칸/폴더선택 다이얼로그 자동화(깨짐)를
+    #   통째로 우회 → 훨씬 안정적. 실패 시 아래 기존 ↓저장으로 폴백.
+    try:
+        import win32clipboard as _wcb
+        from PIL import ImageGrab as _IG
+        try:
+            _wcb.OpenClipboard(); _wcb.EmptyClipboard(); _wcb.CloseClipboard()
+        except Exception:
+            pass
+        time.sleep(0.1)
+        pyautogui.hotkey("ctrl", "c")
+        time.sleep(0.5)
+        _clip = _IG.grabclipboard()
+        if _clip is not None and not isinstance(_clip, list):
+            KAKAO_DOWNLOAD_DIR.mkdir(parents=True, exist_ok=True)
+            _out = KAKAO_DOWNLOAD_DIR / f"clip_{int(time.time()*1000)}.png"
+            _clip.save(_out)
+            print(f"    [서랍] 클립보드 저장 성공: {_out.name} {_clip.size}", flush=True)
+            return True
+        print(f"    [서랍] 클립보드에 이미지 없음 → ↓저장 폴백", flush=True)
+    except Exception as _e:
+        print(f"    [서랍] 클립보드 저장 예외({_e}) → ↓저장 폴백", flush=True)
+
     # Vision 우선으로 ↓ 드롭다운 좌표 찾기 (하드코딩은 폴백).
     # 뷰어 크기는 방마다/화면 해상도마다 달라서 rect[2]-70, rect[3]-22 가
     # 안 맞는 경우가 많음. 뷰어 하단 바를 집중 스캔.
