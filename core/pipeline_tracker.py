@@ -27,21 +27,69 @@ from typing import Optional
 ROOT = Path(__file__).parent.parent
 CHAIN_FILE = ROOT / "data" / "work_chains.json"
 
-# 트리거로 인정할 event_type (신규 업무 시작 신호)
+# 트리거로 인정할 event_type (신규 업무 시작 신호).
+# ⚠️ 분류기(gsheet_sync.parse_message)가 실제로 내보내는 어휘와 반드시 일치해야 함.
+#    (검증: 2026-05-25 리플레이 — DEFECT_REPORT/DEFECT_EXTERNAL/SHIPMENT_EXTERNAL 누락으로
+#     불량 이슈 0건 포착되던 버그. 분류기 어휘 전수 반영.)
 TRIGGER_EVENTS = {
-    "ORDER_CHANGE",   # 발주/추가/취소/변경
-    "ARRIVAL",        # 입고/도착
-    "DEFECT",         # 불량/클레임
-    "SHIPMENT",       # 출고/배차
+    "ORDER_CHANGE",       # 발주/추가/취소/변경
+    "ORDER_CONFIRM",      # 주문 확정 — 체인 진행 신호(종결 아님). 같은 차수::품목 키의
+                          #            불량 체인을 잘못 닫던 문제로 CLOSE 에서 이동.
+    "ARRIVAL",            # 입고/도착
+    "SHIPMENT",           # 출고/배차
+    "SHIPMENT_EXTERNAL",  # 외부 출고
+    "DEFECT",             # 불량/클레임
+    "DEFECT_REPORT",      # 불량 신고 (분류기 주 출력)
+    "DEFECT_EXTERNAL",    # 외부 불량
+    # 참고: LOGISTICS_PARTNER(파트너채널 물류)는 의도적으로 제외 — 잡음 많음.
+    #       추적 필요해지면 여기 추가.
 }
 
-# 완결 event_type (체인 CLOSED 전환)
+# 완결 event_type (체인 CLOSED 전환).
+# DECISION 만 둠 — 분류기가 명시적 완료 표현("완료/확정")에만 DECISION 을 붙이므로 안전.
+# (ORDER_CONFIRM 은 협상 중에도 흔히 나와 불량 체인 오종결 유발 → 제외)
 CLOSE_EVENTS = {
     "DECISION",       # 승인/확정/완료
 }
 CLOSE_KEYWORDS = ("완료", "확정", "종결", "마감", "close", "done")
 
-STALLED_HOURS = 4  # 트리거 후 N시간 동안 후속 없으면 STALLED
+STALLED_HOURS = 4  # 마지막 이벤트 후 N시간 동안 후속 없으면 STALLED
+
+
+def _normalize_ts(timestamp: Optional[str]) -> str:
+    """다양한 시각 입력 → ISO 문자열로 정규화.
+
+    - 이미 ISO ("2026-05-25T10:04:00") → 그대로 (리플레이 하네스가 record일자+카톡시각 조합으로 전달)
+    - 카톡 표시 시각 ("오전 10:04" / "오후 4:13") → 오늘 날짜 + 해당 시각 (라이브 경로)
+    - 그 외/파싱 실패 → 현재 시각
+
+    ⚠️ 기존 버그: 카톡 시각을 그대로 last_update 로 저장 → get_stalled 의
+       datetime.fromisoformat() 가 100% 실패 → 알람이 영구 무력화됐었음.
+    알려진 한계: 자정 직전 메시지를 자정 직후 사이클이 읽으면 오늘 날짜가 붙어
+       시각이 '내일'이 될 수 있음(저빈도). 정확히 고치려면 record 일자를 라이브
+       경로까지 전달해야 함(하네스의 _iso_from 처럼) — 차후 처리.
+    """
+    if not timestamp:
+        return datetime.now().isoformat(timespec="seconds")
+    # 1) ISO 그대로
+    try:
+        return datetime.fromisoformat(timestamp).isoformat(timespec="seconds")
+    except Exception:
+        pass
+    # 2) 카톡 "오전/오후 H:MM"
+    import re as _re
+    m = _re.match(r"\s*(오전|오후)\s*(\d{1,2}):(\d{2})", timestamp)
+    if m:
+        ampm, hh, mm = m.group(1), int(m.group(2)), int(m.group(3))
+        if ampm == "오후" and hh != 12:
+            hh += 12
+        elif ampm == "오전" and hh == 12:
+            hh = 0
+        if 0 <= hh <= 23 and 0 <= mm <= 59:
+            base = datetime.now().replace(hour=hh, minute=mm, second=0, microsecond=0)
+            return base.isoformat(timespec="seconds")
+    # 3) 폴백
+    return datetime.now().isoformat(timespec="seconds")
 
 
 class ChainTracker:
@@ -166,7 +214,7 @@ class ChainTracker:
             # 체인 키 구성 불가 (차수 없음 or 품목/거래처 없음) — 무시
             return None
 
-        now = timestamp or datetime.now().isoformat(timespec="seconds")
+        now = _normalize_ts(timestamp)
 
         with self._lock:
             chain = self._chains.get(cid)
@@ -199,6 +247,8 @@ class ChainTracker:
                     "event_type": event_type, "summary": summary,
                 })
                 chain["last_update"] = now
+                # 새 이벤트가 왔으니 '알림 완료' 해제 → 다시 멈추면 재알림 가능
+                chain.pop("stalled_notified", None)
                 # 상태 전환: OPEN → PROGRESS
                 if chain["status"] == "OPEN":
                     chain["status"] = "PROGRESS"
@@ -222,27 +272,37 @@ class ChainTracker:
                 self._enqueue_pending_order(chain)
         return cid
 
-    def get_stalled(self, hours: int = STALLED_HOURS) -> list[dict]:
-        """트리거 후 N시간 이상 추가 이벤트 없는 체인."""
+    def get_stalled(self, hours: int = STALLED_HOURS, *, only_new: bool = True) -> list[dict]:
+        """마지막 이벤트 후 N시간 이상 후속 없는 미완결 체인.
+
+        변경(2026-05-25):
+          - 기존 `len(events)==1` 제한 제거 → 트리거뿐 아니라 진행 중
+            끊긴 체인(PROGRESS)도 잡는다. (이전엔 후속 1건만 와도 영영 알람 안 됨)
+          - only_new=True: 한 번 알린 체인은 재알림 안 함(중복 스팸 방지).
+            stalled_notified 플래그로 표시.
+        """
         now = datetime.now()
         out: list[dict] = []
+        changed = False
         with self._lock:
             for cid, ch in self._chains.items():
                 if ch.get("status") == "CLOSED":
                     continue
+                if only_new and ch.get("stalled_notified"):
+                    continue
                 try:
                     last = datetime.fromisoformat(ch["last_update"])
-                    diff = (now - last).total_seconds() / 3600
-                    if diff >= hours and len(ch["events"]) == 1:
-                        # 트리거 1개 있고 후속 없음
-                        ch2 = dict(ch)
-                        ch2["stalled_hours"] = round(diff, 1)
-                        out.append(ch2)
-                        # 상태 전환
-                        ch["status"] = "STALLED"
                 except Exception:
                     continue
-        if out:
+                diff = (now - last).total_seconds() / 3600
+                if diff >= hours:
+                    ch2 = dict(ch)
+                    ch2["stalled_hours"] = round(diff, 1)
+                    out.append(ch2)
+                    ch["status"] = "STALLED"
+                    ch["stalled_notified"] = True
+                    changed = True
+        if changed:
             self._save()
         return out
 

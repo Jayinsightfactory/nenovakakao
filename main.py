@@ -1008,9 +1008,11 @@ def cmd_monitor(*, with_recorder: bool = False) -> int:
                                     f"({ch.get('stalled_hours','?')}h 경과)")
                             print(line, flush=True)
                             lines.append(line)
-                        # 이슈방 전송
+                        # 이슈방 전송 — 비블로킹 (업무 경보가 미러링을 멈추면 안 됨).
+                        # report_issue 의 블로킹 팝업은 '기술 에러' 전용으로 둔다.
                         try:
-                            report_issue("미완결 업무 경보", "\n".join(lines))
+                            from core.issue_reporter import send_issue_to_kakaowork
+                            send_issue_to_kakaowork("미완결 업무 경보", "\n".join(lines))
                         except Exception as _e:
                             print(f"[STALLED] 이슈방 전송 실패 (무시): {_e}")
                 except Exception as e:

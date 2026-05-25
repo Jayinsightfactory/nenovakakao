@@ -27,7 +27,9 @@ DATA_DIR = Path(__file__).parent.parent / "data"
 ISSUE_ROOM_FILE = DATA_DIR / "issue_room.json"
 
 API_BASE = "https://api.kakaowork.com/v1"
-ADMIN_USER_ID = 11826656
+# 진짜 관리자 user_id (CLAUDE.md). 이전 11826656 은 워크스페이스에서 빠진 stale 계정 —
+# 그쪽으로 보내면 messages.send 가 success 여도 실제 수신 안 됨.
+ADMIN_USER_ID = 11854018
 
 
 def _headers() -> dict:

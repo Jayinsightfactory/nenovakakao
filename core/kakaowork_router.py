@@ -25,7 +25,8 @@ ROOM_MAP_FILE = DATA_DIR / "room_mapping.json"
 DETECTED_FILE = DATA_DIR / "rooms_detected.json"
 
 # 관리자 유저 ID (임재용 - dlaww584@gmail.com)
-ADMIN_USER_ID = 11826656
+# 진짜 관리자 user_id (CLAUDE.md). 이전 11826656 은 stale 계정.
+ADMIN_USER_ID = 11854018
 
 API_BASE = "https://api.kakaowork.com/v1"
 
