@@ -663,6 +663,94 @@ def send_photos_native(conv_id: str, file_paths: list) -> list:
     return posted
 
 
+# ── 일반 파일(비이미지) 네이티브 업로드 ──
+# 검증(2026-05-25): file 타입은 metas 에 duration/width/height/rotation(=0) 가
+# 모두 있어야 서버 500(FunctionClauseError) 안 남. (문서엔 video 전용이라 했으나 실제론 필수)
+_FILE_MAX = 1024 * 1024 * 1024  # 서버 한도 ~1GB
+
+
+def _upload_files_batch(conv_id: str, group: list) -> list:
+    """≤5개 일반 파일을 1요청 업로드 → [(Path, attachment_id), ...].
+    응답 attachments 개수가 group 과 같을 때만 파일↔id 순서 매칭(안전)."""
+    metas = [{"file_name": p.name, "file_type": "file", "file_size": p.stat().st_size,
+              "duration": 0, "width": 0, "height": 0, "rotation": 0} for p in group]
+    opened = []
+    pairs: list = []
+    try:
+        files = []
+        for p in group:
+            fobj = open(p, "rb")
+            opened.append(fobj)
+            files.append(("attachments[]", (p.name, fobj, "application/octet-stream")))
+        resp = requests.post(
+            f"{API_BASE}/conversations/{conv_id}/upload",
+            headers=_auth_only_headers(),
+            data={"metas": json.dumps(metas, ensure_ascii=False)},
+            files=files,
+            timeout=300,
+        )
+        r = resp.json()
+        if not r.get("success"):
+            print(f"  [FILE-UPLOAD] 실패: {r}", flush=True)
+            return []
+        atts = r.get("attachments") or []
+        if len(atts) == len(group):
+            for p, a in zip(group, atts):
+                aid = a.get("attachment_id")
+                if aid:
+                    pairs.append((p, str(aid)))
+    except Exception as e:
+        print(f"  [FILE-UPLOAD] 예외: {e}", flush=True)
+    finally:
+        for fobj in opened:
+            try:
+                fobj.close()
+            except Exception:
+                pass
+    return pairs
+
+
+def send_file_attachment(conv_id: str, attachment_id) -> bool:
+    """업로드된 일반 파일을 메시지로 게시 (messages.send_attachments, type=file, 단일)."""
+    payload = {"conversation_id": conv_id, "type": "file",
+               "attachment": {"attachment_id": str(attachment_id)}}
+    try:
+        resp = requests.post(f"{API_BASE}/messages.send_attachments",
+                             headers=_headers(), json=payload, timeout=30)
+        r = resp.json()
+        if r.get("success"):
+            return True
+        print(f"  [SEND-FILE] 실패: {r}", flush=True)
+        return False
+    except Exception as e:
+        print(f"  [SEND-FILE] 예외: {e}", flush=True)
+        return False
+
+
+def send_files_native(conv_id: str, file_paths: list) -> list:
+    """일반 파일들을 Bot API 로 업로드+게시. **게시 성공 파일 경로 리스트** 반환.
+    외부 호스팅/앱 자동화 불필요. ≤5개씩 업로드 후 파일별 send_attachments(type=file)."""
+    valid = [Path(p) for p in file_paths]
+    valid = [p for p in valid if p.exists() and 0 < p.stat().st_size <= _FILE_MAX]
+    posted: list = []
+    for i in range(0, len(valid), 5):
+        group = valid[i:i + 5]
+        pairs = _upload_files_batch(conv_id, group)
+        if len(pairs) == len(group):
+            for p, aid in pairs:
+                ok = send_file_attachment(conv_id, aid)
+                if not ok:
+                    time.sleep(1.0)
+                    ok = send_file_attachment(conv_id, aid)  # 1회 재시도
+                if ok:
+                    posted.append(p)
+                time.sleep(0.3)
+        elif pairs:
+            print(f"  [FILE-UPLOAD] 그룹 부분 업로드 {len(pairs)}/{len(group)} → 스킵(폴백)", flush=True)
+        time.sleep(0.3)
+    return posted
+
+
 def send_image_to_mirror(kakaotalk_name: str, image_url: str, caption: str = "") -> bool:
     """카톡방 이름으로 미러 방 찾아서 이미지만 전송 (caption 무시)."""
     mapping = _load_room_mapping()
