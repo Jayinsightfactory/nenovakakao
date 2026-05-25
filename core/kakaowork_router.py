@@ -552,6 +552,117 @@ def send_image_block(conv_id: str, image_url: str) -> bool:
         return False
 
 
+def _auth_only_headers() -> dict:
+    """multipart 업로드용 — Authorization 만(Content-Type 은 requests 가 boundary 와 자동 설정)."""
+    token = os.getenv("KAKAOWORK_BOT_TOKEN")
+    if not token:
+        raise RuntimeError("KAKAOWORK_BOT_TOKEN이 .env에 설정되지 않았습니다.")
+    return {"Authorization": f"Bearer {token}"}
+
+
+_NATIVE_IMG_EXT = {".png", ".jpg", ".jpeg", ".gif", ".bmp"}
+_NATIVE_IMG_MAX = 15 * 1024 * 1024  # 카카오워크 이미지 한도 15MB
+
+
+def _upload_image_batch(conv_id: str, group: list) -> list[str]:
+    """≤5개 이미지를 1요청으로 업로드 → attachment_id 리스트(문자열).
+
+    POST /conversations/{id}/upload (multipart). 검증: 2026-05-25 실호출 OK
+    (응답: {success, attachments:[{attachment_id, url, access_key, file_name}]}).
+    """
+    metas = [{"file_name": p.name, "file_type": "image",
+              "file_size": p.stat().st_size} for p in group]
+    opened = []
+    ids: list[str] = []
+    try:
+        files = []
+        for p in group:
+            fobj = open(p, "rb")
+            opened.append(fobj)
+            files.append(("attachments[]", (p.name, fobj, "application/octet-stream")))
+        resp = requests.post(
+            f"{API_BASE}/conversations/{conv_id}/upload",
+            headers=_auth_only_headers(),
+            data={"metas": json.dumps(metas, ensure_ascii=False)},
+            files=files,
+            timeout=120,
+        )
+        r = resp.json()
+        if not r.get("success"):
+            print(f"  [UPLOAD] 실패: {r}", flush=True)
+            return []
+        for att in (r.get("attachments") or []):
+            aid = att.get("attachment_id")
+            if aid:
+                ids.append(str(aid))
+    except Exception as e:
+        print(f"  [UPLOAD] 예외: {e}", flush=True)
+    finally:
+        for fobj in opened:
+            try:
+                fobj.close()
+            except Exception:
+                pass
+    return ids
+
+
+def send_image_attachments(conv_id: str, attachment_ids: list) -> bool:
+    """업로드된 이미지 attachment_id 들을 메시지로 게시 (messages.send_attachments, type=image)."""
+    if not attachment_ids:
+        return False
+    payload = {
+        "conversation_id": conv_id,
+        "type": "image",
+        "attachment": {"attachment_ids": [str(a) for a in attachment_ids]},
+    }
+    try:
+        resp = requests.post(
+            f"{API_BASE}/messages.send_attachments",
+            headers=_headers(),
+            json=payload,
+            timeout=30,
+        )
+        r = resp.json()
+        if r.get("success"):
+            return True
+        print(f"  [SEND-ATT] 실패: {r}", flush=True)
+        return False
+    except Exception as e:
+        print(f"  [SEND-ATT] 예외: {e}", flush=True)
+        return False
+
+
+def send_photos_native(conv_id: str, file_paths: list) -> list:
+    """이미지들을 Bot API 네이티브로 업로드+게시. **실제 게시된 파일 경로 리스트** 반환.
+
+    외부 호스팅(nenovaweb)·앱 화면 자동화 불필요. 한 번에 최대 5개씩 묶어
+    업로드 → send_attachments. 비이미지/15MB초과/없는 파일은 건너뜀.
+    그룹의 모든 파일이 업로드+게시 성공한 경우에만 그 그룹을 '게시됨'으로 본다
+    (부분 실패 그룹은 호출자가 폴백으로 넘기도록 반환에서 제외 — 미게시 파일 유실 방지).
+    """
+    valid = [Path(p) for p in file_paths]
+    valid = [p for p in valid if p.exists()
+             and p.suffix.lower() in _NATIVE_IMG_EXT
+             and p.stat().st_size <= _NATIVE_IMG_MAX]
+    posted: list = []
+    for i in range(0, len(valid), 5):
+        group = valid[i:i + 5]
+        ids = _upload_image_batch(conv_id, group)
+        if len(ids) == len(group) and ids:
+            ok = send_image_attachments(conv_id, ids)
+            if not ok:
+                time.sleep(1.0)
+                ok = send_image_attachments(conv_id, ids)  # 1회 재시도
+            if ok:
+                posted.extend(group)
+            else:
+                print(f"  [SEND-ATT] 2회 실패 — attachment_ids 소실: {ids}", flush=True)
+        elif ids:
+            print(f"  [NATIVE] 그룹 부분 업로드 {len(ids)}/{len(group)} → 폴백", flush=True)
+        time.sleep(0.3)
+    return posted
+
+
 def send_image_to_mirror(kakaotalk_name: str, image_url: str, caption: str = "") -> bool:
     """카톡방 이름으로 미러 방 찾아서 이미지만 전송 (caption 무시)."""
     mapping = _load_room_mapping()
@@ -933,20 +1044,47 @@ def send_delta_interleaved(
             if shortfall > 0:
                 stats["photos_missing"] += shortfall
 
+            # ── 헤더(발신자/시각) 1회 전송 (순서 보존) ──
+            header_txt = f"[{sender}] [{tstr}] [사진]"
+            if _send_single(conv_id, header_txt):
+                stats["text_sent"] += 1
+            time.sleep(delay)
+
             # ═══════════════════════════════════════════════
-            # nenovaweb 호스팅 업로드 + image_link 블록 전송 (GUI 자동화 불필요)
+            # 1순위: Bot API 네이티브 업로드 (외부호스팅/앱자동화 불필요, 2026-05-25)
+            #   /conversations/{id}/upload → messages.send_attachments(type=image)
+            # ═══════════════════════════════════════════════
+            try:
+                posted_files = send_photos_native(conv_id, photos_for_this)
+            except Exception as _ne:
+                posted_files = []
+                print(f"  [NATIVE] 예외({_ne}) → nenovaweb/GUI 폴백", flush=True)
+            if posted_files:
+                stats["photos_uploaded"] += len(posted_files)
+                for _pf in posted_files:  # 게시된 것만 로컬 정리(누적 방지)
+                    try:
+                        Path(_pf).unlink()
+                    except Exception:
+                        pass
+                posted_set = {str(Path(p)) for p in posted_files}
+                photos_for_this = [p for p in photos_for_this if str(Path(p)) not in posted_set]
+                if not photos_for_this:
+                    time.sleep(delay)
+                    continue
+                # 남은(미게시) 사진만 폴백으로 처리
+                print(f"  [NATIVE] {len(posted_set)}장 게시, 나머지 {len(photos_for_this)}장 폴백", flush=True)
+            else:
+                print("  [NATIVE] 0장 게시 → nenovaweb/GUI 폴백", flush=True)
+
+            # ═══════════════════════════════════════════════
+            # 2순위(폴백): nenovaweb 호스팅 업로드 + link preview
             # ═══════════════════════════════════════════════
             try:
                 from core.photo_uploader import upload_many as _nw_upload_many
                 from core.photo_uploader import delete_from_nenovaweb as _nw_delete
                 from core.photo_uploader import _get_client_id as _nw_check
                 if _nw_check():
-                    # 헤더 메시지 먼저 (텍스트 순서 보존)
-                    header_txt = f"[{sender}] [{tstr}] [사진]"
-                    if _send_single(conv_id, header_txt):
-                        stats["text_sent"] += 1
-                    time.sleep(delay)
-                    # 각 사진 nenovaweb 업로드 + image_link 블록 전송 + 성공시 서버에서 삭제
+                    # 각 사진 nenovaweb 업로드 + link preview + 성공시 서버에서 삭제
                     urls = _nw_upload_many(photos_for_this, room=kakaotalk_name)
                     for j, (f, url) in enumerate(zip(photos_for_this, urls)):
                         if url:
@@ -1084,9 +1222,23 @@ def send_delta_interleaved(
                 stats["text_failed"] += 1
             time.sleep(delay)
 
-    # 남은 사진 (파싱이 놓친 경우) — nenovaweb 업로드 + image_link
-    # GUI 업로드 경로는 Vision 실패 빈발 → nenovaweb 경로로 통일.
+    # 남은 사진 (파싱이 놓친 경우) — 1순위 Bot API 네이티브, 폴백 nenovaweb.
     remaining = list(photo_iter)
+    if remaining:
+        try:
+            _posted = send_photos_native(conv_id, remaining)
+        except Exception:
+            _posted = []
+        if _posted:
+            stats["trailing_uploaded"] += len(_posted)
+            stats["photos_uploaded"] += len(_posted)
+            for _pf in _posted:
+                try:
+                    Path(_pf).unlink()
+                except Exception:
+                    pass
+            _pset = {str(Path(p)) for p in _posted}
+            remaining = [p for p in remaining if str(Path(p)) not in _pset]
     if remaining:
         try:
             from core.photo_uploader import upload_many as _nw_um
