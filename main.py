@@ -510,6 +510,12 @@ def cmd_monitor(*, with_recorder: bool = False) -> int:
     captures_dir = ROOT / "captures"
     cycle = 0
 
+    # 서킷브레이커: 카톡 방이 연속으로 안 열리면(화면잠금/로그아웃/창최소화) 무한
+    # 헛클릭을 막기 위해 자동 정지한다. 2026-05-22 야간 17.5시간 폭주 재발 방지.
+    consecutive_dead_cycles = 0
+    DEAD_CYCLE_MIN_MISSES = 3   # 한 사이클에 방 미열림이 이만큼 이상 발생 +
+    MAX_DEAD_CYCLES = 3         # 그런 '완전 실패' 사이클이 연속 이만큼이면 자동 정지
+
     # 동일 좌표 반복 차단: {y_절대좌표: (마지막사이클, 연속실패횟수)}
     # 같은 y에서 3회 연속 "변경 없음" 시 5사이클 동안 차단 (광고/스팸 영역 방지)
     coord_failures: dict[int, tuple[int, int]] = {}
@@ -770,6 +776,8 @@ def cmd_monitor(*, with_recorder: bool = False) -> int:
 
             from core.window_detector import scroll_room_list
             cycle_found = 0
+            cycle_misses = 0   # 이번 사이클 chat_didnt_open(방 미열림) 수
+            cycle_opened = 0   # 이번 사이클 실제로 열린 방 수 (성공/중복/무변경/대상아님 포함)
             ROOM_ETA_BASE = 5
             ROOM_ETA_PHOTO = 6
             n_pages = len(PAGES)
@@ -822,6 +830,10 @@ def cmd_monitor(*, with_recorder: bool = False) -> int:
                     # 방 클릭 Y 보정: 목록 맨 위 공지/배너 회피용 (window_positions.json)
                     _row_y_off = get_room_list_click_y_offset()
                     row_ys = [_tp + 35 + _row_y_off + i * SWEEP_ROW_HEIGHT for i in range(ROWS_PER_PAGE)]
+                    # 오프셋(공지배너 회피)이 양수면 맨 윗방(y=_tp+35)이 첫 행보다 위에 남아
+                    # 누락되므로, 오프셋 없는 최상단 행을 맨 앞에 보강한다.
+                    if _row_y_off > 0:
+                        row_ys = [_tp + 35] + row_ys
                     # 위→아래 순회: 안읽음 방이 적을 때 상위 방부터 처리
                     # (이전: 하위부터 → 빈 영역 3회 스킵 → 실제 방 못 건드림)
                     rows_desc = row_ys  # 위→아래
@@ -855,13 +867,15 @@ def cmd_monitor(*, with_recorder: bool = False) -> int:
                                 _log_issue("chat_didnt_open", cycle=cycle, page=page_idx, row=iter_idx,
                                            context={"click_xy": [CLICK_X, row_y]})
                                 consecutive_misses += 1
+                                cycle_misses += 1
                                 print(f"     [p{page_idx} r{iter_idx}] y={row_y} 분리창 미열림 → 스킵 (연속 {consecutive_misses})", flush=True)
                                 if consecutive_misses >= MAX_CONSECUTIVE_MISSES:
                                     print(f"     [p{page_idx}] {MAX_CONSECUTIVE_MISSES}회 연속 미열림 → 페이지 나머지 스킵", flush=True)
                                     break
                                 continue
-                            # 결과가 있으면 연속 카운터 리셋
+                            # 결과가 있으면 연속 카운터 리셋 (방이 실제로 열렸다는 신호)
                             consecutive_misses = 0
+                            cycle_opened += 1
 
                             # 워크 답장 우선 양보 (저장 전 감지) → 즉시 락 풀고 답장 처리
                             if result.get("_yielded"):
@@ -937,6 +951,28 @@ def cmd_monitor(*, with_recorder: bool = False) -> int:
                 cycle_nochange,
                 cycle_skipped,
             )
+
+            # ── 서킷브레이커: 연속 '완전 실패'(방이 하나도 안 열림) 사이클 → 자동 정지 + 경보 ──
+            # idle(새 메시지 없음)과 구분: idle 은 방이 열리되 중복/무변경이라 cycle_opened>0.
+            # 완전 실패는 클릭해도 분리창이 안 떠서 cycle_opened==0 & 미열림 누적 → 야간 폭주 패턴.
+            if cycle_opened == 0 and cycle_misses >= DEAD_CYCLE_MIN_MISSES:
+                consecutive_dead_cycles += 1
+                print(f"[서킷] 완전 실패 사이클 {consecutive_dead_cycles}/{MAX_DEAD_CYCLES} "
+                      f"(방 미열림 {cycle_misses}건, 열림 0)", flush=True)
+            else:
+                consecutive_dead_cycles = 0
+            if consecutive_dead_cycles >= MAX_DEAD_CYCLES:
+                alert = (f"🛑 감시 자동 중단 — 카톡 방 미열림 폭주 차단\n"
+                         f"{consecutive_dead_cycles}사이클 연속으로 방이 하나도 안 열렸습니다 "
+                         f"(직전 사이클 미열림 {cycle_misses}건).\n"
+                         f"원인 후보: 카톡 로그아웃 / 화면잠금 / 카톡 창 최소화·이동.\n"
+                         f"확인 후 다시 시작하세요.")
+                print(alert, flush=True)
+                try:
+                    report_issue("감시 자동 중단 (방 미열림 폭주 차단)", alert)
+                except Exception as _e:
+                    print(f"[서킷] 경보 전송 실패(무시): {_e}", flush=True)
+                break
 
             # 이슈 분석 요약 출력 + learning.md append
             try:
