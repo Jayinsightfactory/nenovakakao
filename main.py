@@ -784,20 +784,14 @@ def cmd_monitor(*, with_recorder: bool = False) -> int:
             DELAY = 0.7  # 모든 액션 간 고정 딜레이
             MAX_ITERATIONS_PER_PAGE = 15  # 같은 스크롤 위치에서 최대 시도 (중복 나오면 더 빨리 끝남)
 
-            def _force_kakao_main_foreground_inline():
-                """스크롤 리셋 없이 카톡 메인창만 foreground로."""
+            def _force_kakao_main_foreground_inline() -> bool:
+                """카톡 메인창을 foreground로. 트레이로 닫혀 있으면 복원+재배치까지.
+                반환 True=메인창 활성(클릭 안전), False=실패(클릭 보류해야 함)."""
                 try:
-                    import win32gui as _w32
-                    from core.window_manager import force_foreground as _ff
-                    _hwnds: list = []
-                    def _f(h, lst):
-                        if _w32.IsWindowVisible(h) and _w32.GetWindowText(h) == "카카오톡":
-                            lst.append(h)
-                    _w32.EnumWindows(_f, _hwnds)
-                    if _hwnds:
-                        _ff(_hwnds[0])
+                    from core.window_manager import ensure_main_window_foreground
+                    return ensure_main_window_foreground()
                 except Exception:
-                    pass
+                    return False
 
             def _scroll_to_page(win, page_idx):
                 """맨 위 → N회 -830 스크롤 (0.7초 딜레이)."""
@@ -854,8 +848,18 @@ def cmd_monitor(*, with_recorder: bool = False) -> int:
                             break
 
                         try:
+                            # 매 행마다: 메인창이 닫혀(트레이) 있으면 켜고 활성화.
+                            # 활성화 실패 시 좌표 맹목 클릭 금지(엉뚱한 창 클릭 사고 방지) → 보류.
+                            if not _force_kakao_main_foreground_inline():
+                                consecutive_misses += 1
+                                print(f"     [p{page_idx} r{iter_idx}] 카톡 메인창 비활성/닫힘 → 클릭 보류 "
+                                      f"(연속 {consecutive_misses})", flush=True)
+                                if consecutive_misses >= MAX_CONSECUTIVE_MISSES:
+                                    print(f"     [p{page_idx}] 메인창 계속 비활성 → 페이지 나머지 스킵", flush=True)
+                                    break
+                                time.sleep(1.0)
+                                continue
                             # 매 행마다 재스크롤 + 해당 행 클릭
-                            _force_kakao_main_foreground_inline()
                             _scroll_to_page(window, page_idx)
 
                             t0 = time.time()

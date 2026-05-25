@@ -156,6 +156,97 @@ def force_foreground(hwnd: int) -> bool:
         return False
 
 
+def _find_main_window_any() -> int | None:
+    """카톡 메인창 hwnd (숨김 포함). X로 트레이에 닫히면 IsWindowVisible=False 가
+    되므로 visible 필터 없이 정확 제목으로 찾는다. visible 우선, 없으면 숨김."""
+    vis: list[int] = []
+    hidden: list[int] = []
+    def _f(h, _):
+        try:
+            if win32gui.GetWindowText(h) == KAKAOTALK_TITLE:
+                (vis if win32gui.IsWindowVisible(h) else hidden).append(h)
+        except Exception:
+            pass
+    win32gui.EnumWindows(_f, None)
+    if vis:
+        return vis[0]
+    if hidden:
+        return hidden[0]
+    return None
+
+
+def _relaunch_kakaotalk() -> bool:
+    """카톡 메인창 hwnd 자체가 없을 때(트레이에서 완전 숨김) exe 재실행으로 복귀.
+    단일 인스턴스라 재실행 시 기존 인스턴스의 메인창이 다시 뜬다."""
+    import os
+    import subprocess
+    cands = [
+        r"C:\Program Files (x86)\Kakao\KakaoTalk\KakaoTalk.exe",
+        r"C:\Program Files\Kakao\KakaoTalk\KakaoTalk.exe",
+    ]
+    for c in cands:
+        if os.path.exists(c):
+            try:
+                subprocess.Popen([c])
+                # 콜드 스타트(로그인 스플래시/트레이 초기화)는 2초 초과 흔함 →
+                # 고정 sleep 대신 창이 뜰 때까지 폴링(최대 ~8s).
+                for _ in range(16):
+                    time.sleep(0.5)
+                    if _find_main_window_any() is not None:
+                        return True
+                return _find_main_window_any() is not None
+            except Exception as e:
+                print(f"  [ENSURE-MAIN] 재실행 실패: {e}", flush=True)
+                return False
+    return False
+
+
+def ensure_main_window_foreground() -> bool:
+    """카톡 메인창이 '보이고 + foreground' 상태가 되도록 보장.
+
+    - 트레이로 닫힘(숨김)/최소화 → 복원(ShowWindow) + 잠긴 좌표로 재배치
+    - hwnd 자체가 없으면 exe 재실행으로 복귀 시도
+    반환: True = 메인창이 foreground (클릭 안전). False = 실패 → 호출자는 클릭 보류.
+
+    목적: 메인창이 닫힌 채 좌표만 맹목 클릭해 엉뚱한 창(바탕화면/터널창)을
+          누르는 사고 방지 (2026-05-25).
+    """
+    import win32con
+    hwnd = _find_main_window_any()
+    relaunched = False
+    if hwnd is None:
+        relaunched = _relaunch_kakaotalk()
+        hwnd = _find_main_window_any()
+        if hwnd is None:
+            print("  [ENSURE-MAIN] 메인창 없음(복귀 실패)", flush=True)
+            return False
+    try:
+        restored = False
+        if not win32gui.IsWindowVisible(hwnd):
+            win32gui.ShowWindow(hwnd, win32con.SW_SHOW)
+            restored = True
+            time.sleep(0.2)
+        placement = win32gui.GetWindowPlacement(hwnd)
+        if placement[1] == win32con.SW_SHOWMINIMIZED:
+            win32gui.ShowWindow(hwnd, win32con.SW_RESTORE)
+            restored = True
+            time.sleep(0.2)
+        if restored or relaunched:
+            try:
+                x, y, w, h = get_pos_tuple("kakaotalk_main")
+                win32gui.MoveWindow(hwnd, x, y, w, h, True)
+                time.sleep(0.2)
+                print("  [ENSURE-MAIN] 닫힌 메인창 복원 + 재배치", flush=True)
+            except Exception as _me:
+                print(f"  [ENSURE-MAIN] 재배치 실패(좌표 어긋남 가능): {_me}", flush=True)
+        force_foreground(hwnd)
+        time.sleep(0.05)
+        return win32gui.GetForegroundWindow() == hwnd
+    except Exception as e:
+        print(f"  [ENSURE-MAIN] 실패: {e}", flush=True)
+        return False
+
+
 def lock_kakaotalk_window(pos: tuple[int, int, int, int] | None = None) -> bool:
     """카톡 메인창을 고정 좌표/크기로 강제 이동·리사이즈.
 
