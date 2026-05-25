@@ -1676,6 +1676,18 @@ def main(argv: list[str]) -> int:
         print(f"[SYNC-MAPPING] 시작 (dry_run={dry})")
         result = sync_room_mapping(dry_run=dry)
         return 0 if not result["unmatched"] else 0  # unmatched 도 fatal 아님
+    elif cmd in ("adopt-new-rooms", "adopt_new_rooms", "adopt"):
+        # 카톡 신규 초대방 자동 채택 → 워크 미러 자동 생성 + 등록 (그룹방만)
+        from core import room_sync
+        try:
+            from core.window_manager import lock_kakaotalk_window
+            lock_kakaotalk_window()
+        except Exception:
+            pass
+        auto = "--dry-run" not in argv
+        res = room_sync.adopt_new_rooms(auto_create=auto)
+        print(f"[ADOPT] 결과: {res}")
+        return 0
     elif cmd in ("auto-anchor", "auto_anchor"):
         return cmd_auto_anchor(argv)
     elif cmd == "metrics":
