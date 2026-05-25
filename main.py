@@ -778,6 +778,8 @@ def cmd_monitor(*, with_recorder: bool = False) -> int:
             cycle_found = 0
             cycle_misses = 0   # 이번 사이클 chat_didnt_open(방 미열림) 수
             cycle_opened = 0   # 이번 사이클 실제로 열린 방 수 (성공/중복/무변경/대상아님 포함)
+            cycle_adopted = 0  # 이번 사이클 자동 채택(새 그룹방 미러 생성) 수
+            MAX_ADOPT_PER_CYCLE = 3  # 폭주 방지: 사이클당 자동 미러 생성 상한
             ROOM_ETA_BASE = 5
             ROOM_ETA_PHOTO = 6
             n_pages = len(PAGES)
@@ -792,6 +794,42 @@ def cmd_monitor(*, with_recorder: bool = False) -> int:
                     return ensure_main_window_foreground()
                 except Exception:
                     return False
+
+            def _auto_adopt_group_room(room_name: str) -> str:
+                """모니터가 연 방(정확한 win32 제목)이 매핑에 없으면 새 그룹방으로 자동 채택.
+                OCR 아닌 실제 창 제목 기반이라 변형 사고 없음.
+                반환: 'adopted'(미러 새로 생성) / 'mapped'(이미 매핑됨) / 'skip'(1:1·시스템·잘림·실패)
+                """
+                try:
+                    from core.kakaowork_router import _load_room_mapping, ensure_mirror_for_rooms
+                    from core.room_sync import (
+                        _is_group_room, _is_1to1_room, _is_system_room,
+                        sync_selected_from_mapping,
+                    )
+                except Exception:
+                    return "skip"
+                # 이미 매핑됨(공백 무시)? → selected 만 보강
+                mapping = _load_room_mapping()
+                nn = room_name.replace(" ", "")
+                for k in mapping:
+                    if k.replace(" ", "") == nn:
+                        return "mapped"
+                # 제목 잘림(", ..." / "…")이면 이름 불완전 → 자동채택 보류
+                if "..." in room_name or "…" in room_name:
+                    print(f"     [AUTO-ADOPT] '{room_name}' 제목 잘림 → 보류", flush=True)
+                    return "skip"
+                # 그룹방만 (1:1/시스템 제외)
+                if _is_system_room(room_name) or _is_1to1_room(room_name) or not _is_group_room(room_name):
+                    return "skip"
+                try:
+                    res = ensure_mirror_for_rooms([room_name])
+                    sync_selected_from_mapping()
+                    if res.get("created") or room_name in (res.get("mapping") or {}):
+                        print(f"     [AUTO-ADOPT] 새 그룹방 워크 미러 생성: {room_name}", flush=True)
+                        return "adopted"
+                except Exception as e:
+                    print(f"     [AUTO-ADOPT] '{room_name}' 생성 실패: {e}", flush=True)
+                return "skip"
 
             def _scroll_to_page(win, page_idx):
                 """맨 위 → N회 -830 스크롤 (0.7초 딜레이)."""
@@ -904,12 +942,22 @@ def cmd_monitor(*, with_recorder: bool = False) -> int:
 
                             room_name = result["room_name"]
                             if room_name not in selected_names:
-                                cycle_skipped.append(room_name)
-                                _record_room(room_name, "not_target")
-                                _log_issue("not_target_room", cycle=cycle, page=page_idx, row=iter_idx,
-                                           room=room_name)
-                                print(f"     [p{page_idx} r{iter_idx}] {room_name} - 감시 대상 아님", flush=True)
-                                continue
+                                # 새 초대 그룹방 자동 채택 (정확한 win32 제목 기준 → 다음부터 미러링)
+                                _ad = "skip"
+                                if cycle_adopted < MAX_ADOPT_PER_CYCLE:
+                                    _ad = _auto_adopt_group_room(room_name)
+                                if _ad == "adopted":
+                                    cycle_adopted += 1
+                                    selected_names.add(room_name)
+                                elif _ad == "mapped":
+                                    selected_names.add(room_name)
+                                else:
+                                    cycle_skipped.append(room_name)
+                                    _record_room(room_name, "not_target")
+                                    _log_issue("not_target_room", cycle=cycle, page=page_idx, row=iter_idx,
+                                               room=room_name)
+                                    print(f"     [p{page_idx} r{iter_idx}] {room_name} - 감시 대상 아님", flush=True)
+                                    continue
 
                             cycle_found += 1
                             from core.kakaowork_router import count_photo_messages
