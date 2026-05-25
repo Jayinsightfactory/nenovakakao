@@ -100,6 +100,70 @@ _worker_started = False
 _worker_lock = threading.Lock()
 
 
+def _post_send_confirmation(room: str, hwnd, reply_text: str) -> None:
+    """카톡 전송 직후, 카톡 창을 캡처해 워크 미러방에 업로드 → '100% 반영' 시각 확인.
+
+    순서(워크 미러방): 📤 전송내용 텍스트 → [카톡 창 캡처 이미지] → ✅ 반영확인.
+    캡처는 봇 네이티브 업로드(send_photos_native)로 올린다. 모든 단계 예외 무시.
+    """
+    from core.kakaowork_router import send_to_mirror_room
+    # 1) 전송 내용 텍스트 기록
+    try:
+        send_to_mirror_room(room, f"📤 카톡으로 전송: {reply_text}")
+    except Exception as e:
+        print(f"  [REACTIVE-WORKER] 워크 텍스트기록 실패(무시): {e}", flush=True)
+
+    # 2) 카톡 창 캡처 → 워크 미러방 업로드
+    out = None
+    try:
+        import win32gui
+        from PIL import ImageGrab
+        from core import kakao_win32 as kw
+        from core.kakaowork_router import send_photos_native, _load_room_mapping
+
+        h = hwnd
+        if not h or not win32gui.IsWindow(h):
+            h = kw.find_chat_window(room)
+        if not h:
+            print("  [REACTIVE-WORKER] 캡처: 카톡 창 못찾음 → 스킵", flush=True)
+            return
+        try:
+            kw.bring_window_to_front(h)
+        except Exception:
+            pass
+        time.sleep(0.6)
+        l, t, r, b = win32gui.GetWindowRect(h)
+        if (r - l) < 100 or (b - t) < 100:
+            return
+        img = ImageGrab.grab(bbox=(l, t, r, b))
+        out = ROOT / "data" / f"_reply_capture_{int(time.time() * 1000)}.png"
+        img.save(out)
+
+        mapping = _load_room_mapping()
+        conv_id = mapping.get(room)
+        if not conv_id:
+            nn = room.replace(" ", "")
+            for k, v in mapping.items():
+                if k.replace(" ", "") == nn:
+                    conv_id = v
+                    break
+        posted = send_photos_native(str(conv_id), [out]) if conv_id else []
+        msg = "✅ 카톡 반영 확인 (위 캡처)" if posted else "⚠️ 전송됨 — 캡처 업로드 실패"
+        try:
+            send_to_mirror_room(room, msg)
+        except Exception:
+            pass
+        print(f"  [REACTIVE-WORKER] 전송 확인 캡처: {'업로드 OK' if posted else '업로드 실패'}", flush=True)
+    except Exception as e:
+        print(f"  [REACTIVE-WORKER] 캡처/업로드 예외(무시): {e}", flush=True)
+    finally:
+        try:
+            if out is not None:
+                out.unlink(missing_ok=True)
+        except Exception:
+            pass
+
+
 def _process_send(room: str, reply_text: str) -> None:
     """실제 카톡 송신 (워커 스레드에서 호출). 락으로 monitor 와 조정."""
     from core import kakao_lock as _klock
@@ -144,13 +208,9 @@ def _process_send(room: str, reply_text: str) -> None:
         _log({"endpoint": "worker", "result": "sent" if ok else "send_failed",
               "room": room, "detail": send_res})
 
-        # 워크 미러방에도 답장 기록 남기기 (보낸 내용을 워크에서도 확인 가능하게)
+        # 워크 미러방에 답장 기록 + 카톡 창 캡처 업로드 (100% 전송 시각 확인)
         if ok:
-            try:
-                from core.kakaowork_router import send_to_mirror_room
-                send_to_mirror_room(room, f"📤 카톡으로 전송: {reply_text}")
-            except Exception as e:
-                print(f"  [REACTIVE-WORKER] 워크방 기록 실패(무시): {e}", flush=True)
+            _post_send_confirmation(room, hwnd, reply_text)
     except Exception as e:
         print(f"  [REACTIVE-WORKER] 예외: {type(e).__name__}: {e}", flush=True)
         _log({"endpoint": "worker", "result": "exception", "error": str(e)})
