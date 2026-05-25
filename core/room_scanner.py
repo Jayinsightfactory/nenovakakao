@@ -18,7 +18,9 @@ from dotenv import load_dotenv
 # .env 로드
 load_dotenv(Path(__file__).parent.parent / ".env", override=True)
 
-CLAUDE_MODEL = "claude-sonnet-4-20250514"
+# 방 이름 정확도가 핵심 (OCR 변형 → 잘못된 미러 생성 사고). 최고 정확도 모델 사용.
+# (구 claude-sonnet-4-20250514 은 한글 방이름 오인식이 잦아 85개 junk 방 사고 유발)
+CLAUDE_MODEL = "claude-opus-4-7"
 
 PROMPT = """이 이미지는 카카오톡 PC 앱의 채팅방 리스트를 캡처한 것입니다.
 

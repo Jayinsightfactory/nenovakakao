@@ -127,11 +127,28 @@ def adopt_new_rooms(window=None, *, auto_create: bool = True) -> dict:
         window = find_kakaotalk_window()
 
     captures = ROOT / "captures"
+    # 새 방은 '전체' 탭 전체 목록을 봐야 한다(안읽음만 보면 이미 읽은 새 방 놓침).
+    # 스캔은 캡처만 하고 방을 열지 않으므로 읽음처리 부작용 없음. 끝나면 안읽음 복귀.
+    try:
+        import pyautogui as _pag
+        _pag.click(window.left + 158, window.top + 96)  # 전체 탭
+        time.sleep(0.6)
+    except Exception:
+        pass
     try:
         rooms = scan_rooms_full(window, captures)
     except Exception as e:
         print(f"[ADOPT] 스캔 실패: {e}", flush=True)
-        return {"error": str(e), "scanned": 0, "new": 0, "adopted": [], "created": 0}
+        rooms = []
+    finally:
+        try:
+            import pyautogui as _pag2
+            _pag2.click(window.left + 190, window.top + 96)  # 안읽음 탭 복귀
+            time.sleep(0.4)
+        except Exception:
+            pass
+    if not rooms:
+        return {"error": "scan_empty", "scanned": 0, "new": 0, "adopted": [], "created": 0}
 
     try:
         mapping = json.loads(MAPPING_FILE.read_text(encoding="utf-8"))
@@ -141,6 +158,11 @@ def adopt_new_rooms(window=None, *, auto_create: bool = True) -> dict:
     # OCR 잡음 방어: 단순 공백제거가 아니라 fuzzy(글자 변형) 매칭으로 비교.
     # (2026-05-25 사고: OCR 이 같은 방을 수십 변형으로 읽어 85개 junk 방 생성됨)
     from difflib import SequenceMatcher
+
+    def _strip_count(s: str) -> str:
+        # 방 리스트의 방이름 뒤 멤버수/뱃지("주님방 12", "청화원예 4")를 제거.
+        # (Claude Vision 이 이름에 카운트를 붙여 읽어 기존 방이 '신규'로 오인되던 문제)
+        return _re.sub(r"\s+\d+\s*$", "", (s or "")).strip()
 
     def _normf(s: str) -> str:
         return _re.sub(r"[\s\[\]()._\-\"'&+,/]+", "", (s or "")).lower()
@@ -160,7 +182,7 @@ def adopt_new_rooms(window=None, *, auto_create: bool = True) -> dict:
             return True
         return any(_similar(n, k) >= FUZZ for k in existing_keys)
 
-    scanned_names = [r.get("name", "").strip() for r in rooms if r.get("name")]
+    scanned_names = [_strip_count(r.get("name", "")) for r in rooms if r.get("name")]
     # 1) 기존 매핑과 fuzzy 일치(OCR 변형 포함)면 신규 아님
     new_names = [n for n in scanned_names if n and not _matches_existing(n)]
     # 2) 신규 후보들 사이 OCR 변형 흡수 — 대표 1개만 (긴 이름 우선)

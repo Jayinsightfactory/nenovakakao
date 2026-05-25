@@ -510,6 +510,10 @@ def cmd_monitor(*, with_recorder: bool = False) -> int:
     captures_dir = ROOT / "captures"
     cycle = 0
 
+    # 새 방 자동 채택 스캔 주기 (Claude Vision 으로 전체 목록 읽어 새 그룹방 미러 생성)
+    NEWROOM_SCAN_INTERVAL = 5 * 3600  # 5시간마다
+    last_newroom_scan_ts = time.time()  # 첫 스캔은 +5시간 후
+
     # 서킷브레이커: 카톡 방이 연속으로 안 열리면(화면잠금/로그아웃/창최소화) 무한
     # 헛클릭을 막기 위해 자동 정지한다. 2026-05-22 야간 17.5시간 폭주 재발 방지.
     consecutive_dead_cycles = 0
@@ -1069,6 +1073,25 @@ def cmd_monitor(*, with_recorder: bool = False) -> int:
                             print(f"[STALLED] 이슈방 전송 실패 (무시): {_e}")
                 except Exception as e:
                     print(f"[STALLED] 체크 실패: {e}")
+
+            # ── 새 방 자동 채택 스캔 (5시간마다, Claude Vision 으로 전체 목록 읽기) ──
+            # 방을 열지 않고 캡처+Vision 으로만 읽어 새 그룹방 미러 생성(읽음처리 부작용 없음).
+            if time.time() - last_newroom_scan_ts >= NEWROOM_SCAN_INTERVAL:
+                last_newroom_scan_ts = time.time()
+                print("[NEWROOM] 5시간 주기 새 방 스캔 (전체 탭, Claude Vision)", flush=True)
+                _got = _klock.acquire("monitor", timeout=30)
+                try:
+                    from core import room_sync as _rs
+                    _res = _rs.adopt_new_rooms(window, auto_create=True)
+                    print(f"[NEWROOM] 신규 {_res.get('new',0)} / 채택 {len(_res.get('adopted',[]))} / "
+                          f"생성 {_res.get('created',0)} / 검토필요 {len(_res.get('review_external',[]))}", flush=True)
+                    for _n in _res.get("adopted", []):
+                        selected_names.add(_n)
+                except Exception as _e:
+                    print(f"[NEWROOM] 스캔 실패: {_e}", flush=True)
+                finally:
+                    if _got:
+                        _klock.release("monitor")
 
             try:
                 cleanup_popups()
