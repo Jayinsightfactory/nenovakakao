@@ -1684,7 +1684,11 @@ def main(argv: list[str]) -> int:
             lock_kakaotalk_window()
         except Exception:
             pass
-        auto = "--dry-run" not in argv
+        # 안전: 기본은 dry-run(보고만). 실제 생성은 --create 명시 필요.
+        # (OCR 잡음으로 junk 방 대량생성 사고 방지)
+        auto = "--create" in argv
+        if not auto:
+            print("[ADOPT] dry-run 모드 — 실제 생성 안 함. 생성하려면 --create 추가.")
         res = room_sync.adopt_new_rooms(auto_create=auto)
         print(f"[ADOPT] 결과: {res}")
         return 0

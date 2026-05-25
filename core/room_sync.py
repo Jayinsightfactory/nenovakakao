@@ -138,19 +138,40 @@ def adopt_new_rooms(window=None, *, auto_create: bool = True) -> dict:
     except Exception:
         mapping = {}
 
-    def _norm(s: str) -> str:
-        return _re.sub(r"\s+", "", s or "")
-    known_norm = {_norm(k) for k in mapping}
+    # OCR 잡음 방어: 단순 공백제거가 아니라 fuzzy(글자 변형) 매칭으로 비교.
+    # (2026-05-25 사고: OCR 이 같은 방을 수십 변형으로 읽어 85개 junk 방 생성됨)
+    from difflib import SequenceMatcher
+
+    def _normf(s: str) -> str:
+        return _re.sub(r"[\s\[\]()._\-\"'&+,/]+", "", (s or "")).lower()
+
+    def _similar(a: str, b: str) -> float:
+        na, nb = _normf(a), _normf(b)
+        if not na or not nb:
+            return 0.0
+        return SequenceMatcher(None, na, nb).ratio()
+
+    FUZZ = 0.82
+    existing_keys = list(mapping.keys())
+    existing_norm = {_normf(k) for k in existing_keys}
+
+    def _matches_existing(n: str) -> bool:
+        if _normf(n) in existing_norm:
+            return True
+        return any(_similar(n, k) >= FUZZ for k in existing_keys)
 
     scanned_names = [r.get("name", "").strip() for r in rooms if r.get("name")]
-    new_names = [n for n in scanned_names if _norm(n) not in known_norm]
+    # 1) 기존 매핑과 fuzzy 일치(OCR 변형 포함)면 신규 아님
+    new_names = [n for n in scanned_names if n and not _matches_existing(n)]
+    # 2) 신규 후보들 사이 OCR 변형 흡수 — 대표 1개만 (긴 이름 우선)
+    reps: list[str] = []
+    for n in sorted(set(new_names), key=lambda x: (-len(x), x)):
+        if any(_similar(n, r) >= FUZZ for r in reps):
+            continue
+        reps.append(n)
 
     adopted, skip_personal, skip_system, review_ext = [], [], [], []
-    seen = set()
-    for n in new_names:
-        if _norm(n) in seen:
-            continue
-        seen.add(_norm(n))
+    for n in reps:
         if _is_system_room(n):
             skip_system.append(n)
         elif _is_group_room(n):
@@ -159,6 +180,15 @@ def adopt_new_rooms(window=None, *, auto_create: bool = True) -> dict:
             skip_personal.append(n)
         else:
             review_ext.append(n)  # 모호 → 자동생성 안 함, 검토용
+
+    # 3) 안전장치: 채택 후보가 비정상적으로 많으면 OCR 잡음 → 자동생성 중단(검토만)
+    MAX_AUTO = 12
+    if auto_create and len(adopted) > MAX_AUTO:
+        print(f"[ADOPT] 채택 후보 {len(adopted)}개 > {MAX_AUTO} — OCR 잡음 의심 → "
+              f"자동생성 중단(검토 목록만). 확인 후 소수일 때만 생성하세요.", flush=True)
+        review_ext = adopted + review_ext
+        adopted = []
+        auto_create = False
 
     created = 0
     if adopted and auto_create:
