@@ -1528,6 +1528,10 @@ def cmd_backfill(argv: list[str]) -> int:
                 continue
             print(f"  [BACKFILL] {name}: {len(content)}자 → 메시지 {len(msgs)}건 개별 전송", flush=True)
 
+            # 멱등 원장: 이미 워크에 보낸 동일 메시지는 재전송 안 함 (재백필 안전)
+            from core.sent_ledger import SentLedger as _SentLedger
+            _bf_ledger = _SentLedger(name)
+
             def _send_verified(text: str) -> bool:
                 """전송 성공(success=True) 할 때까지 재시도. 실패는 카운트 안 함.
                 _send_single 은 429 시 30s backoff(False 반환), ConnectionError 시 내부
@@ -1543,23 +1547,33 @@ def cmd_backfill(argv: list[str]) -> int:
 
             _send_verified(f"📦 [백필] {name} 전체 대화 {len(msgs)}건")
             _time.sleep(0.4)
-            sent = miss = 0
+            sent = miss = skipped = 0
             for m in msgs:
                 body = (m.get("content") or "").strip()
                 if not body:
                     continue
+                # 멱등 dedup: 이미 워크에 보낸 동일 메시지면 스킵
+                _h = _bf_ledger.hash_msg(m)
+                if _bf_ledger.seen(_h):
+                    skipped += 1
+                    continue
                 line = f"[{m.get('sender','')}] [{m.get('time','')}] {body}"
                 if _send_verified(line):
                     sent += 1
+                    _bf_ledger.add(_h)
                 else:
                     miss += 1
                     print(f"  [BACKFILL] {name}: 1건 전송 실패(재시도 소진)", flush=True)
                 _time.sleep(0.4)
+            try:
+                _bf_ledger.flush()
+            except Exception:
+                pass
             # 전부 성공했을 때만 '오늘 작업'으로 기록 (일부 실패 시 재실행에서 다시 시도)
             if miss == 0:
                 _save_last_content(name, content)
             done += 1
-            print(f"  [BACKFILL] {name}: 완료 (성공 {sent} / 실패 {miss})", flush=True)
+            print(f"  [BACKFILL] {name}: 완료 (성공 {sent} / 중복스킵 {skipped} / 실패 {miss})", flush=True)
         except Exception as e:
             print(f"  [BACKFILL] {name}: 에러 {e}", flush=True)
             try:

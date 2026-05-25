@@ -630,10 +630,16 @@ def send_delta_interleaved(
     photo_list = list(photo_files or [])
     photo_iter = iter(photo_list)
 
+    # 멱등 원장: 이미 워크에 보낸 동일 텍스트 메시지는 재전송 안 함
+    # (extract_delta 매칭 실패로 대화 전체가 다시 delta로 와도 중복 차단)
+    from core.sent_ledger import SentLedger
+    _ledger = SentLedger(kakaotalk_name)
+
     stats = {
         "total_messages": len(messages),
         "text_sent": 0,
         "text_failed": 0,
+        "text_skipped": 0,
         "photos_uploaded": 0,
         "photos_missing": 0,
         "trailing_uploaded": 0,
@@ -1065,8 +1071,14 @@ def send_delta_interleaved(
             text = f"[{sender}] [{tstr}] {msg['content']}"
             if len(text) > 3000:
                 text = text[:3000] + "..."
+            # 멱등 dedup: 이미 워크에 보낸 동일 메시지면 스킵
+            _h = _ledger.hash_msg(msg)
+            if _ledger.seen(_h):
+                stats["text_skipped"] += 1
+                continue
             if _send_single(conv_id, text):
                 stats["text_sent"] += 1
+                _ledger.add(_h)
             else:
                 stats["text_failed"] += 1
             time.sleep(delay)
@@ -1116,6 +1128,14 @@ def send_delta_interleaved(
                     print(f"  [ABORT] 꼬리 사진 {len(remaining)}장 vision 검증 실패 - 중단", flush=True)
                     stats["photos_missing"] += len(remaining)
 
+    # 멱등 원장 저장 (이번에 보낸 메시지 해시 영구화)
+    try:
+        _ledger.flush()
+    except Exception:
+        pass
+    if stats.get("text_skipped", 0):
+        print(f"  [DEDUP] {kakaotalk_name}: 이미 워크에 있는 {stats['text_skipped']}건 제외", flush=True)
+
     # 양방향: 미러방에 [📤 카톡 답장] 버튼 첨부 (텍스트 전송된 경우만)
     if stats.get("text_sent", 0) > 0:
         try:
@@ -1157,8 +1177,13 @@ def send_messages_individually(
     if last_n is not None and len(messages) > last_n:
         messages = messages[-last_n:]
 
+    # 멱등 원장: 이미 워크에 보낸 동일 메시지는 재전송 안 함
+    from core.sent_ledger import SentLedger
+    _ledger = SentLedger(kakaotalk_name)
+
     sent = 0
     failed = 0
+    skipped = 0
     photo_messages = []
 
     for i, msg in enumerate(messages):
@@ -1168,9 +1193,17 @@ def send_messages_individually(
         if len(text) > 3000:
             text = text[: 3000 - 3] + "..."
 
+        # 멱등 dedup: 이미 워크에 보낸 동일 메시지면 스킵
+        # (텍스트 앵커를 안 보냈으므로 photo_messages 에도 넣지 않음)
+        _h = _ledger.hash_msg(msg)
+        if _ledger.seen(_h):
+            skipped += 1
+            continue
+
         ok = _send_single(conv_id, text)
         if ok:
             sent += 1
+            _ledger.add(_h)
         else:
             failed += 1
 
@@ -1179,15 +1212,23 @@ def send_messages_individually(
 
         # 진행률 (50건마다)
         if (i + 1) % 50 == 0:
-            print(f"     진행: {i + 1}/{len(messages)} ({sent}성공/{failed}실패)")
+            print(f"     진행: {i + 1}/{len(messages)} ({sent}성공/{failed}실패/{skipped}중복스킵)")
 
         if i < len(messages) - 1:
             time.sleep(delay)
+
+    try:
+        _ledger.flush()
+    except Exception:
+        pass
+    if skipped:
+        print(f"  [DEDUP] {kakaotalk_name}: 이미 워크에 있는 {skipped}건 제외", flush=True)
 
     return {
         "total": len(messages),
         "sent": sent,
         "failed": failed,
+        "skipped": skipped,
         "photo_messages": photo_messages,
     }
 
