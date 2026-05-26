@@ -877,6 +877,10 @@ def cmd_monitor(*, with_recorder: bool = False) -> int:
                     # 연속 미열림 카운터 — N회 연속이면 페이지 나머지 스킵 (빈 행 낭비 제거)
                     consecutive_misses = 0
                     MAX_CONSECUTIVE_MISSES = 3
+                    # 연속 중복(이번 사이클 이미 처리한 방을 또 클릭) — 안읽음이 짧을 때
+                    # 같은 방들이 19페이지 내내 반복 등장하는 헛작업 방지.
+                    consecutive_dups = 0
+                    MAX_CONSECUTIVE_DUPS = 4
 
                     for iter_idx, row_y in enumerate(rows_desc, 1):
                         if overlay.should_stop or _stop_requested():
@@ -931,8 +935,16 @@ def cmd_monitor(*, with_recorder: bool = False) -> int:
                             if result.get("_duplicate"):
                                 _log_issue("duplicate_skip", cycle=cycle, page=page_idx, row=iter_idx,
                                            room=result.get("room_name"))
-                                print(f"     [p{page_idx} r{iter_idx}] 이미 처리됨: {result.get('room_name','')[:20]}", flush=True)
+                                consecutive_dups += 1
+                                print(f"     [p{page_idx} r{iter_idx}] 이미 처리됨: {result.get('room_name','')[:20]} "
+                                      f"(연속 dup {consecutive_dups})", flush=True)
+                                if consecutive_dups >= MAX_CONSECUTIVE_DUPS:
+                                    print(f"     [p{page_idx}] {MAX_CONSECUTIVE_DUPS}회 연속 이미처리 → "
+                                          f"안읽음 리스트 소진 — 페이지 나머지 스킵", flush=True)
+                                    break
                                 continue
+                            # 중복 아니면 카운터 리셋
+                            consecutive_dups = 0
 
                             if result.get("_no_change"):
                                 room_name = result["room_name"]
