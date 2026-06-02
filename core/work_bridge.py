@@ -64,6 +64,28 @@ def append_sent(kakaotalk_room: str, text: str) -> None:
         pass
 
 
+# 봇이 워크방에 남기는 시스템 메시지의 preview 시그니처.
+# 이게 preview 로 잡히면 사용자 메시지가 아니므로 절대 카톡으로 보내지 않는다.
+_BOT_SYSTEM_MARKERS = (
+    "방으로 답장",        # send_reply_button: "💬 'X' 방으로 답장"
+    "[카톡 미러]",         # send_to_mirror_room 헤더
+    "📤 카톡으로 전송",     # reactive 전송 기록
+    "📤 카톡 답장",         # 답장 버튼 라벨
+    "✅ 카톡 반영 확인",    # 캡처 확인
+    "⚠️ 전송됨",
+    "💬 '",               # 답장 버튼 텍스트 시작
+    "📦 [백필]",
+)
+
+
+def _is_bot_system_preview(preview: str) -> bool:
+    """preview 가 봇이 워크에 남긴 시스템 메시지면 True (무한 에코 차단)."""
+    p = (preview or "").strip()
+    if not p:
+        return False
+    return any(mk in p for mk in _BOT_SYSTEM_MARKERS)
+
+
 def _is_our_message(kakaotalk_room: str, preview: str) -> bool:
     """preview 가 우리가 보낸 최근 메시지와 '접두사 일치'면 True (loop 차단).
 
@@ -187,6 +209,13 @@ def cycle_once(*, forward: bool = True, verbose: bool = True) -> dict:
             if verbose:
                 print(f"  [WORK→KK] new_room (skip): {work_room}", flush=True)
             continue
+        # 봇 시스템 메시지 차단 — 우리(봇)가 워크방에 남기는 메시지가 preview 로
+        # 잡혀 카톡으로 되쏘는 무한 에코 방지. 답장버튼/미러헤더/전송확인 등.
+        if _is_bot_system_preview(preview):
+            stats["self_loop_skipped"] += 1
+            if verbose:
+                print(f"  [WORK→KK] 봇 시스템 메시지 skip: '{preview[:40]}'", flush=True)
+            continue
         kk = _resolve_kakao_room(work_room, mapping)
         if not kk:
             stats["unmapped_skipped"] += 1
@@ -214,6 +243,9 @@ def cycle_once(*, forward: bool = True, verbose: bool = True) -> dict:
         try:
             import win32gui as _w32
             for kk, preview, work_room in to_forward:
+                if _stop_requested():
+                    print("  [WORK→KK] data/_STOP 감지 — 송신 중단", flush=True)
+                    break
                 try:
                     # 카톡 분리창이 없으면 먼저 검색→열기 (답장서버와 동일 패턴).
                     # send_message_to_room 은 '이미 열린 분리창'만 찾으므로 선행 필수.
@@ -260,12 +292,29 @@ def cycle_once(*, forward: bool = True, verbose: bool = True) -> dict:
     return stats
 
 
+STOP_FILE = DATA / "_STOP"
+
+
+def _stop_requested() -> bool:
+    """공용 정지 파일(data/_STOP)이 있으면 True. 별도 프로세스에서도 정지 가능."""
+    try:
+        return STOP_FILE.exists()
+    except Exception:
+        return False
+
+
 def daemon(*, interval_sec: int = 20, once: bool = False,
            dry_run: bool = False) -> int:
-    """워크→카톡 브릿지 데몬. Ctrl+C 종료."""
+    """워크→카톡 브릿지 데몬. Ctrl+C 또는 data/_STOP 파일로 종료."""
     print(f"[WORK→KK] 데몬 시작 interval={interval_sec}s dry={dry_run} once={once}", flush=True)
+    if _stop_requested():
+        print("[WORK→KK] data/_STOP 존재 — 시작 안 함(정지 상태). 파일 삭제 후 재실행.", flush=True)
+        return 0
     cycle = 0
     while True:
+        if _stop_requested():
+            print("[WORK→KK] data/_STOP 감지 — 데몬 종료", flush=True)
+            return 0
         cycle += 1
         try:
             print(f"\n[WORK→KK] === cycle {cycle} ===", flush=True)
@@ -278,4 +327,11 @@ def daemon(*, interval_sec: int = 20, once: bool = False,
             print(f"[WORK→KK] cycle 예외: {type(e).__name__}: {e}", flush=True)
         if once:
             return 0
-        time.sleep(interval_sec)
+        # 정지 반응성 위해 interval 을 잘게 쪼개 _STOP 체크
+        slept = 0.0
+        while slept < interval_sec:
+            if _stop_requested():
+                print("[WORK→KK] data/_STOP 감지(대기중) — 데몬 종료", flush=True)
+                return 0
+            time.sleep(min(2.0, interval_sec - slept))
+            slept += 2.0
