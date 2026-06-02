@@ -508,10 +508,13 @@ def cmd_monitor(*, with_recorder: bool = False) -> int:
     print("[MONITOR] 감시 시작... (중단: Ctrl+C 또는 마우스를 화면 모서리로)")
     print()
 
+    import os as _os
+
     captures_dir = ROOT / "captures"
     cycle = 0
 
     # 새 방 자동 채택 스캔 주기 (Claude Vision 으로 전체 목록 읽어 새 그룹방 미러 생성)
+    # 기본 OFF (NENOVA_NEWROOM_SCAN=1 로 활성). 실시간 win32 채택이 주력이라 보강용.
     NEWROOM_SCAN_INTERVAL = 5 * 3600  # 5시간마다
     last_newroom_scan_ts = time.time()  # 첫 스캔은 +5시간 후
 
@@ -1087,9 +1090,16 @@ def cmd_monitor(*, with_recorder: bool = False) -> int:
                 except Exception as e:
                     print(f"[STALLED] 체크 실패: {e}")
 
-            # ── 새 방 자동 채택 스캔 (5시간마다, Claude Vision 으로 전체 목록 읽기) ──
-            # 방을 열지 않고 캡처+Vision 으로만 읽어 새 그룹방 미러 생성(읽음처리 부작용 없음).
-            if time.time() - last_newroom_scan_ts >= NEWROOM_SCAN_INTERVAL:
+            # ── 새 방 자동 채택 — 2경로 역할 분리 (P1 중복 정리) ──
+            #  (1) 실시간: _auto_adopt_group_room — 모니터가 안읽음 방을 열 때 정확한
+            #      win32 제목으로 즉시 채택. OCR 변형 없음. 주력 경로(항상 동작).
+            #  (2) 주기 백업: 아래 5시간 Vision 전체스캔 — 안읽음에 안 뜬(이미 읽은)
+            #      신규 그룹방까지 훑는 보강. 단 Vision/OCR 변형 사고 위험이 있어
+            #      기본 OFF. 필요 시 NENOVA_NEWROOM_SCAN=1 로 활성화.
+            #  ensure_mirror_for_rooms 가 멱등(매핑 있으면 skip)이라 둘이 같은 방을
+            #  잡아도 중복 생성은 없음.
+            _newroom_scan_on = _os.environ.get("NENOVA_NEWROOM_SCAN") == "1"
+            if _newroom_scan_on and time.time() - last_newroom_scan_ts >= NEWROOM_SCAN_INTERVAL:
                 last_newroom_scan_ts = time.time()
                 print("[NEWROOM] 5시간 주기 새 방 스캔 (전체 탭, Claude Vision)", flush=True)
                 _got = _klock.acquire("monitor", timeout=30)
