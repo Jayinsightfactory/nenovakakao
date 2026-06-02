@@ -133,10 +133,21 @@ def capture_chat_panel(hwnd: int, out_path: Path | None = None,
             print(f"  [WORK-VISION] KW 분리창 {n}개 최소화", flush=True)
     except Exception:
         pass
-    # 전면화 (간단)
+    # 전면화 + 최상단 강제 (TOPMOST). 터널 콘솔/Claude 등 다른 창이 KW 룸목록을
+    # 가려 캡처가 일부만 잡히던 문제(11방→3방) 방지. 캡처 후 TOPMOST 해제.
+    import win32con
     try:
-        win32gui.SetForegroundWindow(hwnd)
-        time.sleep(0.3)
+        if win32gui.IsIconic(hwnd):
+            win32gui.ShowWindow(hwnd, win32con.SW_RESTORE)
+            time.sleep(0.2)
+        # HWND_TOPMOST 로 다른 모든 창 위로 (이동/리사이즈 없이 Z순서만)
+        win32gui.SetWindowPos(hwnd, win32con.HWND_TOPMOST, 0, 0, 0, 0,
+                              win32con.SWP_NOMOVE | win32con.SWP_NOSIZE | win32con.SWP_SHOWWINDOW)
+        try:
+            win32gui.SetForegroundWindow(hwnd)
+        except Exception:
+            pass
+        time.sleep(0.5)
     except Exception:
         pass
     l, t, r, b = win32gui.GetWindowRect(hwnd)
@@ -148,6 +159,12 @@ def capture_chat_panel(hwnd: int, out_path: Path | None = None,
         out_path = CAPTURES / f"kw_chat_{int(time.time()*1000)}.png"
     img = ImageGrab.grab(bbox=(l, t, r, b))
     img.save(out_path)
+    # TOPMOST 해제 (캡처 끝났으니 KW 가 계속 위에 떠 사용자 방해 안 하게)
+    try:
+        win32gui.SetWindowPos(hwnd, win32con.HWND_NOTOPMOST, 0, 0, 0, 0,
+                              win32con.SWP_NOMOVE | win32con.SWP_NOSIZE)
+    except Exception:
+        pass
     return out_path
 
 
