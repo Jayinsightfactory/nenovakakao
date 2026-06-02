@@ -162,25 +162,51 @@ def _save_state(rows: list) -> None:
 # ─────────────────────────────────────────────────────────
 
 def _resolve_kakao_room(work_room: str, mapping: dict) -> str | None:
-    """워크 방 이름을 정규화해 room_mapping(카톡이름→conv_id)의 키와 매칭.
-    "[미러] X" → "X", "NV01:X" → "X" 처리. 공백 무시 fallback.
+    """워크 방 이름(Vision OCR)을 room_mapping(카톡이름→conv_id) 키와 매칭.
+
+    워크는 conv_id 로 관리되지만 화면엔 conv_id 가 안 보여 이름에 의존한다.
+    Vision OCR 표기 차이("네노바 영업방" vs "네노바 영업", 공백/괄호)에 관용적으로:
+      1) "[미러] " / "NV##:" prefix 제거
+      2) 정확 일치
+      3) 공백제거 일치
+      4) 끝의 "방" 접미사 차이 무시
+      5) fuzzy(SequenceMatcher) 0.88+ — 단 '유일하게' 1개만 통과할 때만(오송신 방지)
     """
+    from difflib import SequenceMatcher
     name = (work_room or "").strip()
     if name.startswith("[미러] "):
         name = name[len("[미러] "):].strip()
     elif name.startswith("[미러]"):
         name = name[len("[미러]"):].strip()
-    # NV## 또는 NV### prefix
     if ":" in name:
         head = name.split(":", 1)[0].strip()
         if head.upper().startswith("NV"):
             name = name.split(":", 1)[1].strip()
+
     if name in mapping:
         return name
-    norm = name.replace(" ", "")
-    for k in mapping:
-        if k.replace(" ", "") == norm:
-            return k
+
+    def _norm(s: str) -> str:
+        s = s.replace(" ", "")
+        # 끝 "방" 접미사 무시 (네노바 영업방 ↔ 네노바 영업)
+        if s.endswith("방"):
+            s = s[:-1]
+        return s
+
+    nn = _norm(name)
+    # 2~3) 공백/방접미사 정규화 일치
+    exact_norm = [k for k in mapping if _norm(k) == nn]
+    if len(exact_norm) == 1:
+        return exact_norm[0]
+    if len(exact_norm) > 1:
+        # 모호 → 가장 긴 공통(=정확) 우선, 그래도 여럿이면 첫 번째
+        return sorted(exact_norm, key=len, reverse=True)[0]
+
+    # 4) fuzzy — 유일하게 0.88+ 일 때만 (여럿이면 모호 → 미매칭)
+    cands = [(k, SequenceMatcher(None, nn, _norm(k)).ratio()) for k in mapping]
+    cands = [(k, r) for k, r in cands if r >= 0.88]
+    if len(cands) == 1:
+        return cands[0][0]
     return None
 
 
@@ -222,6 +248,13 @@ def cycle_once(*, forward: bool = True, verbose: bool = True) -> dict:
             stats["new_room_skipped"] += 1
             if verbose:
                 print(f"  [WORK→KK] new_room (skip): {work_room}", flush=True)
+            continue
+        # 빈 preview 차단 — Vision 이 내용을 못 읽었거나(사진/파일만) 빈 값일 때
+        # 빈 메시지가 카톡으로 가는 것 방지. (preview 변경 감지됐어도 내용 없으면 스킵)
+        if not preview or len(preview) < 2:
+            stats["self_loop_skipped"] += 1
+            if verbose:
+                print(f"  [WORK→KK] 빈/짧은 preview skip: '{work_room}'", flush=True)
             continue
         # 봇 시스템 메시지 차단 — 우리(봇)가 워크방에 남기는 메시지가 preview 로
         # 잡혀 카톡으로 되쏘는 무한 에코 방지. 답장버튼/미러헤더/전송확인 등.

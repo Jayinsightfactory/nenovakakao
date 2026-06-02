@@ -282,8 +282,21 @@ def read_room_list_state(*, capture_path: Path | None = None) -> tuple[list[dict
         return ([], cap)
 
 
+def _to_int(v) -> int:
+    try:
+        return int(v)
+    except Exception:
+        return 0
+
+
 def diff_room_list(prev: list[dict], curr: list[dict]) -> list[dict]:
-    """이전·현재 룸리스트 비교 → preview 가 바뀐 방(=새 메시지 도착) 반환."""
+    """이전·현재 룸리스트 비교 → 새 메시지 도착 방 반환.
+
+    감지 신호 2가지(OR):
+      1) preview 텍스트 변경 — 내용이 바뀜
+      2) unread(안읽음 파란 숫자) 증가 — preview 가 같아도(동일 문구 반복) 새 메시지.
+         (예: '테스트'가 베이스라인에 있고 또 '테스트'가 와도 unread 0→1 로 잡음)
+    """
     by_room_prev = {r.get("room", ""): r for r in prev if r.get("room")}
     changed = []
     for r in curr:
@@ -292,10 +305,17 @@ def diff_room_list(prev: list[dict], curr: list[dict]) -> list[dict]:
             continue
         p = by_room_prev.get(name)
         if p is None:
-            # 새로 보이는 방 — 처음 보면 알릴지 선택
             changed.append({**r, "_kind": "new_room"})
             continue
-        if (r.get("preview") or "") != (p.get("preview") or ""):
-            changed.append({**r, "_kind": "preview_changed",
-                            "_prev_preview": p.get("preview", "")})
+        prev_pv = (p.get("preview") or "")
+        cur_pv = (r.get("preview") or "")
+        prev_un = _to_int(p.get("unread"))
+        cur_un = _to_int(r.get("unread"))
+        if cur_pv != prev_pv:
+            changed.append({**r, "_kind": "preview_changed", "_prev_preview": prev_pv})
+        elif cur_un > prev_un:
+            # preview 동일하지만 안읽음 증가 → 같은 문구의 새 메시지
+            changed.append({**r, "_kind": "unread_up",
+                            "_prev_preview": prev_pv,
+                            "_prev_unread": prev_un, "_cur_unread": cur_un})
     return changed
