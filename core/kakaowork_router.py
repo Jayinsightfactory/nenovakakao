@@ -1397,8 +1397,10 @@ def send_delta_interleaved(
     if stats.get("text_skipped", 0):
         print(f"  [DEDUP] {kakaotalk_name}: 이미 워크에 있는 {stats['text_skipped']}건 제외", flush=True)
 
-    # 양방향: 미러방에 [📤 카톡 답장] 버튼 첨부 (텍스트 전송된 경우만)
-    if stats.get("text_sent", 0) > 0:
+    # 양방향: 답장버튼 자동 부착 — work_bridge 전용 운영에서는 끈다.
+    # (버튼 메시지 "X 방으로 답장"이 워크 룸목록 preview 를 덮어 work_bridge 가
+    #  실제 사용자 메시지를 못 읽던 충돌. NENOVA_REPLY_BUTTON=1 이면 다시 부착.)
+    if os.environ.get("NENOVA_REPLY_BUTTON") == "1" and stats.get("text_sent", 0) > 0:
         try:
             send_reply_button(kakaotalk_name)
         except Exception as e:
