@@ -1763,6 +1763,23 @@ def main(argv: list[str]) -> int:
         print(f"[SYNC-MAPPING] 시작 (dry_run={dry})")
         result = sync_room_mapping(dry_run=dry)
         return 0 if not result["unmatched"] else 0  # unmatched 도 fatal 아님
+    elif cmd in ("work-bridge", "work_bridge"):
+        # 워크→카톡 자동 양방향 데몬 (Vision 룸리스트 델타 → 카톡 포워딩).
+        # --dry-run : 송신 안 함(감지/필터만 로그)
+        # --once    : 1사이클만
+        # --interval N : 사이클 간격(초). 기본 20
+        from core import work_bridge as _wb
+        dry = "--dry-run" in argv
+        once = "--once" in argv
+        interval = 20
+        if "--interval" in argv:
+            i = argv.index("--interval")
+            if i + 1 < len(argv):
+                try:
+                    interval = int(argv[i + 1])
+                except ValueError:
+                    pass
+        return _wb.daemon(interval_sec=interval, once=once, dry_run=dry)
     elif cmd in ("adopt-new-rooms", "adopt_new_rooms", "adopt"):
         # 카톡 신규 초대방 자동 채택 → 워크 미러 자동 생성 + 등록 (그룹방만)
         from core import room_sync

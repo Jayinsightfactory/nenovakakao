@@ -278,7 +278,14 @@ def send_reply_button(kakaotalk_name: str) -> bool:
             f"{API_BASE}/messages.send",
             headers=_headers(), json=payload, timeout=10,
         )
-        return resp.json().get("success", False)
+        ok = resp.json().get("success", False)
+        if ok:
+            try:
+                from core.work_bridge import append_sent
+                append_sent(kakaotalk_name, payload["text"])
+            except Exception:
+                pass
+        return ok
     except Exception as e:
         print(f"  [REPLY-BTN] {kakaotalk_name} 버튼 송신 실패: {e}", flush=True)
         return False
@@ -329,7 +336,14 @@ def send_to_mirror_room(kakaotalk_name: str, text: str, max_length: int = 3000) 
             timeout=10,
         )
         data = resp.json()
-        return data.get("success", False)
+        ok = data.get("success", False)
+        if ok:
+            try:
+                from core.work_bridge import append_sent
+                append_sent(kakaotalk_name, full_text)
+            except Exception:
+                pass
+        return ok
     except Exception as e:
         print(f"[ERROR] 미러 전송 실패 ({kakaotalk_name}): {e}")
         return False
@@ -1306,6 +1320,12 @@ def send_delta_interleaved(
             if _send_single(conv_id, text):
                 stats["text_sent"] += 1
                 _ledger.add(_h)
+                # 워크→카톡 브릿지가 이 메시지를 self-loop 으로 안 보내게 기록
+                try:
+                    from core.work_bridge import append_sent
+                    append_sent(kakaotalk_name, text)
+                except Exception:
+                    pass
             else:
                 stats["text_failed"] += 1
             time.sleep(delay)
