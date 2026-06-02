@@ -75,6 +75,50 @@ def find_kakaowork_window() -> int | None:
     return hidden[0] if hidden else None
 
 
+def _minimize_kw_separate_windows(main_hwnd: int) -> int:
+    """KW 분리 채팅창(메인 '카카오워크' 외 KW 프로세스의 보조 창)을 최소화.
+
+    분리창이 룸리스트 위에 떠 가리면 Vision 이 방이름을 잘라 읽는다(브릿지 오작동).
+    메인창과 같은 프로세스(pid)이면서 제목이 '카카오워크'가 아닌 visible 창을 최소화.
+    반환: 최소화한 창 수.
+    """
+    import win32con
+    import win32gui
+    import win32process
+    try:
+        _, main_pid = win32process.GetWindowThreadProcessId(main_hwnd)
+    except Exception:
+        return 0
+    targets: list[int] = []
+
+    def _f(h, _):
+        try:
+            if h == main_hwnd or not win32gui.IsWindowVisible(h):
+                return
+            _, pid = win32process.GetWindowThreadProcessId(h)
+            if pid != main_pid:
+                return
+            t = win32gui.GetWindowText(h) or ""
+            if t == KW_TITLE or not t:
+                return
+            r = win32gui.GetWindowRect(h)
+            if (r[2] - r[0]) < 150 or (r[3] - r[1]) < 150:
+                return  # 작은 토스트/위젯 제외
+            targets.append(h)
+        except Exception:
+            pass
+
+    win32gui.EnumWindows(_f, None)
+    for h in targets:
+        try:
+            win32gui.ShowWindow(h, win32con.SW_MINIMIZE)
+        except Exception:
+            pass
+    if targets:
+        time.sleep(0.3)
+    return len(targets)
+
+
 def capture_chat_panel(hwnd: int, out_path: Path | None = None,
                        *, right_panel_only: bool = True) -> Path:
     """KW 창 캡처. right_panel_only=True 면 좌측 사이드바 제외(우측 채팅만)."""
@@ -82,6 +126,13 @@ def capture_chat_panel(hwnd: int, out_path: Path | None = None,
     from PIL import ImageGrab
     if not win32gui.IsWindow(hwnd):
         raise RuntimeError("KW 창 hwnd 무효")
+    # 분리 채팅창이 룸리스트를 가리지 않도록 먼저 최소화
+    try:
+        n = _minimize_kw_separate_windows(hwnd)
+        if n:
+            print(f"  [WORK-VISION] KW 분리창 {n}개 최소화", flush=True)
+    except Exception:
+        pass
     # 전면화 (간단)
     try:
         win32gui.SetForegroundWindow(hwnd)
