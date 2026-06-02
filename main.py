@@ -465,12 +465,13 @@ def cmd_monitor(*, with_recorder: bool = False) -> int:
     # 🛑 정지 버튼은 액션로그 창(get_logger)에 통합되어 있다.
     # (별도 Tk 창은 Tcl_AsyncDelete 크래시 유발 → 단일 Tk 루트로 통합)
     # 버튼 클릭 → core.stop_button.request_stop() → 플래그+_STOP 파일 →
-    # 루프가 _stop_requested() 로 감지. 정지 신호는 시작 시 깨끗이 초기화.
+    # 루프가 _stop_requested() 로 감지.
+    # ⚠️ _STOP 은 멀티프로세스 공용 정지 latch다. '모니터를 새로 시작 = 재개 의도'로
+    #    보고 여기서 한 번만 해제한다. (개별 프로세스가 제각각 지우면 P0 충돌 → clear_stop
+    #    단일 진입점으로 통일.) work_bridge/답장서버는 자기 시작 시 latch 를 지우지 않음.
     try:
-        from core.stop_button import _stop_flag, STOP_FILE
-        _stop_flag.clear()
-        if STOP_FILE.exists():
-            STOP_FILE.unlink()
+        from core.stop_button import clear_stop
+        clear_stop()
     except Exception:
         pass
 

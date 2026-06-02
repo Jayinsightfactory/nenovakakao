@@ -75,7 +75,21 @@ _BOT_SYSTEM_MARKERS = (
     "⚠️ 전송됨",
     "💬 '",               # 답장 버튼 텍스트 시작
     "📦 [백필]",
+    "[사진]",             # 모니터 미러 사진 헤더 "[발신자] [시각] [사진]"
+    "다운로드 실패",       # 사진 다운로드 실패 fallback
 )
+
+
+def _looks_like_mirror_header(preview: str) -> bool:
+    """모니터가 카톡→워크 미러할 때 쓰는 "[발신자] [시각] 내용" 형식이면 True.
+    이 형식은 사람이 워크에서 직접 치는 답장이 아니라 봇 미러이므로 카톡으로 안 보냄.
+
+    시각 대괄호는 반드시 닫혀야(]) 매치 — '[공지] [10:00 시작] ...' 같은 실제 사용자
+    메시지를 미러로 오인해 삭제하던 false-positive 방지(code-review). 이름 40자까지.
+    """
+    import re as _re2
+    p = (preview or "").strip()
+    return bool(_re2.match(r"^\[[^\]]{1,40}\]\s*\[(?:오전|오후)?\s*\d{1,2}:\d{2}\]", p))
 
 
 def _is_bot_system_preview(preview: str) -> bool:
@@ -211,10 +225,11 @@ def cycle_once(*, forward: bool = True, verbose: bool = True) -> dict:
             continue
         # 봇 시스템 메시지 차단 — 우리(봇)가 워크방에 남기는 메시지가 preview 로
         # 잡혀 카톡으로 되쏘는 무한 에코 방지. 답장버튼/미러헤더/전송확인 등.
-        if _is_bot_system_preview(preview):
+        # + "[발신자] [시각] ..." 모니터 미러 형식도 차단(사람 답장이 아님).
+        if _is_bot_system_preview(preview) or _looks_like_mirror_header(preview):
             stats["self_loop_skipped"] += 1
             if verbose:
-                print(f"  [WORK→KK] 봇 시스템 메시지 skip: '{preview[:40]}'", flush=True)
+                print(f"  [WORK→KK] 봇/미러 메시지 skip: '{preview[:40]}'", flush=True)
             continue
         kk = _resolve_kakao_room(work_room, mapping)
         if not kk:
@@ -308,7 +323,7 @@ def daemon(*, interval_sec: int = 20, once: bool = False,
     """워크→카톡 브릿지 데몬. Ctrl+C 또는 data/_STOP 파일로 종료."""
     print(f"[WORK→KK] 데몬 시작 interval={interval_sec}s dry={dry_run} once={once}", flush=True)
     if _stop_requested():
-        print("[WORK→KK] data/_STOP 존재 — 시작 안 함(정지 상태). 파일 삭제 후 재실행.", flush=True)
+        print("[WORK→KK] data/_STOP 존재 — 시작 안 함(정지 상태). 모니터를 다시 시작하면 latch 가 해제됩니다.", flush=True)
         return 0
     cycle = 0
     while True:

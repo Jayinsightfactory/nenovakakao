@@ -164,10 +164,24 @@ def _post_send_confirmation(room: str, hwnd, reply_text: str) -> None:
             pass
 
 
+def _stop_requested() -> bool:
+    """공용 정지 latch(data/_STOP) 확인. 🛑/stop 시 답장 송신도 멈추도록(P0 #2)."""
+    try:
+        return (ROOT / "data" / "_STOP").exists()
+    except Exception:
+        return False
+
+
 def _process_send(room: str, reply_text: str) -> None:
     """실제 카톡 송신 (워커 스레드에서 호출). 락으로 monitor 와 조정."""
     from core import kakao_lock as _klock
     from core import kakao_win32 as kw
+
+    # 공용 정지 latch 면 카톡 송신 자체를 건너뜀 (큐 재적재 없이 폐기 — busy-loop 방지)
+    if _stop_requested():
+        print(f"  [REACTIVE-WORKER] _STOP 감지 — 답장 송신 취소: {room!r} {reply_text[:30]!r}", flush=True)
+        _log({"endpoint": "worker", "result": "stopped", "room": room})
+        return
 
     _klock.request()  # monitor 에 우선 양보 신호
     got = _klock.acquire("reactive", timeout=180, respect_request=False)

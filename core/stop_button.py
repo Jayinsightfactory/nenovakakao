@@ -169,17 +169,36 @@ def _run_window() -> None:
         _window_root = None
 
 
-def start_stop_button() -> None:
-    """별도 스레드에서 정지 버튼 창 띄움. 이전 STOP 파일은 자동 정리."""
-    global _window_thread
+def clear_stop() -> None:
+    """정지 latch 해제 (STOP 파일 삭제 + 플래그 clear).
 
-    # 이전 세션의 stale STOP 파일 정리
+    ⚠️ _STOP 은 '여러 프로세스 공용 수동 정지 latch'다. 모니터/답장서버/work_bridge
+    가 모두 이 파일을 보고 멈추므로, 자동으로 지우면 다른 프로세스의 정지 신호가
+    사라진다. 그래서 시작/종료 시 자동 삭제하지 않고, 사용자가 '재개'를 의도할 때만
+    (run launcher 또는 명시 호출) 여기서 한 번 지운다.
+    """
     try:
         if STOP_FILE.exists():
             STOP_FILE.unlink()
     except Exception:
         pass
     _stop_flag.clear()
+
+
+def start_stop_button(*, clear_existing: bool = False) -> None:
+    """별도 스레드에서 정지 버튼 창 띄움.
+
+    clear_existing=False(기본): 공용 _STOP latch 를 건드리지 않음(다른 프로세스 정지
+      신호 보존). in-process 플래그만 clear. ← 툴 스크립트는 이 기본값을 써야 함.
+    clear_existing=True: '재개 의도'로 latch 까지 해제. cmd_monitor 만 명시적으로 사용.
+      (개별 프로세스가 제각각 latch 를 지우면 P0 충돌 재발하므로 단일 진입점 유지)
+    """
+    global _window_thread
+
+    if clear_existing:
+        clear_stop()
+    else:
+        _stop_flag.clear()
 
     if _window_thread is not None and _window_thread.is_alive():
         return  # 이미 떠있음
@@ -191,17 +210,15 @@ def start_stop_button() -> None:
 
 
 def stop_button_close() -> None:
-    """자동화 종료 시 정지 버튼 창 닫음 (정지 요청 안 함)."""
+    """자동화 종료 시 정지 버튼 창 닫음.
+
+    ⚠️ _STOP 파일은 자동 삭제하지 않는다. (다른 프로세스의 공용 정지 latch이므로
+    여기서 지우면 그쪽 정지가 풀린다 — P0 충돌.) 재개는 clear_stop()/launcher 가 담당.
+    """
     global _window_root
     try:
         root = _window_root
         if root is not None:
             root.after(0, root.destroy)
-    except Exception:
-        pass
-    # 다음 세션 위해 STOP 파일 정리 (단, 이번에 정지 요청 받았으면 보존하지 않음 — 깨끗하게)
-    try:
-        if STOP_FILE.exists():
-            STOP_FILE.unlink()
     except Exception:
         pass
