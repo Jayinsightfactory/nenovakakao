@@ -122,6 +122,67 @@ def detect_badge_positions(
     return badge_ys
 
 
+def detect_unread_badge_rows(
+    image_path: Path,
+    *,
+    x_ratio_start: float = 0.90,
+    x_ratio_end: float = 0.99,
+    min_red: int = 30,
+    top_skip_px: int = 20,
+    bottom_skip_px: int = 110,
+) -> list[int]:
+    """안읽음 탭 룸리스트 캡처에서 '안읽음 뱃지(우측 끝 빨간 숫자원)' y좌표만 반환.
+
+    detect_badge_positions 보다 우측으로 좁혀(프로필 사진 빨강 배제) + 상단 잔상/
+    하단 광고 제외. 모니터가 '뱃지 있는 행만 클릭'하도록 쓰는 정밀 버전.
+
+    Args:
+        x_ratio_start/end: 뱃지가 있는 우측 폭 비율 (0.90~0.99 = 맨 오른쪽)
+        min_red: 뱃지로 인정할 최소 빨간픽셀 합
+        top_skip_px / bottom_skip_px: 상단 잔상 / 하단 광고 영역 제외(px)
+
+    Returns:
+        뱃지 중심 y좌표 리스트(이미지 내 상대, 위→아래 순)
+    """
+    img = Image.open(image_path).convert("RGB")
+    width, height = img.size
+    pixels = img.load()
+    x_start = int(width * x_ratio_start)
+    x_end = int(width * x_ratio_end)
+    y_top = max(0, top_skip_px)
+    y_bot = max(y_top + 1, height - bottom_skip_px)
+
+    red_counts: dict[int, int] = {}
+    for y in range(y_top, y_bot):
+        c = 0
+        for x in range(x_start, x_end):
+            r, g, b = pixels[x, y]
+            if _is_red(r, g, b):
+                c += 1
+        if c > 0:
+            red_counts[y] = c
+    if not red_counts:
+        return []
+
+    sorted_ys = sorted(red_counts.keys())
+    clusters: list[list[int]] = []
+    cur: list[int] = [sorted_ys[0]]
+    for y in sorted_ys[1:]:
+        if y - cur[-1] <= 8:
+            cur.append(y)
+        else:
+            clusters.append(cur)
+            cur = [y]
+    clusters.append(cur)
+
+    out: list[int] = []
+    for cl in clusters:
+        total = sum(red_counts[y] for y in cl)
+        if total >= min_red:
+            out.append(cl[len(cl) // 2])
+    return out
+
+
 def badge_y_to_absolute(
     badge_ys: list[int], window_left: int, window_top: int,
     window_width: int, window_height: int,

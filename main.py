@@ -865,18 +865,39 @@ def cmd_monitor(*, with_recorder: bool = False) -> int:
                 print(f"  [페이지 {page_idx}] 스크롤 위치 -{total_scroll} — 맨 아래 행 반복 처리", flush=True)
 
                 try:
-                    # 9행 처리 — 아래(row 9, y=614) → 위(row 1, y=134)
-                    # 매 행마다 리스트 리셋되므로 재스크롤 필수
-                    # 방 클릭 Y 보정: 목록 맨 위 공지/배너 회피용 (window_positions.json)
-                    _row_y_off = get_room_list_click_y_offset()
-                    row_ys = [_tp + 35 + _row_y_off + i * SWEEP_ROW_HEIGHT for i in range(ROWS_PER_PAGE)]
-                    # 오프셋(공지배너 회피)이 양수면 맨 윗방(y=_tp+35)이 첫 행보다 위에 남아
-                    # 누락되므로, 오프셋 없는 최상단 행을 맨 앞에 보강한다.
-                    if _row_y_off > 0:
-                        row_ys = [_tp + 35] + row_ys
-                    # 위→아래 순회: 안읽음 방이 적을 때 상위 방부터 처리
-                    # (이전: 하위부터 → 빈 영역 3회 스킵 → 실제 방 못 건드림)
-                    rows_desc = row_ys  # 위→아래
+                    # ── 캡처-선분석: 빨간 뱃지(안읽음) 있는 행만 클릭 ──
+                    # 기존엔 9행 고정좌표를 전부 더블클릭하며 빈 행 헛클릭 → 안읽음 방
+                    # 처리 지연. 이제 페이지를 캡처해 뱃지 y만 추출, 그 행만 클릭한다.
+                    # 뱃지 0개면 페이지 즉시 스킵. NENOVA_BADGE_SCAN=0 으로 옛 방식 폴백.
+                    _badge_mode = _os.environ.get("NENOVA_BADGE_SCAN", "1") != "0"
+                    rows_desc = None
+                    if _badge_mode:
+                        try:
+                            _force_kakao_main_foreground_inline()
+                            _scroll_to_page(window, page_idx)
+                            from PIL import ImageGrab as _IG
+                            from core.badge_monitor import detect_unread_badge_rows
+                            _bl, _bt2, _br, _bb = window.room_list_bbox()
+                            _cap = captures_dir / f"_badge_p{page_idx}.png"
+                            _IG.grab(bbox=(_bl, _bt2, _br, _bb)).save(_cap)
+                            _badge_ys = detect_unread_badge_rows(_cap)
+                            # 이미지 내 y → 화면 절대 y (룸리스트 top 기준)
+                            rows_desc = [_bt2 + _y for _y in _badge_ys]
+                            print(f"  [페이지 {page_idx}] 뱃지 {len(rows_desc)}개 감지 → 그 행만 처리", flush=True)
+                            if not rows_desc:
+                                print(f"  [페이지 {page_idx}] 안읽음 뱃지 0 → 페이지 스킵", flush=True)
+                                continue
+                        except Exception as _be:
+                            print(f"  [페이지 {page_idx}] 뱃지스캔 실패({_be}) → 고정행 폴백", flush=True)
+                            rows_desc = None
+
+                    if rows_desc is None:
+                        # 폴백: 9행 고정 좌표 (옛 방식)
+                        _row_y_off = get_room_list_click_y_offset()
+                        row_ys = [_tp + 35 + _row_y_off + i * SWEEP_ROW_HEIGHT for i in range(ROWS_PER_PAGE)]
+                        if _row_y_off > 0:
+                            row_ys = [_tp + 35] + row_ys
+                        rows_desc = row_ys  # 위→아래
 
                     # 연속 미열림 카운터 — N회 연속이면 페이지 나머지 스킵 (빈 행 낭비 제거)
                     consecutive_misses = 0
@@ -911,6 +932,24 @@ def cmd_monitor(*, with_recorder: bool = False) -> int:
                                 continue
                             # 매 행마다 재스크롤 + 해당 행 클릭
                             _scroll_to_page(window, page_idx)
+
+                            # 뱃지 모드: 방 처리 후 리스트가 바뀌어(읽음→방 이동) 저장된
+                            # 절대 y가 무효가 되므로, 클릭 직전 재캡처로 '현재 맨 위 뱃지'를
+                            # 다시 찾아 그 y로 클릭한다. (없으면 이 페이지 안읽음 소진 → break)
+                            if _badge_mode:
+                                try:
+                                    from PIL import ImageGrab as _IG2
+                                    from core.badge_monitor import detect_unread_badge_rows as _dub
+                                    _bl2, _bt3, _br2, _bb2 = window.room_list_bbox()
+                                    _cap2 = captures_dir / f"_badge_p{page_idx}_r{iter_idx}.png"
+                                    _IG2.grab(bbox=(_bl2, _bt3, _br2, _bb2)).save(_cap2)
+                                    _yy = _dub(_cap2)
+                                    if not _yy:
+                                        print(f"     [p{page_idx}] 남은 안읽음 뱃지 0 → 페이지 종료", flush=True)
+                                        break
+                                    row_y = _bt3 + _yy[0]  # 현재 맨 위 뱃지 행
+                                except Exception:
+                                    pass  # 실패 시 원래 row_y 사용
 
                             t0 = time.time()
                             result = extract_from_room(CLICK_X, row_y, skip_titles=processed_this_cycle)
