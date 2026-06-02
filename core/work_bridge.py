@@ -290,6 +290,14 @@ def cycle_once(*, forward: bool = True, verbose: bool = True) -> dict:
             return stats
         try:
             import win32gui as _w32
+            # KakaoWork 를 캡처하며 TOPMOST 로 올렸으므로, 카톡 검색 전에 카톡 메인창을
+            # 확실히 전면화한다. (안 하면 Ctrl+F 검색이 KW 창으로 가 방을 못 엶 — 6s 실패)
+            try:
+                from core.window_manager import ensure_main_window_foreground
+                ensure_main_window_foreground()
+                time.sleep(0.4)
+            except Exception:
+                pass
             for kk, preview, work_room in to_forward:
                 if _stop_requested():
                     print("  [WORK→KK] data/_STOP 감지 — 송신 중단", flush=True)
@@ -304,7 +312,7 @@ def cycle_once(*, forward: bool = True, verbose: bool = True) -> dict:
                     if hwnd is None:
                         ores = kw.search_and_open_room(kk)
                         oh = ores.get("hwnd")
-                        for _ in range(20):  # ~6s — 정확 제목 분리창 대기
+                        for _ in range(33):  # ~10s — 정확 제목 분리창 대기(모니터 경합 여유)
                             hwnd = kw.find_chat_window(kk)
                             if hwnd:
                                 break
@@ -313,7 +321,7 @@ def cycle_once(*, forward: bool = True, verbose: bool = True) -> dict:
                                 break
                             time.sleep(0.3)
                         if hwnd is None:
-                            print(f"  [WORK→KK] ❌ '{kk}' 정확한 분리창 못 엶(6s) — 스킵", flush=True)
+                            print(f"  [WORK→KK] ❌ '{kk}' 정확한 분리창 못 엶(10s) — 스킵", flush=True)
                             continue
                     res = kw.send_message_to_room(kk, preview)
                     ok = res.get("success", False)
