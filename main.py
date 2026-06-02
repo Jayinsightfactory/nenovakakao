@@ -852,6 +852,48 @@ def cmd_monitor(*, with_recorder: bool = False) -> int:
             CLICK_X = (_lt + _rt) // 2
             BOTTOM_ROW_Y = _tp + 35 + (ROWS_PER_PAGE - 1) * SWEEP_ROW_HEIGHT  # y=614
 
+            # ── 맨 위 안읽음 첫 방 우선 처리 (사이클당 1회) ──
+            # 안읽음 방은 카톡에서 항상 맨 위로 온다. 그런데 _scroll_to_page 가
+            # home(맨위)→스크롤 로 페이지를 내려가면서, 맨 위에 막 올라온 안읽음
+            # 첫 방을 그냥 지나치는 경우가 있었다(사용자 지적). 페이지 순회 전에
+            # 맨 위 첫 방을 한 번 먼저 잡는다.
+            _badge_mode_cyc = _os.environ.get("NENOVA_BADGE_SCAN", "1") != "0"
+            if not (overlay.should_stop or _stop_requested()) and \
+               _klock.acquire("monitor", timeout=15, respect_request=True):
+                try:
+                    _force_kakao_main_foreground_inline()
+                    scroll_room_list_to_top(window)
+                    time.sleep(DELAY)
+                    _top_y = _tp + 35  # 맨 위 첫 방
+                    _do_top = True
+                    if _badge_mode_cyc:
+                        # 뱃지 모드: 맨 위에 안읽음 뱃지가 실제로 있을 때만
+                        try:
+                            from PIL import ImageGrab as _IGt
+                            from core.badge_monitor import detect_unread_badge_rows as _dubt
+                            _IGt.grab(bbox=(_lt, _tp, _rt, _bt)).save(captures_dir / "_badge_top.png")
+                            _tys = _dubt(captures_dir / "_badge_top.png")
+                            if _tys:
+                                _top_y = _tp + _tys[0]
+                            else:
+                                _do_top = False
+                        except Exception:
+                            pass
+                    if _do_top:
+                        _r = extract_from_room(CLICK_X, _top_y, skip_titles=processed_this_cycle)
+                        if (_r and _r.get("room_name") and not _r.get("_duplicate")
+                                and not _r.get("_no_change") and not _r.get("_yielded")):
+                            _rn = _r["room_name"]
+                            if _rn in selected_names:
+                                print(f"  [맨위우선] {_rn} 선처리", flush=True)
+                                _process_room_result(_r, CLICK_X, _top_y, **process_deps)
+                                processed_this_cycle.add(_rn)
+                                _record_room(_rn, "processed")
+                except Exception as _te:
+                    print(f"  [맨위우선] 예외(무시): {_te}", flush=True)
+                finally:
+                    _klock.release("monitor")
+
             for p_i, page_idx in enumerate(PAGES, 1):
                 if overlay.should_stop or _stop_requested():
                     break
