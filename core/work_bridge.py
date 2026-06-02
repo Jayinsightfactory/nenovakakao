@@ -217,20 +217,23 @@ def cycle_once(*, forward: bool = True, verbose: bool = True) -> dict:
                 try:
                     # 카톡 분리창이 없으면 먼저 검색→열기 (답장서버와 동일 패턴).
                     # send_message_to_room 은 '이미 열린 분리창'만 찾으므로 선행 필수.
+                    # 주의: search_and_open_room 이 success=False 여도 실제로는 잠시 뒤
+                    #       분리창이 뜨는 경우가 있어(검색→창생성 지연), 반환값과 무관하게
+                    #       최대 ~6초까지 재확인한다.
                     hwnd = kw.find_chat_window(kk)
                     if hwnd is None:
                         ores = kw.search_and_open_room(kk)
-                        for _ in range(8):  # ~2.4s — 정확 제목 분리창 대기
+                        oh = ores.get("hwnd")
+                        for _ in range(20):  # ~6s — 정확 제목 분리창 대기
                             hwnd = kw.find_chat_window(kk)
                             if hwnd:
                                 break
-                            oh = ores.get("hwnd")
                             if oh and _w32.IsWindow(oh) and (_w32.GetWindowText(oh) or "") == kk:
                                 hwnd = oh
                                 break
                             time.sleep(0.3)
                         if hwnd is None:
-                            print(f"  [WORK→KK] ❌ '{kk}' 정확한 분리창 못 엶 — 스킵", flush=True)
+                            print(f"  [WORK→KK] ❌ '{kk}' 정확한 분리창 못 엶(6s) — 스킵", flush=True)
                             continue
                     res = kw.send_message_to_room(kk, preview)
                     ok = res.get("success", False)
