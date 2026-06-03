@@ -217,6 +217,55 @@ def extract_messages(image_path: Path, *, max_retries: int = 2) -> list[dict]:
     return []
 
 
+def open_work_room_and_read(work_room: str, *, max_msgs_tail: int = 6) -> list[dict]:
+    """워크방을 Ctrl+K 전역검색으로 열고 → 대화창 본문 메시지를 추출.
+
+    v2 핵심: 미리보기(룸목록)가 아니라 '대화창 본문 전체'를 읽는다.
+    반환: extract_messages 결과(발신자/시각/내용/has_image)의 마지막 max_msgs_tail 개.
+    실패 시 [].
+    """
+    import pyautogui
+    import win32gui
+    try:
+        import pyperclip
+    except ImportError:
+        return []
+    hwnd = find_kakaowork_window()
+    if not hwnd:
+        print("[WORK-VISION] KW 창 없음(open_room)", flush=True)
+        return []
+    try:
+        # KW 전면화 (TOPMOST)
+        import win32con
+        win32gui.SetWindowPos(hwnd, win32con.HWND_TOPMOST, 0, 0, 0, 0,
+                              win32con.SWP_NOMOVE | win32con.SWP_NOSIZE | win32con.SWP_SHOWWINDOW)
+        try:
+            win32gui.SetForegroundWindow(hwnd)
+        except Exception:
+            pass
+        time.sleep(0.5)
+        # Ctrl+K 전역검색 → 방 이름 입력 → 첫 결과 진입
+        pyautogui.press("escape"); time.sleep(0.3)
+        pyautogui.hotkey("ctrl", "k"); time.sleep(1.2)
+        pyperclip.copy(work_room)
+        pyautogui.hotkey("ctrl", "v"); time.sleep(1.5)
+        pyautogui.press("enter"); time.sleep(2.0)
+        # 대화창(우측 패널) 캡처
+        cap = capture_chat_panel(hwnd, CAPTURES / f"kw_room_{int(time.time()*1000)}.png",
+                                 right_panel_only=True)
+        msgs = extract_messages(cap)
+        # TOPMOST 해제
+        try:
+            win32gui.SetWindowPos(hwnd, win32con.HWND_NOTOPMOST, 0, 0, 0, 0,
+                                  win32con.SWP_NOMOVE | win32con.SWP_NOSIZE)
+        except Exception:
+            pass
+        return msgs[-max_msgs_tail:] if max_msgs_tail and len(msgs) > max_msgs_tail else msgs
+    except Exception as e:
+        print(f"[WORK-VISION] open_work_room_and_read 예외: {e}", flush=True)
+        return []
+
+
 def _msg_hash(m: dict) -> str:
     s = "|".join((m.get("sender", ""), m.get("time", ""), m.get("content", "")[:120]))
     return hashlib.md5(s.encode("utf-8", errors="ignore")).hexdigest()
