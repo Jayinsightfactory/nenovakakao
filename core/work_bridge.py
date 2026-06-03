@@ -150,6 +150,57 @@ def _is_bot_system_preview(preview: str) -> bool:
     return any(mk in p for mk in _BOT_SYSTEM_MARKERS)
 
 
+# ─────────────────────────────────────────────────────────
+# 미러 복사본 vs 워크 네이티브 구분 (발신자 화이트리스트)
+# ─────────────────────────────────────────────────────────
+_WORK_MEMBERS_CACHE: list | None = None
+
+
+def _norm_name(s: str) -> str:
+    s = (s or "").strip()
+    for suf in ("님", "씨"):
+        if s.endswith(suf):
+            s = s[: -len(suf)]
+    return s.replace(" ", "")
+
+
+def _work_member_names() -> list[str]:
+    """data/kakaowork_users.json 의 워크 실멤버 이름(정규화) 목록."""
+    global _WORK_MEMBERS_CACHE
+    if _WORK_MEMBERS_CACHE is not None:
+        return _WORK_MEMBERS_CACHE
+    names: list[str] = []
+    try:
+        data = json.loads((DATA / "kakaowork_users.json").read_text(encoding="utf-8"))
+        for u in data:
+            for k in ("display_name", "name", "nickname"):
+                v = _norm_name(u.get(k) or "")
+                if v and v not in names:
+                    names.append(v)
+    except Exception:
+        pass
+    _WORK_MEMBERS_CACHE = names
+    return names
+
+
+def _is_mirror_origin(m: dict) -> bool:
+    """Vision 추출 메시지가 '카톡→워크 미러 복사본'이면 True (=되보내면 에코).
+
+    판별: 발신자가 워크 실멤버가 아니면 미러로 본다. 미러는 봇이
+    "[원발신자][시각] 본문"으로 올린 걸 Vision 이 분리 추출해 sender 가
+    카톡쪽 사람(농장/거래처)이 된다. 워크 네이티브(사람이 워크에서 직접 친 글)는
+    sender 가 워크 멤버. 안전 측: 발신자 불명/비멤버는 안 보냄.
+    (더 견고한 방식 = 시간 워터마크: 마지막 카톡→워크 미러 시각 이후만 네이티브 — TODO)
+    """
+    sender = _norm_name(m.get("sender", ""))
+    if not sender:
+        return True  # 발신자 불명 → 안전하게 미러 취급
+    members = _work_member_names()
+    if not members:
+        return False  # 멤버목록 로드 실패 시 과차단 방지(필터 비활성)
+    return sender not in members
+
+
 def _is_our_message(kakaotalk_room: str, preview: str) -> bool:
     """preview 가 우리가 보낸 최근 메시지와 '접두사 일치'면 True (loop 차단).
 
@@ -489,9 +540,15 @@ def cycle_once_v2(*, forward: bool = True, verbose: bool = True, max_rooms: int 
             content = (m.get("content") or "").strip()
             if _is_non_user_message(content):
                 continue
-            line = f"[{m.get('sender','')}] [{m.get('time','')}] {content}"
-            if (_is_bot_system_preview(line) or _looks_like_mirror_header(line)
-                    or _is_bot_system_preview(content) or _looks_like_mirror_header(content)):
+            # ⚠️ content(본문) 만으로 판정한다. 과거엔 "[발신자] [시각] 내용" 을
+            #    재조립한 line 에 _looks_like_mirror_header 를 걸었는데, 그 정규식은
+            #    발신자+시각이 있는 '모든' 메시지에 매칭돼 워크 네이티브 신규까지
+            #    전부 걸러 0건이 되는 버그였다. Vision 은 미러 메시지의 "[발신자][시각]"
+            #    접두사를 sender/time 필드로 분리 추출하므로, 미러 식별은 content 가
+            #    아니라 sender 화이트리스트/시간 워터마크로 해야 한다(아래 _is_mirror_origin).
+            if _is_bot_system_preview(content) or _looks_like_mirror_header(content):
+                continue
+            if _is_mirror_origin(m):
                 continue
             key = _v2_msg_key(kk, m)
             if key in ledger:
