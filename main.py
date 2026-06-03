@@ -1868,10 +1868,12 @@ def main(argv: list[str]) -> int:
         # --once    : 1사이클만
         # --interval N : 사이클 간격(초). 기본 20
         # --v2      : 본문읽기 방식(행클릭 열어 대화창 본문 → 워크 신규만)
+        # --v3      : 단일캡처+제목검증(권장) — reorder race/오방송신 방지, 뱃지 비의존
         from core import work_bridge as _wb
         dry = "--dry-run" in argv
         once = "--once" in argv
-        v2 = "--v2" in argv
+        v3 = "--v3" in argv
+        v2 = "--v2" in argv and not v3
         interval = 20
         if "--interval" in argv:
             i = argv.index("--interval")
@@ -1880,7 +1882,7 @@ def main(argv: list[str]) -> int:
                     interval = int(argv[i + 1])
                 except ValueError:
                     pass
-        return _wb.daemon(interval_sec=interval, once=once, dry_run=dry, v2=v2)
+        return _wb.daemon(interval_sec=interval, once=once, dry_run=dry, v2=v2, v3=v3)
     elif cmd in ("adopt-new-rooms", "adopt_new_rooms", "adopt"):
         # 카톡 신규 초대방 자동 채택 → 워크 미러 자동 생성 + 등록 (그룹방만)
         from core import room_sync

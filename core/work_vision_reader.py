@@ -428,6 +428,132 @@ def open_work_room_by_row_and_read(hwnd, row_abs_y: int, *, max_msgs_tail: int =
         return []
 
 
+# ─────────────────────────────────────────────────────────
+# v3: 단일캡처 룸목록 + 방제목 검증 (reorder race / 오방송신 방지)
+# ─────────────────────────────────────────────────────────
+
+def extract_room_list_from_image(image_path: Path) -> list[dict]:
+    """기존 이미지(룸목록 크롭)에서 방 목록 추출 — 새로 캡처하지 않음.
+
+    cycle_once_v3 가 '파란뱃지 y'와 '방이름+순서'를 동일 이미지에서 뽑아
+    캡처 간 목록 재정렬(reorder race)을 없애기 위한 함수.
+    """
+    try:
+        img_b64 = base64.standard_b64encode(Path(image_path).read_bytes()).decode()
+    except Exception:
+        return []
+    cli = _client()
+    try:
+        m = cli.messages.create(
+            model=CLAUDE_MODEL, max_tokens=4096,
+            messages=[{"role": "user", "content": [
+                {"type": "image", "source": {"type": "base64",
+                                              "media_type": "image/png", "data": img_b64}},
+                {"type": "text", "text": ROOM_LIST_PROMPT},
+            ]}],
+        )
+        return _parse_json_array(m.content[0].text)
+    except Exception as e:
+        print(f"[WORK-VISION] 룸리스트(img) 추출 실패: {e}", flush=True)
+        return []
+
+
+TITLE_PROMPT = """이 이미지는 카카오워크 대화창 상단의 '방 제목' 영역입니다.
+채팅방 이름(제목) 텍스트만 정확히 한 줄로 반환하세요.
+'참여 N명' 같은 멤버수·아바타·아이콘은 제외. 제목 글자만, 따옴표/설명 없이 출력."""
+
+
+def read_room_title(hwnd) -> str:
+    """우측 패널 상단 방제목을 Vision 으로 읽어 문자열 반환(실패 시 '')."""
+    cap = CAPTURES / f"_kwtitle_{int(time.time()*1000)}.png"
+    if not capture_region(hwnd, "kakaowork_room_title", cap):
+        return ""
+    try:
+        img_b64 = base64.standard_b64encode(cap.read_bytes()).decode()
+        cli = _client()
+        m = cli.messages.create(
+            model=CLAUDE_MODEL, max_tokens=64,
+            messages=[{"role": "user", "content": [
+                {"type": "image", "source": {"type": "base64",
+                                              "media_type": "image/png", "data": img_b64}},
+                {"type": "text", "text": TITLE_PROMPT},
+            ]}],
+        )
+        return (m.content[0].text or "").strip()
+    except Exception as e:
+        print(f"[WORK-VISION] 방제목 읽기 실패: {e}", flush=True)
+        return ""
+    finally:
+        try:
+            cap.unlink()
+        except Exception:
+            pass
+
+
+def _title_matches(title: str, expected: str) -> bool:
+    """방제목 Vision 결과가 기대 방이름과 사실상 일치하는지(공백/방접미사/유사도 관용)."""
+    from difflib import SequenceMatcher
+
+    def n(s: str) -> str:
+        s = (s or "").replace(" ", "").strip()
+        if s.endswith("방"):
+            s = s[:-1]
+        return s
+
+    a, b = n(title), n(expected)
+    if not a or not b:
+        return False
+    if a == b or a in b or b in a:
+        return True
+    return SequenceMatcher(None, a, b).ratio() >= 0.7
+
+
+def open_work_room_verify_and_read(hwnd, row_abs_y: int, expected_name: str | None = None,
+                                   *, max_msgs_tail: int = 12) -> tuple[list[dict], str, bool]:
+    """행클릭 → 방제목 읽기 → 본문 읽기.
+
+    expected_name 지정 시: 제목이 기대 방이름과 불일치하면 ([], title, False) — 오방 송신 방지.
+    expected_name None/"" 시: 검증 생략, 열린 방의 '제목 자체'로 식별(=신뢰원천).
+       반환 (msgs, title, True). 호출자가 title 로 카톡방 매핑.
+    """
+    import pyautogui
+    import win32gui
+    import win32con
+    try:
+        from core.window_manager import get_pos_tuple, force_foreground
+        wl, wt, ww, wh = get_pos_tuple("kakaowork_main")
+        if win32gui.IsIconic(hwnd):
+            win32gui.ShowWindow(hwnd, win32con.SW_RESTORE)
+            time.sleep(0.2)
+        try:
+            force_foreground(hwnd)
+        except Exception:
+            try:
+                win32gui.SetForegroundWindow(hwnd)
+            except Exception:
+                pass
+        time.sleep(0.4)
+        pyautogui.click(wl + 150, row_abs_y)
+        time.sleep(1.3)
+        title = read_room_title(hwnd)
+        if expected_name and not _title_matches(title, expected_name):
+            return ([], title, False)
+        cap = CAPTURES / f"_kwroom_{int(time.time()*1000)}.png"
+        if not capture_region(hwnd, "kakaowork_chatpanel", cap):
+            cap = capture_chat_panel(hwnd, cap, right_panel_only=True)
+        msgs = extract_messages(cap)
+        try:
+            cap.unlink()
+        except Exception:
+            pass
+        if max_msgs_tail and len(msgs) > max_msgs_tail:
+            msgs = msgs[-max_msgs_tail:]
+        return (msgs, title, True)
+    except Exception as e:
+        print(f"[WORK-VISION] open_verify 예외: {e}", flush=True)
+        return ([], "", False)
+
+
 def _msg_hash(m: dict) -> str:
     s = "|".join((m.get("sender", ""), m.get("time", ""), m.get("content", "")[:120]))
     return hashlib.md5(s.encode("utf-8", errors="ignore")).hexdigest()

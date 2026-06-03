@@ -164,10 +164,17 @@ def _norm_name(s: str) -> str:
     return s.replace(" ", "")
 
 
+_WORK_MEMBERS_WARNED = False
+
+
 def _work_member_names() -> list[str]:
-    """data/kakaowork_users.json 의 워크 실멤버 이름(정규화) 목록."""
+    """data/kakaowork_users.json 의 워크 실멤버 이름(정규화) 목록.
+
+    ⚠️ 성공(비어있지 않게 로드)했을 때만 캐시한다. 실패/빈값이면 캐시하지 않고
+    빈 리스트 반환 → 다음 호출에서 재시도(일시적 I/O 오류가 필터를 영구 무력화하지 않게).
+    """
     global _WORK_MEMBERS_CACHE
-    if _WORK_MEMBERS_CACHE is not None:
+    if _WORK_MEMBERS_CACHE:
         return _WORK_MEMBERS_CACHE
     names: list[str] = []
     try:
@@ -178,8 +185,9 @@ def _work_member_names() -> list[str]:
                 if v and v not in names:
                     names.append(v)
     except Exception:
-        pass
-    _WORK_MEMBERS_CACHE = names
+        return []  # 미캐시 → 다음 호출 재시도
+    if names:
+        _WORK_MEMBERS_CACHE = names
     return names
 
 
@@ -197,7 +205,14 @@ def _is_mirror_origin(m: dict) -> bool:
         return True  # 발신자 불명 → 안전하게 미러 취급
     members = _work_member_names()
     if not members:
-        return False  # 멤버목록 로드 실패 시 과차단 방지(필터 비활성)
+        # 멤버목록 없으면 네이티브 판별 불가 → fail-closed(전부 미러 간주, 송신 보류)로
+        # 거래처 메시지 에코를 막는다(안전 우선). 1회만 경고.
+        global _WORK_MEMBERS_WARNED
+        if not _WORK_MEMBERS_WARNED:
+            print("[WORK→KK] ⚠️ 워크 멤버목록 로드 실패 → 안전모드(전부 미러 간주, 송신 보류). "
+                  "data/kakaowork_users.json 확인 필요", flush=True)
+            _WORK_MEMBERS_WARNED = True
+        return True
     return sender not in members
 
 
@@ -600,10 +615,181 @@ def cycle_once_v2(*, forward: bool = True, verbose: bool = True, max_rooms: int 
     return stats
 
 
+def _forward_to_kakao(kk: str, to_send: list, ledger: set, stats: dict, verbose: bool) -> None:
+    """to_send(=[(content,key),...]) 를 카톡 방 kk 로 일괄 송신. ledger/stats 갱신.
+
+    카톡 입력(마우스/키보드)을 점유하므로 kakao_lock 을 잡고 송신한다(모니터/답장서버와
+    동시 구동 시 입력 경합 방지). 락 확보 실패 시 송신 보류(이번 사이클 스킵).
+    """
+    from core import kakao_win32 as kw
+    from core import kakao_lock as klock
+    import win32gui as _w32
+
+    klock.request()
+    if not klock.acquire("work_bridge", timeout=30, respect_request=False):
+        print(f"  [WORK→KK v3] 카톡 락 확보 실패 — {len(to_send)}건 보류(다음 사이클)", flush=True)
+        klock.clear_request()
+        return
+    try:
+        try:
+            from core.window_manager import ensure_main_window_foreground
+            ensure_main_window_foreground()
+            time.sleep(0.4)
+        except Exception:
+            pass
+        hwnd = kw.find_chat_window(kk)
+        if hwnd is None:
+            ores = kw.search_and_open_room(kk)
+            oh = ores.get("hwnd")
+            for _ in range(33):
+                hwnd = kw.find_chat_window(kk)
+                if hwnd:
+                    break
+                if oh and _w32.IsWindow(oh) and (_w32.GetWindowText(oh) or "") == kk:
+                    hwnd = oh
+                    break
+                time.sleep(0.3)
+        if hwnd is None:
+            print(f"  [WORK→KK v3] ❌ 카톡 '{kk}' 정확한 분리창 못 엶 — 스킵", flush=True)
+            return
+        for content, key in to_send:
+            if _stop_requested():
+                print("  [WORK→KK v3] data/_STOP — 송신 중단", flush=True)
+                break
+            try:
+                res = kw.send_message_to_room(kk, content)
+                if res.get("success"):
+                    stats["forwarded"] += 1
+                    ledger.add(key)
+                    # 에코 차단: 우리가 카톡으로 보낸 내용이 모니터에 의해 워크로 되미러될 때
+                    # (sender=네노바 등 멤버로 보여) 다시 네이티브로 잡혀 무한송신되는 것 방지.
+                    append_sent(kk, content)
+                    print(f"  [WORK→KK v3] ✅ '{kk}' ← '{content[:50]}'", flush=True)
+                else:
+                    print(f"  [WORK→KK v3] ❌ '{kk}' 송신실패: {res.get('error','')}", flush=True)
+            except Exception as e:
+                print(f"  [WORK→KK v3] '{kk}' 예외: {type(e).__name__}: {e}", flush=True)
+            time.sleep(0.5)
+    finally:
+        klock.release("work_bridge")
+        klock.clear_request()
+
+
+def cycle_once_v3(*, forward: bool = True, verbose: bool = True, max_rooms: int = 4) -> dict:
+    """v3 사이클: 매 방마다 룸목록 재캡처 → 최상단 파란뱃지 클릭 → 방제목으로 방 식별
+    → 본문읽기 → 워크 네이티브 신규만 카톡 송신.
+
+    핵심(이전 인덱스기반 방식의 reorder 오차 해결):
+      · 안읽음 방은 항상 목록 상단으로 올라온다 → '최상단 뱃지'만 처리.
+      · detect_blue_badge_rows 는 순수 픽셀(Vision 아님) → 캡처→클릭 간격 ~300ms,
+        그 사이 재정렬 거의 없음. 인덱스/행높이 추정에 의존하지 않음.
+      · 클릭으로 연 방의 '제목'을 신뢰원천으로 삼아 카톡방 매핑(엉뚱한 방이면 매핑/제목으로 드러남).
+      · 방을 읽으면 뱃지가 사라져 다음 방이 top 으로 → 반복하면 안읽음 소진.
+      · 미러 본문 식별 _is_mirror_origin(발신자 화이트리스트), 재전송 방지 ledger.
+    """
+    from core.work_vision_reader import (
+        find_kakaowork_window, capture_region, open_work_room_verify_and_read,
+    )
+    from core.badge_monitor import detect_blue_badge_rows
+    from core.window_manager import (
+        lock_kakaowork_window, lock_kakaotalk_window, get_pos_tuple, get_capture_region,
+    )
+    from core.kakaowork_router import _load_room_mapping
+
+    stats = {"unread_top": 0, "opened": 0, "forwarded": 0,
+             "unmapped_skipped": 0, "dup_title_break": 0, "self_loop_skipped": 0}
+
+    lock_kakaowork_window()
+    lock_kakaotalk_window()
+    time.sleep(0.3)
+    h = find_kakaowork_window()
+    if not h:
+        return {"err": "no_kw"}
+
+    wl, wt, ww, wh = get_pos_tuple("kakaowork_main")
+    reg = get_capture_region("kakaowork_roomlist")
+    rdy = reg.get("dy", 110) if reg else 110
+    mapping = _load_room_mapping()
+    ledger = _v2_load_ledger()
+    seen_titles: set[str] = set()  # 한 사이클 내 같은 방 재오픈 무한루프 방지
+
+    for i in range(max_rooms):
+        if _stop_requested():
+            break
+        # 1) 매 방마다 룸목록 재캡처 → 최상단 뱃지 (픽셀, 빠름)
+        cap = ROOT / "captures" / f"_v3top_{int(time.time()*1000)}.png"
+        if not capture_region(h, "kakaowork_roomlist", cap):
+            break
+        badge_ys = detect_blue_badge_rows(str(cap))
+        try:
+            cap.unlink()
+        except Exception:
+            pass
+        if not badge_ys:
+            if verbose and i == 0:
+                print("  [WORK→KK v3] 안읽음 방 없음", flush=True)
+            break
+        stats["unread_top"] += 1
+
+        # 2) 최상단 뱃지 y 클릭 → 제목+본문 (제목으로 식별)
+        row_abs_y = wt + rdy + badge_ys[0]
+        msgs, title, _ = open_work_room_verify_and_read(h, row_abs_y, None, max_msgs_tail=12)
+        title = (title or "").strip()
+        if not title or title in seen_titles:
+            # 제목 못 읽음 / 같은 방 재오픈(뱃지 안 사라짐) → 더 진행하면 무한루프
+            stats["dup_title_break"] += 1
+            if verbose:
+                print(f"  [WORK→KK v3] 제목 '{title}' 중복/공백 — 사이클 종료", flush=True)
+            break
+        seen_titles.add(title)
+        stats["opened"] += 1
+
+        kk = _resolve_kakao_room(title, mapping)
+        if not kk:
+            stats["unmapped_skipped"] += 1
+            if verbose:
+                print(f"  [WORK→KK v3] unmapped(제목 '{title}') — 스킵", flush=True)
+            continue
+
+        # 3) 본문 → 워크 네이티브 신규만
+        to_send = []
+        for m in msgs:
+            content = (m.get("content") or "").strip()
+            if _is_non_user_message(content):
+                continue
+            if _is_bot_system_preview(content) or _looks_like_mirror_header(content):
+                continue
+            if _is_mirror_origin(m):
+                continue
+            # 에코 차단: 우리가 직전에 카톡으로 보낸 내용이 워크로 되미러된 것이면 스킵
+            if _is_our_message(kk, content):
+                stats["self_loop_skipped"] += 1
+                continue
+            key = _v2_msg_key(kk, m)
+            if key in ledger:
+                continue
+            to_send.append((content, key))
+        if not to_send:
+            if verbose:
+                print(f"  [WORK→KK v3] '{title}'→'{kk}': 워크네이티브 신규 없음", flush=True)
+            continue
+        if verbose:
+            print(f"  [WORK→KK v3] '{title}'→'{kk}' 워크네이티브 신규 {len(to_send)}건", flush=True)
+        if forward:
+            _forward_to_kakao(kk, to_send, ledger, stats, verbose)
+        else:
+            # dry-run 은 미리보기 — ledger 를 건드리지 않는다(이후 실송신이 막히지 않게).
+            for content, key in to_send:
+                print(f"  [WORK→KK v3] (dry) '{kk}' ← '{content[:50]}'", flush=True)
+
+    _v2_save_ledger(ledger)
+    return stats
+
+
 def daemon(*, interval_sec: int = 20, once: bool = False,
-           dry_run: bool = False, v2: bool = False) -> int:
+           dry_run: bool = False, v2: bool = False, v3: bool = False) -> int:
     """워크→카톡 브릿지 데몬. Ctrl+C 또는 data/_STOP 파일로 종료.
-    v2=True 면 cycle_once_v2(본문읽기) 사용."""
+    v3=True → cycle_once_v3(단일캡처+제목검증, 권장), v2=True → cycle_once_v2."""
     print(f"[WORK→KK] 데몬 시작 interval={interval_sec}s dry={dry_run} once={once}", flush=True)
     if _stop_requested():
         print("[WORK→KK] data/_STOP 존재 — 시작 안 함(정지 상태). 모니터를 다시 시작하면 latch 가 해제됩니다.", flush=True)
@@ -615,8 +801,11 @@ def daemon(*, interval_sec: int = 20, once: bool = False,
             return 0
         cycle += 1
         try:
-            print(f"\n[WORK→KK] === cycle {cycle}{' v2' if v2 else ''} ===", flush=True)
-            if v2:
+            tag = " v3" if v3 else (" v2" if v2 else "")
+            print(f"\n[WORK→KK] === cycle {cycle}{tag} ===", flush=True)
+            if v3:
+                stats = cycle_once_v3(forward=not dry_run, verbose=True)
+            elif v2:
                 stats = cycle_once_v2(forward=not dry_run, verbose=True)
             else:
                 stats = cycle_once(forward=not dry_run, verbose=True)

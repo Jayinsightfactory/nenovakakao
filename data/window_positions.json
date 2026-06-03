@@ -23,6 +23,8 @@
     "kakaowork_sort_dropdown": { "dx": 100, "dy": 84, "_desc": "'채팅 ▾' 정렬 드롭다운 → '안 읽은 메시지 순' 선택" },
     "kakaowork_roomlist":  { "dx": 58, "dy": 110, "w": 290, "h": 760, "_desc": "워크 룸목록 캡처영역" },
     "kakaowork_chatpanel": { "dx": 345, "dy": 95, "w": 410, "h": 690, "_desc": "워크 대화창(우측 패널) 캡처영역 — 본문 읽기용" },
+    "kakaowork_room_title": { "dx": 350, "dy": 58, "w": 270, "h": 40, "_desc": "우측 패널 상단 방제목(아바타+이름+참여N) — v3 오방 송신 방지 검증용" },
+    "kakaowork_roomlist_row0_cy": 46,
     "kakaowork_row_first_dy": 130,
     "kakaowork_row_height":   76,
     "kakaowork_badge_x":      318,
