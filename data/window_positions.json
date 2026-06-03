@@ -1,6 +1,7 @@
 {
   "_note": "창 위치 조절 설정. x,y=좌상단 좌표, w,h=너비/높이(px). 저장하면 다음 사이클부터 자동 반영(재시작 불필요). kakaotalk_main/chatroom 은 자동화 좌표 기준이라 크게 바꾸면 ≡메뉴는 rect상대라 따라가지만 그리드는 영향받을 수 있음. save_dialog 는 자유롭게 조절 가능.",
   "kakaotalk_main": { "x": 50, "y": 50, "w": 529, "h": 900 },
+  "kakaowork_main": { "x": 578, "y": 48, "w": 760, "h": 900 },
   "chatroom":       { "x": 100, "y": 50, "w": 600, "h": 800 },
   "save_dialog":    { "x": 980, "y": 120, "w": 860, "h": 600 },
 
@@ -16,6 +17,15 @@
     "kakaotalk_badge_x":     497,
     "kakaotalk_scrollbar_x": 521,
     "kakaotalk_ad_top_dy":   805,
-    "_desc_ad": "dy 805 아래는 광고 — 클릭/캡처 금지. 맨밑 방에도 뱃지 있으면 안읽음 9개 초과 → 스크롤 필요"
+    "_desc_ad": "dy 805 아래는 광고 — 클릭/캡처 금지. 맨밑 방에도 뱃지 있으면 안읽음 9개 초과 → 스크롤 필요",
+
+    "_kakaowork": "워크 폭 760 기준. 좌측 사이드바(0~55) 제외, 룸목록 58~340, 대화창 345~755.",
+    "kakaowork_sort_dropdown": { "dx": 100, "dy": 84, "_desc": "'채팅 ▾' 정렬 드롭다운 → '안 읽은 메시지 순' 선택" },
+    "kakaowork_roomlist":  { "dx": 58, "dy": 110, "w": 290, "h": 760, "_desc": "워크 룸목록 캡처영역" },
+    "kakaowork_chatpanel": { "dx": 345, "dy": 95, "w": 410, "h": 690, "_desc": "워크 대화창(우측 패널) 캡처영역 — 본문 읽기용" },
+    "kakaowork_row_first_dy": 130,
+    "kakaowork_row_height":   76,
+    "kakaowork_badge_x":      318,
+    "kakaowork_input_dy":     810
   }
 }
