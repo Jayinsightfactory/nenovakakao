@@ -78,6 +78,36 @@ def find_kakaowork_window() -> int | None:
 _PW_RENDERFULLCONTENT = 0x2  # undocumented flag (Win8.1+). GPU 가속 CEF 창도 캡처.
 
 
+def capture_region(hwnd, region_key: str, out_path: Path) -> bool:
+    """PrintWindow 전체창 캡처 → capture_regions[region_key](dx,dy,w,h)로 crop 저장.
+
+    v3 고정레이아웃: 학습된 상대좌표 영역만 잘라 분석 → 사이드바/광고 등 노이즈 배제,
+    분석 정확도·속도↑. 창 안 건드림(PrintWindow). 영역 미설정/실패 시 False.
+    """
+    from core.window_manager import get_capture_region
+    reg = get_capture_region(region_key)
+    if not reg or "w" not in reg or "h" not in reg:
+        return False
+    full = CAPTURES / f"_full_{int(time.time()*1000)}.png"
+    if not capture_window_printwindow(hwnd, full):
+        return False
+    try:
+        from PIL import Image
+        im = Image.open(full)
+        dx, dy, w, h = int(reg["dx"]), int(reg["dy"]), int(reg["w"]), int(reg["h"])
+        iw, ih = im.size
+        box = (max(0, dx), max(0, dy), min(iw, dx + w), min(ih, dy + h))
+        im.crop(box).save(out_path)
+        try:
+            full.unlink()
+        except Exception:
+            pass
+        return True
+    except Exception as e:
+        print(f"  [WORK-VISION] capture_region({region_key}) crop 실패: {e}", flush=True)
+        return False
+
+
 def capture_window_printwindow(hwnd, out_path: Path) -> bool:
     """PrintWindow(PW_RENDERFULLCONTENT)로 창 캡처 → PNG 저장.
 

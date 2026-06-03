@@ -46,7 +46,8 @@ from pathlib import Path as _Path
 _WINDOW_POS_FILE = _Path(__file__).resolve().parent.parent / "data" / "window_positions.json"
 
 _DEFAULT_WINDOW_POS = {
-    "kakaotalk_main": {"x": 50,  "y": 50,  "w": 900, "h": 900},
+    "kakaotalk_main": {"x": 50,  "y": 50,  "w": 529, "h": 900},
+    "kakaowork_main": {"x": 578, "y": 48,  "w": 760, "h": 900},
     "chatroom":       {"x": 100, "y": 50,  "w": 600, "h": 800},
     "save_dialog":    {"x": 980, "y": 120, "w": 860, "h": 600},
 }
@@ -284,6 +285,43 @@ def lock_kakaotalk_window(pos: tuple[int, int, int, int] | None = None) -> bool:
     except Exception as e:
         print(f"  [LOCK] 카톡 창 고정 실패: {e}", flush=True)
         return False
+
+
+def lock_kakaowork_window(pos: tuple[int, int, int, int] | None = None) -> bool:
+    """카카오워크 메인창을 고정 좌표/크기로 강제 이동·리사이즈.
+
+    워크 창은 제목이 워크스페이스명(예 '네노바')이라 제목매칭이 안 됨 →
+    work_vision_reader.find_kakaowork_window(클래스 기반 hwnd)를 재사용.
+    pos=None 이면 window_positions.json 의 'kakaowork_main'.
+    """
+    import win32con
+    if pos is None:
+        pos = get_pos_tuple("kakaowork_main")
+    x, y, w, h = pos
+    try:
+        from core.work_vision_reader import find_kakaowork_window
+        hwnd = find_kakaowork_window()
+        if not hwnd:
+            return False
+        if win32gui.IsIconic(hwnd):
+            win32gui.ShowWindow(hwnd, win32con.SW_RESTORE)
+            time.sleep(0.2)
+        win32gui.MoveWindow(hwnd, x, y, w, h, True)
+        time.sleep(0.2)
+        return True
+    except Exception as e:
+        print(f"  [LOCK] 워크 창 고정 실패: {e}", flush=True)
+        return False
+
+
+def get_capture_region(key: str) -> dict | None:
+    """capture_regions[key] 반환(앱 상대좌표 dict). 없으면 None.
+    파일을 매번 읽어 편집 즉시 반영."""
+    try:
+        loaded = _json.loads(_WINDOW_POS_FILE.read_text(encoding="utf-8"))
+        return (loaded.get("capture_regions") or {}).get(key)
+    except Exception:
+        return None
 
 
 def minimize_distractions():
