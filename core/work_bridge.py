@@ -417,6 +417,7 @@ def cycle_once_v2(*, forward: bool = True, verbose: bool = True, max_rooms: int 
     """
     from core.work_vision_reader import (
         find_kakaowork_window, capture_region, open_work_room_by_row_and_read,
+        read_room_list_state,
     )
     from core.badge_monitor import detect_blue_badge_rows
     from core.window_manager import (
@@ -427,16 +428,14 @@ def cycle_once_v2(*, forward: bool = True, verbose: bool = True, max_rooms: int 
     stats = {"unread_rooms": 0, "opened": 0, "forwarded": 0,
              "self_loop_skipped": 0, "unmapped_skipped": 0}
 
-    # 고정 배치
     lock_kakaowork_window()
     lock_kakaotalk_window()
     time.sleep(0.3)
-
     h = find_kakaowork_window()
     if not h:
         return {"err": "no_kw"}
 
-    # 워크 룸목록 캡처 → 파란뱃지(안읽음) 행 y
+    # 룸목록 1회 캡처 → ① 파란뱃지 행 y ② Vision 으로 방이름+순서
     cap = DATA.parent / "captures" / f"_v2list_{int(time.time()*1000)}.png"
     if not capture_region(h, "kakaowork_roomlist", cap):
         return {"err": "capture_fail"}
@@ -451,45 +450,96 @@ def cycle_once_v2(*, forward: bool = True, verbose: bool = True, max_rooms: int 
             print("  [WORK→KK v2] 안읽음 방 없음", flush=True)
         return stats
 
+    rows, _ = read_room_list_state()  # [{room, unread, ...}] 위→아래 순
+    if not rows:
+        return {"err": "roomlist_vision_fail"}
+
     wl, wt, ww, wh = get_pos_tuple("kakaowork_main")
     reg = get_capture_region("kakaowork_roomlist")
     rdy = reg.get("dy", 110) if reg else 110
+    row_h = (get_capture_region("kakaowork_row_height") or 76) if False else 76
 
     mapping = _load_room_mapping()
     ledger = _v2_load_ledger()
 
-    # 상위 max_rooms 안읽음 방만 (나머지는 다음 사이클)
-    for by in badge_ys[:max_rooms]:
+    # 뱃지 y → 행 인덱스 → rows[인덱스] 방이름. (뱃지순서=룸목록순서 가정)
+    for rank, by in enumerate(badge_ys[:max_rooms]):
         if _stop_requested():
             break
+        # 뱃지 y 로 행 인덱스 추정
+        idx = round((by - badge_ys[0]) / row_h) if len(badge_ys) > 1 else 0
+        idx = max(0, min(idx, len(rows) - 1))
+        work_room = rows[idx].get("room", "") if idx < len(rows) else ""
+        kk = _resolve_kakao_room(work_room, mapping)
+        if not kk:
+            stats["unmapped_skipped"] += 1
+            if verbose:
+                print(f"  [WORK→KK v2] unmapped: '{work_room}' (행 {idx})", flush=True)
+            continue
+
         row_abs_y = wt + rdy + by
-        msgs = open_work_room_by_row_and_read(h, row_abs_y, max_msgs_tail=10)
+        msgs = open_work_room_by_row_and_read(h, row_abs_y, max_msgs_tail=12)
         if not msgs:
             continue
         stats["opened"] += 1
 
-        # 헤더로 워크방 이름 식별이 어려우니 — 대화창 첫 미러본 또는 방 매칭은
-        # 일단 보류하고, 워크 네이티브 신규만 추출. 카톡 방 매칭은 미러본의
-        # "[카톡 미러] <방이름>" 또는 send 기록으로. (P4-2에서 정교화)
-        # 여기서는 '봇/미러 아님 + 미중계' 메시지를 후보로 모음.
+        # 본문 → 워크 네이티브 신규만 추출(봇/미러/비사용자/이미중계 제외)
+        to_send = []
         for m in msgs:
             content = (m.get("content") or "").strip()
-            # 비-사용자(날짜/읽음/입퇴장/URL/답장버튼) 제외
             if _is_non_user_message(content):
-                stats["self_loop_skipped"] += 1
                 continue
             line = f"[{m.get('sender','')}] [{m.get('time','')}] {content}"
-            # 봇/미러 형식 제외 (카톡에 이미 있음).
-            # content 자체도 검사 — Opus 가 sender/time 분리 안 하고 content 에
-            # "[발신자] [시각] ..." 통째로 넣는 경우 대응.
             if (_is_bot_system_preview(line) or _looks_like_mirror_header(line)
                     or _is_bot_system_preview(content) or _looks_like_mirror_header(content)):
-                stats["self_loop_skipped"] += 1
                 continue
-            if verbose:
-                print(f"  [WORK→KK v2] 워크신규 후보: '{content[:50]}'", flush=True)
-            # NOTE: 카톡 방 매칭 + 실제 송신은 P4-2(방 식별)에서 연결. 지금은 탐지/필터까지.
+            key = _v2_msg_key(kk, m)
+            if key in ledger:
+                continue  # 이미 카톡으로 중계함
+            to_send.append((content, key))
 
+        if not to_send:
+            continue
+        if verbose:
+            print(f"  [WORK→KK v2] '{kk}' 워크신규 {len(to_send)}건", flush=True)
+
+        if forward:
+            from core import kakao_win32 as kw
+            import win32gui as _w32
+            # 카톡 방 열기(없으면 검색)
+            hwnd = kw.find_chat_window(kk)
+            if hwnd is None:
+                ores = kw.search_and_open_room(kk)
+                oh = ores.get("hwnd")
+                for _ in range(33):
+                    hwnd = kw.find_chat_window(kk)
+                    if hwnd:
+                        break
+                    if oh and _w32.IsWindow(oh) and (_w32.GetWindowText(oh) or "") == kk:
+                        hwnd = oh
+                        break
+                    time.sleep(0.3)
+            if hwnd is None:
+                print(f"  [WORK→KK v2] ❌ 카톡 '{kk}' 방 못 엶 — 스킵", flush=True)
+                continue
+            for content, key in to_send:
+                try:
+                    res = kw.send_message_to_room(kk, content)
+                    if res.get("success"):
+                        stats["forwarded"] += 1
+                        ledger.add(key)
+                        print(f"  [WORK→KK v2] ✅ '{kk}' ← '{content[:50]}'", flush=True)
+                    else:
+                        print(f"  [WORK→KK v2] ❌ '{kk}' 송신실패: {res.get('error','')}", flush=True)
+                except Exception as e:
+                    print(f"  [WORK→KK v2] '{kk}' 예외: {e}", flush=True)
+                time.sleep(0.5)
+        else:
+            for content, key in to_send:
+                print(f"  [WORK→KK v2] (dry) '{kk}' ← '{content[:50]}'", flush=True)
+                ledger.add(key)  # dry 도 ledger 기록(중복로그 방지)
+
+    _v2_save_ledger(ledger)
     return stats
 
 
