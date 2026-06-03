@@ -5,5 +5,17 @@
   "save_dialog":    { "x": 980, "y": 120, "w": 860, "h": 600 },
 
   "_note_room_list_click_y_offset": "방 목록에서 방을 클릭할 때 Y를 이만큼(px) 아래로 내림. 목록 맨 위 공지/배너에 클릭이 닿아 저장 실패할 때 사용. 2cm≈75px. 너무 크면 윗방을 건너뛰니 화면 보며 미세조정(예: 50~90).",
-  "room_list_click_y_offset": 75
+  "room_list_click_y_offset": 75,
+
+  "_note_capture_regions": "v3 고정레이아웃 캡처/클릭 좌표 (앱 좌상단 기준 상대 dx,dy + w,h). 사용자가 화면에서 짚은 위치 기반. 카톡 폭 529 기준.",
+  "capture_regions": {
+    "kakaotalk_unread_tab": { "dx": 175, "dy": 96, "_desc": "안읽음 탭 버튼 클릭 좌표" },
+    "kakaotalk_roomlist":   { "dx": 63, "dy": 130, "w": 460, "h": 580, "_desc": "룸목록 캡처영역(광고 위쪽까지). 첫방 y≈140, 행간격≈85" },
+    "kakaotalk_row_first_dy": 140,
+    "kakaotalk_row_height":  85,
+    "kakaotalk_badge_x":     497,
+    "kakaotalk_scrollbar_x": 521,
+    "kakaotalk_ad_top_dy":   805,
+    "_desc_ad": "dy 805 아래는 광고 — 클릭/캡처 금지. 맨밑 방에도 뱃지 있으면 안읽음 9개 초과 → 스크롤 필요"
+  }
 }
