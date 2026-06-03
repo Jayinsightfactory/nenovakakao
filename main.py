@@ -596,9 +596,16 @@ def cmd_monitor(*, with_recorder: bool = False) -> int:
     PAGE_SCROLL = 277    # 한 페이지 = 한 행(60px) × ~4.6배 wheel notches
     ROWS_PER_PAGE = 9
     SWEEP_ROW_HEIGHT = 60
-    # 페이지 0 (맨 위) 부터 점점 아래로. 안읽음 방이 5개뿐이어도 p0 에서 바로 성공.
-    # 이전 [19→0] 순서는 안읽음 방 적을 때 빈 영역 헛클릭 반복했음.
-    PAGES = list(range(0, 20))  # [0, 1, ..., 19] — 맨 위부터
+    # 뱃지 모드(기본): 안읽음 방은 카톡에서 '맨 위'로 올라온다. 페이지0(맨위)의
+    # 안읽음을 처리하면 읽음→목록에서 빠지고 다음 안읽음이 위로 올라오므로,
+    # 페이지0만 반복(사이클 반복)하면 안읽음 9개 초과여도 전부 소진된다.
+    # 20페이지 순회는 중복/빈행 헛클릭(중복 1087회 사고)만 유발 → 페이지0만.
+    # NENOVA_BADGE_SCAN=0(옛 고정행) 일 때만 20페이지 순회.
+    import os as _os_pg
+    if _os_pg.environ.get("NENOVA_BADGE_SCAN", "1") != "0":
+        PAGES = [0]            # 뱃지 모드: 맨 위 페이지만(반복 사이클로 소진)
+    else:
+        PAGES = list(range(0, 20))  # 옛 방식: 20페이지 순회
 
     # 안전한 정지 신호: data/_STOP 파일 (stop_nenova.bat 가 생성).
     # 오버레이 stub 모드(NENOVA_NO_OVERLAY=1)에서는 overlay.should_stop 이 항상 False 라
