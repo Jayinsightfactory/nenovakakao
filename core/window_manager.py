@@ -48,7 +48,7 @@ _WINDOW_POS_FILE = _Path(__file__).resolve().parent.parent / "data" / "window_po
 _DEFAULT_WINDOW_POS = {
     "kakaotalk_main": {"x": 50,  "y": 50,  "w": 529, "h": 900},
     "kakaowork_main": {"x": 578, "y": 48,  "w": 760, "h": 900},
-    "chatroom":       {"x": 100, "y": 50,  "w": 600, "h": 800},
+    "chatroom":       {"x": 50,  "y": 50,  "w": 529, "h": 900},
     "save_dialog":    {"x": 980, "y": 120, "w": 860, "h": 600},
 }
 
