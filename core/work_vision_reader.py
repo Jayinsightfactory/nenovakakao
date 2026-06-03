@@ -75,6 +75,63 @@ def find_kakaowork_window() -> int | None:
     return hidden[0] if hidden else None
 
 
+_PW_RENDERFULLCONTENT = 0x2  # undocumented flag (Win8.1+). GPU 가속 CEF 창도 캡처.
+
+
+def capture_window_printwindow(hwnd, out_path: Path) -> bool:
+    """PrintWindow(PW_RENDERFULLCONTENT)로 창 캡처 → PNG 저장.
+
+    글로벌 서칭 결과 채택(2026-06-03): KakaoWork(CEF/GPU가속) 는 ImageGrab 같은
+    화면 캡처로는 검은화면이 나옴. PrintWindow + PW_RENDERFULLCONTENT 는
+    창 백버퍼에서 직접 렌더 → **창이 가려지거나 백그라운드여도** 정상 캡처.
+    → TOPMOST/포커스 강탈 불필요 → 모니터 경합·포커스 이탈 문제 동시 해결.
+
+    반환: True 성공. 검은화면(평균밝기<8)이면 False(폴백 유도).
+    """
+    import win32gui
+    import win32ui
+    import win32con
+    from ctypes import windll
+    try:
+        if win32gui.IsIconic(hwnd):
+            win32gui.ShowWindow(hwnd, win32con.SW_RESTORE)
+            time.sleep(0.3)
+        l, t, r, b = win32gui.GetWindowRect(hwnd)
+        w, h = r - l, b - t
+        if w < 100 or h < 100:
+            return False
+        hwnd_dc = win32gui.GetWindowDC(hwnd)
+        mfc_dc = win32ui.CreateDCFromHandle(hwnd_dc)
+        save_dc = mfc_dc.CreateCompatibleDC()
+        bmp = win32ui.CreateBitmap()
+        bmp.CreateCompatibleBitmap(mfc_dc, w, h)
+        save_dc.SelectObject(bmp)
+        ok = windll.user32.PrintWindow(hwnd, save_dc.GetSafeHdc(), _PW_RENDERFULLCONTENT)
+        from PIL import Image
+        bi = bmp.GetInfo()
+        bits = bmp.GetBitmapBits(True)
+        img = Image.frombuffer("RGB", (bi["bmWidth"], bi["bmHeight"]), bits,
+                               "raw", "BGRX", 0, 1)
+        # 정리
+        win32gui.DeleteObject(bmp.GetHandle())
+        save_dc.DeleteDC()
+        mfc_dc.DeleteDC()
+        win32gui.ReleaseDC(hwnd, hwnd_dc)
+        if not ok:
+            return False
+        # 검은화면 검사
+        g = img.convert("L")
+        px = g.getdata()
+        if (sum(px) / len(px)) < 8:
+            return False
+        CAPTURES.mkdir(parents=True, exist_ok=True)
+        img.save(out_path)
+        return True
+    except Exception as e:
+        print(f"  [WORK-VISION] PrintWindow 실패: {e}", flush=True)
+        return False
+
+
 def _minimize_kw_separate_windows(main_hwnd: int) -> int:
     """KW 분리 채팅창(메인 '카카오워크' 외 KW 프로세스의 보조 창)을 최소화.
 
@@ -121,26 +178,48 @@ def _minimize_kw_separate_windows(main_hwnd: int) -> int:
 
 def capture_chat_panel(hwnd: int, out_path: Path | None = None,
                        *, right_panel_only: bool = True) -> Path:
-    """KW 창 캡처. right_panel_only=True 면 좌측 사이드바 제외(우측 채팅만)."""
+    """KW 창 캡처. PrintWindow(PW_RENDERFULLCONTENT) 우선 → 실패 시 ImageGrab 폴백.
+
+    PrintWindow 는 창이 가려지거나 백그라운드여도 백버퍼에서 직접 캡처하므로
+    포커스/TOPMOST 강탈이 불필요(모니터 경합·검은화면·포커스이탈 해소, 2026-06-03).
+    right_panel_only=True 면 좌측 사이드바(≈320px) 제외.
+    """
     import win32gui
-    from PIL import ImageGrab
     if not win32gui.IsWindow(hwnd):
         raise RuntimeError("KW 창 hwnd 무효")
-    # 분리 채팅창이 룸리스트를 가리지 않도록 먼저 최소화
+    CAPTURES.mkdir(parents=True, exist_ok=True)
+    if out_path is None:
+        out_path = CAPTURES / f"kw_chat_{int(time.time()*1000)}.png"
+
+    # 1순위: PrintWindow 전체창 캡처(창 안 건드림) → 필요시 우측 패널만 crop
+    _full = CAPTURES / f"_kwfull_{int(time.time()*1000)}.png"
+    if capture_window_printwindow(hwnd, _full):
+        try:
+            from PIL import Image
+            im = Image.open(_full)
+            if right_panel_only:
+                w, h = im.size
+                left = min(320, max(0, w - 200))
+                im = im.crop((left, 0, w, h))
+            im.save(out_path)
+            try:
+                _full.unlink()
+            except Exception:
+                pass
+            return out_path
+        except Exception:
+            pass
+
+    # 2순위(폴백): ImageGrab — TOPMOST 후 화면 캡처 (PrintWindow 실패 시만)
+    from PIL import ImageGrab
+    import win32con
     try:
         n = _minimize_kw_separate_windows(hwnd)
         if n:
             print(f"  [WORK-VISION] KW 분리창 {n}개 최소화", flush=True)
-    except Exception:
-        pass
-    # 전면화 + 최상단 강제 (TOPMOST). 터널 콘솔/Claude 등 다른 창이 KW 룸목록을
-    # 가려 캡처가 일부만 잡히던 문제(11방→3방) 방지. 캡처 후 TOPMOST 해제.
-    import win32con
-    try:
         if win32gui.IsIconic(hwnd):
             win32gui.ShowWindow(hwnd, win32con.SW_RESTORE)
             time.sleep(0.2)
-        # HWND_TOPMOST 로 다른 모든 창 위로 (이동/리사이즈 없이 Z순서만)
         win32gui.SetWindowPos(hwnd, win32con.HWND_TOPMOST, 0, 0, 0, 0,
                               win32con.SWP_NOMOVE | win32con.SWP_NOSIZE | win32con.SWP_SHOWWINDOW)
         try:
@@ -152,14 +231,8 @@ def capture_chat_panel(hwnd: int, out_path: Path | None = None,
         pass
     l, t, r, b = win32gui.GetWindowRect(hwnd)
     if right_panel_only:
-        # 좌측 사이드바 폭 ≈ 320px (KW 표준)
         l = min(l + 320, r - 200)
-    CAPTURES.mkdir(parents=True, exist_ok=True)
-    if out_path is None:
-        out_path = CAPTURES / f"kw_chat_{int(time.time()*1000)}.png"
-    img = ImageGrab.grab(bbox=(l, t, r, b))
-    img.save(out_path)
-    # TOPMOST 해제 (캡처 끝났으니 KW 가 계속 위에 떠 사용자 방해 안 하게)
+    ImageGrab.grab(bbox=(l, t, r, b)).save(out_path)
     try:
         win32gui.SetWindowPos(hwnd, win32con.HWND_NOTOPMOST, 0, 0, 0, 0,
                               win32con.SWP_NOMOVE | win32con.SWP_NOSIZE)
@@ -235,31 +308,39 @@ def open_work_room_and_read(work_room: str, *, max_msgs_tail: int = 6) -> list[d
         print("[WORK-VISION] KW 창 없음(open_room)", flush=True)
         return []
     try:
-        # KW 전면화 (TOPMOST)
+        # 방 열기(Ctrl+K)는 입력 포커스가 KW 에 있어야 함. SetForegroundWindow 만으론
+        # 다른 창의 포커스 잠금에 막히므로(방 안 열림), AttachThreadInput 강제 포커스 사용.
         import win32con
-        win32gui.SetWindowPos(hwnd, win32con.HWND_TOPMOST, 0, 0, 0, 0,
-                              win32con.SWP_NOMOVE | win32con.SWP_NOSIZE | win32con.SWP_SHOWWINDOW)
+        if win32gui.IsIconic(hwnd):
+            win32gui.ShowWindow(hwnd, win32con.SW_RESTORE)
+            time.sleep(0.3)
         try:
-            win32gui.SetForegroundWindow(hwnd)
+            from core.window_manager import force_foreground
+            force_foreground(hwnd)
         except Exception:
-            pass
-        time.sleep(0.5)
+            try:
+                win32gui.SetForegroundWindow(hwnd)
+            except Exception:
+                pass
+        time.sleep(0.7)
+        # 포커스 확인 — KW 가 전면 아니면 방 열기 무의미
+        if win32gui.GetForegroundWindow() != hwnd:
+            print("  [WORK-VISION] KW 포커스 확보 실패 — 방 열기 보류", flush=True)
+            return []
+        # 채팅 패널 클릭으로 입력 포커스 확실히 (Ctrl+K 가 먹도록)
+        l, t, r, b = win32gui.GetWindowRect(hwnd)
+        pyautogui.click((l + r) // 2, t + 12)  # 타이틀바 근처(메시지 영역 클릭 회피)
+        time.sleep(0.3)
         # Ctrl+K 전역검색 → 방 이름 입력 → 첫 결과 진입
         pyautogui.press("escape"); time.sleep(0.3)
         pyautogui.hotkey("ctrl", "k"); time.sleep(1.2)
         pyperclip.copy(work_room)
         pyautogui.hotkey("ctrl", "v"); time.sleep(1.5)
         pyautogui.press("enter"); time.sleep(2.0)
-        # 대화창(우측 패널) 캡처
+        # 대화창(우측 패널) 캡처 — PrintWindow 라 가려져도 OK
         cap = capture_chat_panel(hwnd, CAPTURES / f"kw_room_{int(time.time()*1000)}.png",
                                  right_panel_only=True)
         msgs = extract_messages(cap)
-        # TOPMOST 해제
-        try:
-            win32gui.SetWindowPos(hwnd, win32con.HWND_NOTOPMOST, 0, 0, 0, 0,
-                                  win32con.SWP_NOMOVE | win32con.SWP_NOSIZE)
-        except Exception:
-            pass
         return msgs[-max_msgs_tail:] if max_msgs_tail and len(msgs) > max_msgs_tail else msgs
     except Exception as e:
         print(f"[WORK-VISION] open_work_room_and_read 예외: {e}", flush=True)
