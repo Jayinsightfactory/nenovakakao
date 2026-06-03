@@ -377,6 +377,48 @@ def open_work_room_and_read(work_room: str, *, max_msgs_tail: int = 6) -> list[d
         return []
 
 
+def open_work_room_by_row_and_read(hwnd, row_abs_y: int, *, max_msgs_tail: int = 8) -> list[dict]:
+    """워크 룸목록의 특정 행(절대 y)을 클릭해 방 열고 → 대화창 본문 추출.
+
+    v3: Ctrl+K(막힘) 대신 고정좌표 행클릭. 행 클릭 → 대화창 capture_region 캡처
+    → extract_messages. 캡처는 PrintWindow 라 클릭 후 포커스 무관.
+    """
+    import pyautogui
+    import win32gui
+    import win32con
+    from pathlib import Path as _P
+    try:
+        from core.window_manager import get_pos_tuple
+        wl, wt, ww, wh = get_pos_tuple("kakaowork_main")
+        # 룸목록 방이름 영역 클릭 (뱃지 왼쪽). 워크 좌측+150 정도가 방이름 중앙.
+        click_x = wl + 150
+        # 포커스 + 클릭
+        if win32gui.IsIconic(hwnd):
+            win32gui.ShowWindow(hwnd, win32con.SW_RESTORE)
+            time.sleep(0.2)
+        try:
+            from core.window_manager import force_foreground
+            force_foreground(hwnd)
+        except Exception:
+            try:
+                win32gui.SetForegroundWindow(hwnd)
+            except Exception:
+                pass
+        time.sleep(0.4)
+        pyautogui.click(click_x, row_abs_y)
+        time.sleep(1.5)
+        # 대화창 본문 캡처(고정영역) → 추출
+        cap = CAPTURES / f"kw_room_{int(time.time()*1000)}.png"
+        if not capture_region(hwnd, "kakaowork_chatpanel", cap):
+            # 폴백: 우측패널 PrintWindow crop
+            cap = capture_chat_panel(hwnd, cap, right_panel_only=True)
+        msgs = extract_messages(cap)
+        return msgs[-max_msgs_tail:] if max_msgs_tail and len(msgs) > max_msgs_tail else msgs
+    except Exception as e:
+        print(f"[WORK-VISION] open_work_room_by_row 예외: {e}", flush=True)
+        return []
+
+
 def _msg_hash(m: dict) -> str:
     s = "|".join((m.get("sender", ""), m.get("time", ""), m.get("content", "")[:120]))
     return hashlib.md5(s.encode("utf-8", errors="ignore")).hexdigest()

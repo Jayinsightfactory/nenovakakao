@@ -122,6 +122,61 @@ def detect_badge_positions(
     return badge_ys
 
 
+def _is_blue(r: int, g: int, b: int) -> bool:
+    """카카오워크 안읽음 뱃지(밝은 파랑 ~RGB(0,120,240)) 판별."""
+    return b >= 180 and b > r + 60 and 60 <= g <= 200 and r <= 140
+
+
+def detect_blue_badge_rows(
+    image_path: Path,
+    *,
+    x_ratio_start: float = 0.80,
+    x_ratio_end: float = 1.0,
+    min_blue: int = 25,
+    top_skip_px: int = 5,
+    bottom_skip_px: int = 5,
+) -> list[int]:
+    """카카오워크 룸목록 crop 에서 '파란 안읽음 뱃지' y좌표(crop 내 상대) 반환.
+
+    워크 뱃지는 룸목록 우측 끝 파란 숫자원. detect_unread_badge_rows(빨강)의 워크판.
+    capture_region('kakaowork_roomlist') crop 이미지에 사용.
+    """
+    img = Image.open(image_path).convert("RGB")
+    width, height = img.size
+    pixels = img.load()
+    x_start = int(width * x_ratio_start)
+    x_end = min(width, int(width * x_ratio_end))
+    y_top = max(0, top_skip_px)
+    y_bot = max(y_top + 1, height - bottom_skip_px)
+
+    rc: dict[int, int] = {}
+    for y in range(y_top, y_bot):
+        c = 0
+        for x in range(x_start, x_end):
+            r, g, b = pixels[x, y]
+            if _is_blue(r, g, b):
+                c += 1
+        if c > 0:
+            rc[y] = c
+    if not rc:
+        return []
+    sorted_ys = sorted(rc.keys())
+    clusters: list[list[int]] = []
+    cur = [sorted_ys[0]]
+    for y in sorted_ys[1:]:
+        if y - cur[-1] <= 10:
+            cur.append(y)
+        else:
+            clusters.append(cur)
+            cur = [y]
+    clusters.append(cur)
+    out = []
+    for cl in clusters:
+        if sum(rc[y] for y in cl) >= min_blue:
+            out.append(cl[len(cl) // 2])
+    return out
+
+
 def detect_unread_badge_rows(
     image_path: Path,
     *,
