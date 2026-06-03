@@ -28,8 +28,36 @@ ROOT = Path(__file__).resolve().parent.parent
 DATA = ROOT / "data"
 SENT_RECENT = DATA / "work_sent_recent.json"
 VISION_STATE = DATA / "work_vision_state.json"
+WORK_SENT_LEDGER = DATA / "work_bridge_sent_ledger.json"  # v2: 카톡으로 중계한 메시지 해시
 MAX_PER_ROOM = 40  # 방당 최근 N건 보관 (loop 필터링)
 SENT_TTL_SEC = 7200  # 2시간 — 그 이후 entry 만료 (메모리/판별 단순화)
+
+
+# ─────────────────────────────────────────────────────────
+# v2: 카톡으로 이미 중계한 메시지 ledger (재전송 방지)
+# ─────────────────────────────────────────────────────────
+import hashlib as _hashlib
+
+
+def _v2_msg_key(kakao_room: str, m: dict) -> str:
+    s = f"{kakao_room}|{m.get('sender','')}|{m.get('time','')}|{(m.get('content','') or '')[:80]}"
+    return _hashlib.md5(s.encode("utf-8", errors="ignore")).hexdigest()
+
+
+def _v2_load_ledger() -> set:
+    try:
+        return set(json.loads(WORK_SENT_LEDGER.read_text(encoding="utf-8")))
+    except Exception:
+        return set()
+
+
+def _v2_save_ledger(s: set) -> None:
+    try:
+        DATA.mkdir(parents=True, exist_ok=True)
+        keep = list(s)[-4000:]  # 무한증가 방지
+        WORK_SENT_LEDGER.write_text(json.dumps(keep, ensure_ascii=False), encoding="utf-8")
+    except Exception:
+        pass
 
 
 # ─────────────────────────────────────────────────────────
@@ -78,6 +106,28 @@ _BOT_SYSTEM_MARKERS = (
     "[사진]",             # 모니터 미러 사진 헤더 "[발신자] [시각] [사진]"
     "다운로드 실패",       # 사진 다운로드 실패 fallback
 )
+
+
+import re as _re_sys
+
+# 카톡으로 보내면 안 되는 '비-사용자' 메시지(시스템/UI/봇잔재) 패턴
+_NON_USER_PATTERNS = (
+    _re_sys.compile(r"^\d{4}년\s*\d{1,2}월\s*\d{1,2}일"),   # 날짜 구분선
+    _re_sys.compile(r"여기까지\s*읽으셨"),                  # 읽음 표시
+    _re_sys.compile(r"채팅방\s*이름을\s*변경"),             # 시스템: 이름변경
+    _re_sys.compile(r"님(이|을)\s*.*?(들어왔|나갔|초대|입장|퇴장|변경)"),  # 입퇴장/초대/변경
+    _re_sys.compile(r"^\[?카톡\s*답장\]?$"),                # 답장버튼 라벨
+    _re_sys.compile(r"^https?://"),                          # URL 단독(봇 이미지 등)
+    _re_sys.compile(r"^\s*$"),                               # 빈 줄
+)
+
+
+def _is_non_user_message(text: str) -> bool:
+    """날짜선/읽음표시/입퇴장/이름변경/답장버튼/URL 등 = 사용자 메시지 아님."""
+    t = (text or "").strip()
+    if not t or len(t) < 2:
+        return True
+    return any(p.search(t) for p in _NON_USER_PATTERNS)
 
 
 def _looks_like_mirror_header(preview: str) -> bool:
@@ -359,9 +409,94 @@ def _stop_requested() -> bool:
         return False
 
 
+def cycle_once_v2(*, forward: bool = True, verbose: bool = True, max_rooms: int = 3) -> dict:
+    """v2 사이클: 워크 룸목록 → 파란뱃지 방 → 행클릭 본문읽기 → 새 메시지만 카톡 송신.
+
+    v1(미리보기)과 달리 '대화창 본문 전체'를 읽어, 봇/미러([발신자][시각])·이미중계분을
+    제외한 '워크 네이티브 신규'만 카톡 원본방으로 전송. max_rooms: 사이클당 최대 처리 방수.
+    """
+    from core.work_vision_reader import (
+        find_kakaowork_window, capture_region, open_work_room_by_row_and_read,
+    )
+    from core.badge_monitor import detect_blue_badge_rows
+    from core.window_manager import (
+        lock_kakaowork_window, lock_kakaotalk_window, get_pos_tuple, get_capture_region,
+    )
+    from core.kakaowork_router import _load_room_mapping
+
+    stats = {"unread_rooms": 0, "opened": 0, "forwarded": 0,
+             "self_loop_skipped": 0, "unmapped_skipped": 0}
+
+    # 고정 배치
+    lock_kakaowork_window()
+    lock_kakaotalk_window()
+    time.sleep(0.3)
+
+    h = find_kakaowork_window()
+    if not h:
+        return {"err": "no_kw"}
+
+    # 워크 룸목록 캡처 → 파란뱃지(안읽음) 행 y
+    cap = DATA.parent / "captures" / f"_v2list_{int(time.time()*1000)}.png"
+    if not capture_region(h, "kakaowork_roomlist", cap):
+        return {"err": "capture_fail"}
+    badge_ys = detect_blue_badge_rows(str(cap))
+    try:
+        cap.unlink()
+    except Exception:
+        pass
+    stats["unread_rooms"] = len(badge_ys)
+    if not badge_ys:
+        if verbose:
+            print("  [WORK→KK v2] 안읽음 방 없음", flush=True)
+        return stats
+
+    wl, wt, ww, wh = get_pos_tuple("kakaowork_main")
+    reg = get_capture_region("kakaowork_roomlist")
+    rdy = reg.get("dy", 110) if reg else 110
+
+    mapping = _load_room_mapping()
+    ledger = _v2_load_ledger()
+
+    # 상위 max_rooms 안읽음 방만 (나머지는 다음 사이클)
+    for by in badge_ys[:max_rooms]:
+        if _stop_requested():
+            break
+        row_abs_y = wt + rdy + by
+        msgs = open_work_room_by_row_and_read(h, row_abs_y, max_msgs_tail=10)
+        if not msgs:
+            continue
+        stats["opened"] += 1
+
+        # 헤더로 워크방 이름 식별이 어려우니 — 대화창 첫 미러본 또는 방 매칭은
+        # 일단 보류하고, 워크 네이티브 신규만 추출. 카톡 방 매칭은 미러본의
+        # "[카톡 미러] <방이름>" 또는 send 기록으로. (P4-2에서 정교화)
+        # 여기서는 '봇/미러 아님 + 미중계' 메시지를 후보로 모음.
+        for m in msgs:
+            content = (m.get("content") or "").strip()
+            # 비-사용자(날짜/읽음/입퇴장/URL/답장버튼) 제외
+            if _is_non_user_message(content):
+                stats["self_loop_skipped"] += 1
+                continue
+            line = f"[{m.get('sender','')}] [{m.get('time','')}] {content}"
+            # 봇/미러 형식 제외 (카톡에 이미 있음).
+            # content 자체도 검사 — Opus 가 sender/time 분리 안 하고 content 에
+            # "[발신자] [시각] ..." 통째로 넣는 경우 대응.
+            if (_is_bot_system_preview(line) or _looks_like_mirror_header(line)
+                    or _is_bot_system_preview(content) or _looks_like_mirror_header(content)):
+                stats["self_loop_skipped"] += 1
+                continue
+            if verbose:
+                print(f"  [WORK→KK v2] 워크신규 후보: '{content[:50]}'", flush=True)
+            # NOTE: 카톡 방 매칭 + 실제 송신은 P4-2(방 식별)에서 연결. 지금은 탐지/필터까지.
+
+    return stats
+
+
 def daemon(*, interval_sec: int = 20, once: bool = False,
-           dry_run: bool = False) -> int:
-    """워크→카톡 브릿지 데몬. Ctrl+C 또는 data/_STOP 파일로 종료."""
+           dry_run: bool = False, v2: bool = False) -> int:
+    """워크→카톡 브릿지 데몬. Ctrl+C 또는 data/_STOP 파일로 종료.
+    v2=True 면 cycle_once_v2(본문읽기) 사용."""
     print(f"[WORK→KK] 데몬 시작 interval={interval_sec}s dry={dry_run} once={once}", flush=True)
     if _stop_requested():
         print("[WORK→KK] data/_STOP 존재 — 시작 안 함(정지 상태). 모니터를 다시 시작하면 latch 가 해제됩니다.", flush=True)
@@ -373,8 +508,11 @@ def daemon(*, interval_sec: int = 20, once: bool = False,
             return 0
         cycle += 1
         try:
-            print(f"\n[WORK→KK] === cycle {cycle} ===", flush=True)
-            stats = cycle_once(forward=not dry_run, verbose=True)
+            print(f"\n[WORK→KK] === cycle {cycle}{' v2' if v2 else ''} ===", flush=True)
+            if v2:
+                stats = cycle_once_v2(forward=not dry_run, verbose=True)
+            else:
+                stats = cycle_once(forward=not dry_run, verbose=True)
             print(f"[WORK→KK] cycle {cycle} stats: {stats}", flush=True)
         except KeyboardInterrupt:
             print("\n[WORK→KK] Ctrl+C — 종료", flush=True)
