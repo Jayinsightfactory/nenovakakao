@@ -416,8 +416,10 @@ def search_and_open_room(room_name: str) -> Dict:
     else:
         candidates = [room_name]
 
-    def _search_once(q: str) -> list:
-        """검색 재활성화 → q 입력 → Enter → 열린 분리창 목록 반환."""
+    VK_DOWN = 0x28
+
+    def _search_once(q: str, nav_down: int = 0) -> list:
+        """검색 재활성화 → q 입력 → (↓ nav_down회) → Enter → 열린 분리창 목록 반환."""
         _ensure_foreground(main_hwnd)
         eh = _activate_search_and_get_edit(main_hwnd)
         if eh is None:
@@ -430,38 +432,44 @@ def search_and_open_room(room_name: str) -> Dict:
             win32api.SendMessage(eh, WM_CHAR, ord(ch), 0)
             time.sleep(SEARCH_CHAR_INTERVAL_SEC)
         time.sleep(SEARCH_RESULTS_WAIT_SEC)
+        for _ in range(nav_down):       # ↓ 로 N번째 결과 하이라이트 이동
+            _user32.keybd_event(VK_DOWN, 0, 0, 0)
+            _user32.keybd_event(VK_DOWN, 0, KEYEVENTF_KEYUP, 0)
+            time.sleep(0.12)
         _user32.keybd_event(VK_RETURN, 0, 0, 0)
         _user32.keybd_event(VK_RETURN, 0, KEYEVENTF_KEYUP, 0)
         time.sleep(SEARCH_OPEN_WAIT_SEC)
         return list_chat_windows()
 
     result = None
-    for q in candidates:
-        all_windows = _search_once(q)
-        _log(f"검색 시도 '{q}' (대상 '{room_name}') → 창 {len(all_windows)}개")
-        # 정규화 일치 (트레일링 ', ...' 허용)
-        for w in all_windows:
-            if _title_matches_room(w["title"], room_name):
-                result = {"success": True, "message": f"opened '{w['title']}'", "hwnd": w["hwnd"]}
-                break
-        if result:
-            break
-        # 일반 방은 substring/any 폴백 1회 (그룹방은 오송신 방지 위해 정규화만)
-        if not is_group:
+    if is_group:
+        # 멤버목록 그룹방: 후보 쿼리들로 '정규화 정확 일치'만 수용(오송신 방지)
+        for q in candidates:
+            all_windows = _search_once(q)
+            _log(f"검색 시도 '{q}' (대상 '{room_name}') → 창 {len(all_windows)}개")
             for w in all_windows:
-                if room_name in w["title"]:
-                    result = {"success": True,
-                              "message": f"opened '{w['title']}' (substr)",
-                              "hwnd": w["hwnd"]}
+                if _title_matches_room(w["title"], room_name):
+                    result = {"success": True, "message": f"opened '{w['title']}'", "hwnd": w["hwnd"]}
                     break
-            if result is None and all_windows:
-                result = {"success": True,
-                          "message": f"opened (title: '{all_windows[0]['title']}')",
-                          "hwnd": all_windows[0]["hwnd"]}
-            break  # 일반 방은 1회만
+            if result:
+                break
+    else:
+        # 일반 방: 같은 쿼리가 여러 방에 매칭될 수 있다(예: '네노바 영업' ↔ '네노바 영업/현장').
+        # Enter(top)만으론 엉뚱한 방을 열고, substring 폴백은 '/현장'을 오수용한다.
+        # → ↓ 로 결과를 순회하며 '정확 제목 일치'한 분리창만 수용(오송신 차단).
+        for nav in range(5):
+            all_windows = _search_once(room_name, nav_down=nav)
+            _log(f"검색 시도 '{room_name}' ↓{nav} → 창 {len(all_windows)}개")
+            for w in all_windows:
+                if _title_matches_room(w["title"], room_name):
+                    result = {"success": True,
+                              "message": f"opened '{w['title']}' (nav{nav})", "hwnd": w["hwnd"]}
+                    break
+            if result:
+                break
 
     if result is None:
-        result = {"success": False, "error": f"방 '{room_name}' 검색 후 분리창 못 찾음"}
+        result = {"success": False, "error": f"방 '{room_name}' 검색 후 정확일치 분리창 못 찾음"}
 
     # 검색창 텍스트 비우기 — 잔류 시 다음 검색/monitor 목록 필터를 방해함
     clear_chat_search()
