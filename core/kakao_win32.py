@@ -475,6 +475,13 @@ def send_message_to_room(room_name: str, text: str) -> Dict:
     """분리창 RICHEDIT50W 에 클립보드 paste + Enter.
 
     봇 API 와 별개. 봇이 들어가지 않은 방에 직접 송신 가능.
+
+    ⚠️ 통합 라이브 E2E 에서 '방금 연 창/포커스 경합' 시 분리창이 전면이 아니라
+    paste·Enter 가 다른 창으로 빠져 메시지가 조용히 유실되는 게 확인됐다.
+    그래서 **GetForegroundWindow 로 분리창이 실제 전면인지 확인**한 뒤 송신한다.
+    (RICHEDIT50W 는 WM_GETTEXTLENGTH/WM_SETTEXT 가 크로스프로세스로 신뢰되지 않아
+     길이 기반 검증은 쓰지 않는다. Ctrl+A+Del 클리어는 포커스 오류 시 '전송 메시지
+     삭제' 사고를 내므로 절대 사용 금지.)
     """
     hwnd = find_chat_window(room_name)
     if hwnd is None:
@@ -484,8 +491,21 @@ def send_message_to_room(room_name: str, text: str) -> Dict:
     if edit_hwnd is None:
         return {"success": False, "error": f"RICHEDIT50W 못 찾음 in '{room_name}'"}
 
-    bring_window_to_front(hwnd)
-    time.sleep(WINDOW_ACTIVATE_WAIT_SEC)
+    # 분리창을 확실히 전면화 (keystroke 오라우팅 방지). GetForegroundWindow 로 확인.
+    fg_ok = False
+    for _ in range(6):
+        bring_window_to_front(hwnd)
+        time.sleep(WINDOW_ACTIVATE_WAIT_SEC + 0.1)
+        try:
+            if win32gui.GetForegroundWindow() == hwnd:
+                fg_ok = True
+                break
+        except Exception:
+            pass
+        time.sleep(0.25)
+    if not fg_ok:
+        # 전면화 실패 → 키입력이 엉뚱한 창으로 갈 위험 → 송신 보류(상위에서 다음 사이클 재시도)
+        return {"success": False, "error": f"분리창 '{room_name}' 전면화 실패 — 송신 보류"}
 
     try:
         rect = win32gui.GetWindowRect(edit_hwnd)
@@ -494,14 +514,14 @@ def send_message_to_room(room_name: str, text: str) -> Dict:
         _user32.SetCursorPos(cx, cy)
         _user32.mouse_event(0x0002, 0, 0, 0, 0)
         _user32.mouse_event(0x0004, 0, 0, 0, 0)
-        time.sleep(EDIT_CLICK_WAIT_SEC)
+        time.sleep(EDIT_CLICK_WAIT_SEC + 0.1)
     except Exception:
         pass
 
     _set_clipboard_text(text)
-    time.sleep(0.05)
+    time.sleep(0.08)
     _send_ctrl_key_combo(VK_V)
-    time.sleep(0.05)
+    time.sleep(0.12)
     _user32.keybd_event(VK_RETURN, 0, 0, 0)
     _user32.keybd_event(VK_RETURN, 0, KEYEVENTF_KEYUP, 0)
     return {"success": True, "message": f"sent to '{room_name}'"}
