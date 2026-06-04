@@ -538,6 +538,22 @@ def cmd_monitor(*, with_recorder: bool = False) -> int:
     DISCOVER_ROOMS_EVERY = 720  # 1시간마다 카톡 OCR로 신규 방 발견
     FORCE_SWEEP_EVERY = 60      # 5분마다 idle 가드 무관 강제 풀 스윕 (안전망)
 
+    # ── P4 통합: 워크→카톡 역방향 패스 (cycle_once_v3) ──
+    # 모니터(카톡→워크) 사이클 끝마다 시간 간격으로 워크→카톡 중계를 함께 돌린다.
+    # 한 프로세스라 카톡 창 제어가 직렬화돼 멀티프로세스 락 경합/_STOP 분산 문제가 없다.
+    # NENOVA_WORKBRIDGE=0 으로 끄기. 간격/방수는 환경변수로 조절.
+    WORKBRIDGE_ENABLED = _os.environ.get("NENOVA_WORKBRIDGE", "1") != "0"
+    WORKBRIDGE_DRY = _os.environ.get("NENOVA_WORKBRIDGE_DRY") == "1"  # 통합 테스트용: 감지/분류만, 카톡 송신 안 함
+    try:
+        WORKBRIDGE_INTERVAL = int(_os.environ.get("NENOVA_WORKBRIDGE_INTERVAL", "60"))
+    except ValueError:
+        WORKBRIDGE_INTERVAL = 60
+    try:
+        WORKBRIDGE_MAX_ROOMS = int(_os.environ.get("NENOVA_WORKBRIDGE_MAXROOMS", "4"))
+    except ValueError:
+        WORKBRIDGE_MAX_ROOMS = 4
+    last_workbridge_ts = 0.0    # 0 → 첫 사이클 끝에 바로 1회 실행
+
     # Claude Computer Use 자율 회복
     last_cu_recover_ts: float = 0.0
     CU_RECOVER_COOLDOWN = 60        # 1분 cooldown (5분 → 1분 단축)
@@ -1203,6 +1219,21 @@ def cmd_monitor(*, with_recorder: bool = False) -> int:
                 finally:
                     if _got:
                         _klock.release("monitor")
+
+            # ── P4 통합: 워크→카톡 역방향 패스 (시간 간격) ──
+            # 카톡→워크 처리가 끝난 뒤, 워크에 새로 올라온 '워크 네이티브' 메시지를
+            # 카톡으로 중계. cycle_once_v3 가 내부에서 kakao_lock 을 잡으므로(직렬화)
+            # 같은 프로세스의 모니터 카톡 제어와 충돌하지 않는다.
+            if (WORKBRIDGE_ENABLED and not _stop_requested()
+                    and time.time() - last_workbridge_ts >= WORKBRIDGE_INTERVAL):
+                last_workbridge_ts = time.time()
+                try:
+                    from core.work_bridge import cycle_once_v3 as _wb_v3
+                    print(f"[{cycle}] ── 워크→카톡 v3 패스{' (DRY)' if WORKBRIDGE_DRY else ''} ──", flush=True)
+                    _wb_stats = _wb_v3(forward=not WORKBRIDGE_DRY, verbose=True, max_rooms=WORKBRIDGE_MAX_ROOMS)
+                    print(f"[{cycle}] 워크→카톡 결과: {_wb_stats}", flush=True)
+                except Exception as _e:
+                    print(f"[{cycle}] 워크→카톡 v3 패스 예외(무시): {type(_e).__name__}: {_e}", flush=True)
 
             try:
                 cleanup_popups()
