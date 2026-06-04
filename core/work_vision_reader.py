@@ -87,6 +87,28 @@ def find_kakaowork_window() -> int | None:
 _PW_RENDERFULLCONTENT = 0x2  # undocumented flag (Win8.1+). GPU 가속 CEF 창도 캡처.
 
 
+def scroll_roomlist_to_top(hwnd, notches: int = 18) -> None:
+    """카카오워크 룸목록을 맨 위로 스크롤(win32 휠). pyautogui 미사용(fail-safe 무관).
+
+    v3 의 고정 캡처영역은 '목록이 맨 위' 가정인데, 이전 조작/드리프트로 아래로 내려가
+    있으면 최상단 안읽음 방(뱃지)이 캡처영역 위로 잘려 '안읽음 없음'으로 오판된다.
+    그래서 매 캡처 전에 맨 위로 올린다. 휠 이벤트는 커서 아래 창으로 가므로 포커스 무관.
+    """
+    import ctypes
+    try:
+        from core.window_manager import get_pos_tuple
+        wl, wt, ww, wh = get_pos_tuple("kakaowork_main")
+        u = ctypes.windll.user32
+        u.SetCursorPos(wl + 150, wt + 400)
+        time.sleep(0.1)
+        for _ in range(notches):
+            u.mouse_event(0x0800, 0, 0, 120, 0)  # MOUSEEVENTF_WHEEL, +120 = 위로
+            time.sleep(0.02)
+        time.sleep(0.35)
+    except Exception as e:
+        print(f"[WORK-VISION] 룸목록 top 스크롤 실패(무시): {e}", flush=True)
+
+
 def capture_region(hwnd, region_key: str, out_path: Path) -> bool:
     """PrintWindow 전체창 캡처 → capture_regions[region_key](dx,dy,w,h)로 crop 저장.
 

@@ -689,6 +689,7 @@ def cycle_once_v3(*, forward: bool = True, verbose: bool = True, max_rooms: int 
     """
     from core.work_vision_reader import (
         find_kakaowork_window, capture_region, open_work_room_verify_and_read,
+        scroll_roomlist_to_top,
     )
     from core.badge_monitor import detect_blue_badge_rows
     from core.window_manager import (
@@ -716,7 +717,10 @@ def cycle_once_v3(*, forward: bool = True, verbose: bool = True, max_rooms: int 
     for i in range(max_rooms):
         if _stop_requested():
             break
-        # 1) 매 방마다 룸목록 재캡처 → 최상단 뱃지 (픽셀, 빠름)
+        # 1) 매 방마다 룸목록 '맨 위로 스크롤' 후 재캡처 → 최상단 뱃지 (픽셀, 빠름)
+        #    (안읽음 방은 최상단으로 올라오는데, 목록이 아래로 드리프트돼 있으면 고정
+        #     캡처영역이 top 을 놓쳐 '안읽음 없음'으로 오판 → 반드시 top 으로 올림)
+        scroll_roomlist_to_top(h)
         cap = ROOT / "captures" / f"_v3top_{int(time.time()*1000)}.png"
         if not capture_region(h, "kakaowork_roomlist", cap):
             break
