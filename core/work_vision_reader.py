@@ -27,7 +27,7 @@ from dotenv import load_dotenv
 
 load_dotenv(Path(__file__).resolve().parent.parent / ".env", override=True)
 
-CLAUDE_MODEL = "claude-opus-4-7"
+CLAUDE_MODEL = "claude-sonnet-4-6"  # W→K 속도 우선: opus→sonnet (방당 읽기 2~3배 빠름, 한글 OCR 충분)
 ROOT = Path(__file__).resolve().parent.parent
 CAPTURES = ROOT / "captures"
 KW_TITLE = "카카오워크"
@@ -651,13 +651,32 @@ def open_work_room_verify_and_read(hwnd, row_abs_y: int, expected_name: str | No
         title = read_room_title(hwnd)
         if expected_name and not _title_matches(title, expected_name):
             return ([], title, False)
-        # 긴 메시지가 한 뷰포트를 넘어 잘리지 않게 스크롤-스티치 캡처(여러 장 이어붙임).
-        cap = capture_chat_panel_stitched(hwnd, max_extra=2)
+        # 속도: 우선 1장(현재 뷰)만 읽는다. 짧은 메시지는 이걸로 충분 → 빠름.
+        cap = CAPTURES / f"_kwroom_{int(time.time()*1000)}.png"
+        if not capture_region(hwnd, "kakaowork_chatpanel", cap):
+            cap = capture_chat_panel(hwnd, cap, right_panel_only=True)
         msgs = extract_messages(cap)
         try:
             cap.unlink()
         except Exception:
             pass
+        # 최신 메시지가 뷰포트를 넘어 잘렸을 정황이면(맨위 발신자 공백=위로잘림 / 최신 본문>150자)
+        # 스크롤-스티치로 재읽기. 짧은 일반 메시지는 여기 안 걸려 1장으로 끝(빠름).
+        def _maybe_truncated(ms):
+            if not ms:
+                return False
+            if not (ms[0].get("sender") or "").strip():
+                return True
+            return len((ms[-1].get("content") or "")) > 150
+        if _maybe_truncated(msgs):
+            capS = capture_chat_panel_stitched(hwnd, max_extra=2)
+            msgs2 = extract_messages(capS)
+            try:
+                capS.unlink()
+            except Exception:
+                pass
+            if msgs2:
+                msgs = msgs2
         if max_msgs_tail and len(msgs) > max_msgs_tail:
             msgs = msgs[-max_msgs_tail:]
         return (msgs, title, True)
