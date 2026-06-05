@@ -56,6 +56,10 @@ timeout /t 8 /nobreak >nul
 echo [3/3] monitor (카톡 -^> 워크)
 start "nenova-monitor" "%PYTHON%" -u main.py
 
+REM 바탕화면 강제정지 버튼 (모니터와 별개 프로세스 → 오클릭돼도 graceful 정지만, 크래시 X).
+REM 우하단에 항상-위 작은 빨간 버튼. 모니터 멈추면 자동으로 닫힘.
+start "nenova-stop-btn" "%PYTHON%" -u tools\desktop_stop_button.py
+
 echo.
 echo === 3개 프로세스 가동 ===
 echo   reactive : http://localhost:5000
