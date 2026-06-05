@@ -195,11 +195,19 @@ class StatusOverlay:
             print(f"[OVERLAY] 로그 복사 실패: {e}", flush=True)
 
         def _hard_kill():
+            # 사용자 의도 정지 → _STOP 마커(시각) 남겨 '사용자 정지'임을 코드/외부에서 확인 가능,
+            # 오류(exit 1)가 아니라 정상 종료(exit 0)로 끝낸다.
             try:
-                print("[OVERLAY] 강제 종료 (os._exit)", flush=True)
+                from core.stop_button import request_stop
+                request_stop()
             except Exception:
                 pass
-            os._exit(1)
+            try:
+                print("[USER-STOP] 오버레이 강제정지 — 사용자 의도 정지(오류 아님). "
+                      "_STOP 마커 기록됨, 정상 종료(exit 0).", flush=True)
+            except Exception:
+                pass
+            os._exit(0)
 
         threading.Timer(2.0, _hard_kill).start()
 

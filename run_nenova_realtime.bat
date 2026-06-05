@@ -26,6 +26,18 @@ REM 프로세스가 os._exit(1) 되는 버그 방지 → 오버레이를 no-op s
 REM 정지는 data\_STOP 파일(=stop_nenova.bat)로 안전하게 수행.
 set NENOVA_NO_OVERLAY=1
 
+REM 액션 로그 창의 '강제정지' 버튼도 같은 미스클릭 사고(카톡 탭 클릭이 로그창에 떨어짐)를
+REM 일으키므로 함께 끔 → GUI 창 없음, 로그는 콘솔/파일로. (2026-06-04 크래시 2건 원인)
+set NENOVA_NO_ACTION_LOG=1
+
+REM W→K(워크→카톡) 트래픽이 K→W 보다 많을 예정 → 역방향 패스를 더 자주(기본 60s→20s),
+REM 패스당 더 많은 방(기본 4→10개) 처리해 응답성·처리량 확보. (2026-06-05)
+set NENOVA_WORKBRIDGE_INTERVAL=20
+set NENOVA_WORKBRIDGE_MAXROOMS=10
+
+REM 강제정지: 실행 중 언제든 Ctrl+Alt+Q (키보드 전역 핫키, 마우스 미스클릭 무관) 또는
+REM           stop_nenova.bat 더블클릭(data\_STOP 생성). 둘 다 graceful, 종료코드 0.
+
 REM 이전 STOP 신호 제거
 if exist "%PROJ%\data\_STOP" del "%PROJ%\data\_STOP"
 

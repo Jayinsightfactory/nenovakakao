@@ -223,11 +223,14 @@ class ActionLogger:
         except Exception:
             pass
         try:
-            print("[MONITOR] 💀 강제정지 버튼 — os._exit(1) 즉시 종료", flush=True)
+            # 사용자 의도 정지 → 오류(exit 1)가 아니라 정상 종료(exit 0).
+            # 위 request_stop() 이 _STOP 마커(시각)를 남겨 '사용자 정지'임을 코드/외부에서 확인 가능.
+            print("[USER-STOP] 💀 강제정지 버튼 — 사용자 의도 정지(오류 아님). "
+                  "_STOP 마커 기록됨, 정상 종료(exit 0).", flush=True)
         except Exception:
             pass
         import os
-        os._exit(1)
+        os._exit(0)
 
     def _fg_watcher(self):
         """포그라운드 창 변화 감시 → 변할 때마다 로그."""

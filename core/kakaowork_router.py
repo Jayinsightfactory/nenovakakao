@@ -24,8 +24,8 @@ DATA_DIR = Path(__file__).parent.parent / "data"
 ROOM_MAP_FILE = DATA_DIR / "room_mapping.json"
 DETECTED_FILE = DATA_DIR / "rooms_detected.json"
 
-# 관리자 유저 ID (임재용 - dlaww584@gmail.com)
-# 진짜 관리자 user_id (CLAUDE.md). 이전 11826656 은 stale 계정.
+# 관리자 유저 ID — 네노바 (Nenovabusiness1@gmail.com, CLAUDE.md 기준)
+# 이전 11826656 은 stale 계정 (임재용 아님 — 임재용은 11798470).
 ADMIN_USER_ID = 11854018
 
 API_BASE = "https://api.kakaowork.com/v1"
@@ -126,13 +126,19 @@ _conv_cache = {"ids": None, "ts": 0}
 
 
 def _get_all_bot_conv_ids(force: bool = False) -> set[str]:
-    """봇이 속한 모든 방 id 캐싱 (60초)."""
+    """봇이 속한 방 id 캐싱 (60초).
+
+    ⚠️ conversations.list 는 봇이 100+ 방에 있으면 ~100개에서 cursor 를 끝낸다(API 캡, 실측).
+       page 상한을 올려도 API 가 100개 후 빈 cursor 를 줘서 전수 안 된다 → false-negative.
+       liveness/미러존재 같은 파괴적 결정에 이 결과를 쓰지 말 것(verify_mirror_room_cached 경고 참조).
+       page 상한은 verify_mirror_room(50)과 일관성 위해 50으로 둠(무한루프 방지용 안전마진).
+    """
     if not force and _conv_cache["ids"] and time.time() - _conv_cache["ts"] < 60:
         return _conv_cache["ids"]
     ids = set()
     cursor = None
     try:
-        for _ in range(5):
+        for _ in range(50):
             params = {"limit": 100}
             if cursor:
                 params["cursor"] = cursor
@@ -151,53 +157,52 @@ def _get_all_bot_conv_ids(force: bool = False) -> set[str]:
 
 
 def verify_mirror_room_cached(conv_id: str) -> bool:
-    """캐시 기반 빠른 검증."""
+    """캐시 기반 빠른 검증.
+
+    ⚠️ 신뢰성 주의(2026-06): conversations.list 는 봇이 100+ 방에 있으면 100개에서 잘린다.
+       살아있는 conv 도 False 가 나올 수 있다(false-negative). '미러 생성/재생성' 같은
+       파괴적 결정에 절대 쓰지 말 것 — 유령방 양산 원인. 송신은 messages.send 가 list 무관히 동작.
+    """
     return str(conv_id) in _get_all_bot_conv_ids()
 
 
 def ensure_mirror_for_rooms(room_names: list[str]) -> dict:
     """
     주어진 카톡방 리스트에 대해 워크 미러 방이 모두 존재하도록 보장.
-    - 매핑 없으면 생성
-    - 매핑 있는데 유효성 검증 실패 시 재생성
-    - 이미 유효한 건 skip
+    - 매핑 없으면(신규 방) 생성
+    - 매핑 있으면 신뢰하고 skip — 재생성 절대 금지
+
+    ⚠️ 재생성 로직 제거(2026-06): conversations.list 는 봇이 100+ 방에 있으면 100개에서
+       잘린다(API 캡). 멀쩡한 미러가 목록에 안 떠도 messages.send 는 정상 동작한다.
+       예전엔 capped list 로 '미러 없음' 오판 → create_mirror_room 재생성 → 유령방 85개 양산.
+       진짜 죽은 conv 의 재매핑은 messages.send 프로브 기반 별도 도구로만 처리한다.
 
     Returns:
-        {"mapping": 전체매핑, "created": 신규생성수, "revalidated": 재생성수, "invalid": 여전히유효X수}
+        {"mapping": 전체매핑, "created": 신규생성수, "revalidated": 0(폐기), "invalid": 생성실패수}
     """
     mapping = _load_room_mapping()
     created = 0
-    revalidated = 0
+    revalidated = 0  # 폐기 — 호환용으로 항상 0
     invalid = 0
-
-    # 한 번만 전체 봇 방 목록 조회 (캐시)
-    all_ids = _get_all_bot_conv_ids(force=True)
 
     for name in room_names:
         conv_id = mapping.get(name)
-        if conv_id and str(conv_id) in all_ids:
-            continue  # 이미 유효
         if conv_id:
-            print(f"  [재생성] {name} (기존 {conv_id} 없음)", flush=True)
-            try:
-                conv_id = create_mirror_room(name)
-                mapping[name] = conv_id
-                revalidated += 1
-            except Exception as e:
-                print(f"  [ERROR] {name} 재생성 실패: {e}", flush=True)
-                invalid += 1
-        else:
-            # 신규 생성
-            try:
-                conv_id = create_mirror_room(name)
-                mapping[name] = conv_id
-                created += 1
-                print(f"  [생성] {name} → {conv_id}", flush=True)
-            except Exception as e:
-                print(f"  [ERROR] {name} 생성 실패: {e}", flush=True)
-                invalid += 1
+            continue  # 매핑됨 → 신뢰(재생성 금지). list 캡 오판 방지.
+        # 신규(미매핑) 방만 생성
+        try:
+            conv_id = create_mirror_room(name)
+            mapping[name] = conv_id
+            created += 1
+            print(f"  [생성] {name} → {conv_id}", flush=True)
+        except Exception as e:
+            print(f"  [ERROR] {name} 생성 실패: {e}", flush=True)
+            invalid += 1
 
-    _save_room_mapping(mapping)
+    # created > 0 일 때만 저장 — 매핑 무변경(전부 skip)인데 재기록하면 mtime churn +
+    # mirror_cleanup 등 별도 프로세스와의 read-modify-write 충돌(후기록이 선기록 덮음) 위험.
+    if created > 0:
+        _save_room_mapping(mapping)
     return {
         "mapping": mapping,
         "created": created,

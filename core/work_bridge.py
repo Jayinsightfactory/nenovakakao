@@ -290,10 +290,10 @@ def _resolve_kakao_room(work_room: str, mapping: dict) -> str | None:
     """
     from difflib import SequenceMatcher
     name = (work_room or "").strip()
-    if name.startswith("[미러] "):
-        name = name[len("[미러] "):].strip()
-    elif name.startswith("[미러]"):
-        name = name[len("[미러]"):].strip()
+    for _pfx in ("[미러] ", "[미러]", "[미리] ", "[미리]"):  # [미리]=[미러] OCR 오독
+        if name.startswith(_pfx):
+            name = name[len(_pfx):].strip()
+            break
     if ":" in name:
         head = name.split(":", 1)[0].strip()
         if head.upper().startswith("NV"):
@@ -318,11 +318,26 @@ def _resolve_kakao_room(work_room: str, mapping: dict) -> str | None:
         # 모호 → 가장 긴 공통(=정확) 우선, 그래도 여럿이면 첫 번째
         return sorted(exact_norm, key=len, reverse=True)[0]
 
-    # 4) fuzzy — 유일하게 0.88+ 일 때만 (여럿이면 모호 → 미매칭)
+    # 4) 음절 fuzzy — 유일하게 0.88+ 일 때만 (여럿이면 모호 → 미매칭)
     cands = [(k, SequenceMatcher(None, nn, _norm(k)).ratio()) for k in mapping]
     cands = [(k, r) for k, r in cands if r >= 0.88]
     if len(cands) == 1:
         return cands[0][0]
+
+    # 5) 자모(NFD) fuzzy — 한글 자음/모음 단위 OCR 오독 관용(레↔네, 주짐↔주님, ·↔+ 등).
+    #    음절 비교는 '레'≠'네'라 0점이지만 자모는 ᄅ↔ᄂ 1개 차이라 ~0.83 으로 잡힌다.
+    #    오배송 방지: 0.70+ 후보 중 '유일' 하거나 '2등보다 0.10+ 앞선 압도적 1등' 일 때만 채택.
+    import unicodedata as _ud
+    def _jamo(s: str) -> str:
+        return _ud.normalize("NFD", s)
+    jnn = _jamo(nn)
+    jc = sorted(((k, SequenceMatcher(None, jnn, _jamo(_norm(k))).ratio()) for k in mapping),
+                key=lambda x: x[1], reverse=True)
+    top = [c for c in jc if c[1] >= 0.70]
+    if len(top) == 1:
+        return top[0][0]
+    if len(top) >= 2 and top[0][1] - top[1][1] >= 0.10:
+        return top[0][0]
     return None
 
 

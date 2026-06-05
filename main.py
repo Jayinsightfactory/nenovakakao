@@ -475,6 +475,15 @@ def cmd_monitor(*, with_recorder: bool = False) -> int:
     except Exception:
         pass
 
+    # 강제정지 전역 핫키(Ctrl+Alt+Q) — 마우스 자동화가 못 누르는 키보드 후크.
+    # 오버레이/액션로그 GUI 를 끈(NENOVA_NO_OVERLAY/NO_ACTION_LOG) 상태에서 사람이 즉시
+    # 멈출 수 있는 안전 수단. 누르면 _STOP 마커 후 os._exit(0)(=사용자정지, 오류 아님).
+    try:
+        from core.stop_hotkey import start_stop_hotkey
+        start_stop_hotkey()
+    except Exception as e:
+        print(f"[HOTKEY] 시작 실패(_STOP 파일로 정지 가능): {e}", flush=True)
+
     print("[MONITOR] 네노바 AI 에이전트 v2.1 감시 모드 시작")
     print(f"          폴링 간격: {POLL_INTERVAL}초 / 전체 스윕: 매 {SWEEP_EVERY}사이클")
     print(f"          감시 대상: {len(selected_names)}개 방")
