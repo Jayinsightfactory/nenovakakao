@@ -1,0 +1,20 @@
+@echo off
+REM Hidden monitor core - launched by start_monitor.vbs (no console window).
+REM ASCII only (cmd codepage safe). Logs go to logs\monitor_live.log.
+cd /d "C:\Users\USER\nenova_agent\.claude\worktrees\cranky-yalow-f3379c"
+set PY=C:\Users\USER\AppData\Local\Programs\Python\Python312\python.exe
+set PYW=C:\Users\USER\AppData\Local\Programs\Python\Python312\pythonw.exe
+
+set NENOVA_NO_OVERLAY=1
+set NENOVA_NO_ACTION_LOG=1
+set NENOVA_WORKBRIDGE_INTERVAL=20
+set NENOVA_WORKBRIDGE_MAXROOMS=10
+
+if not exist logs mkdir logs
+if exist data\_STOP del data\_STOP
+
+REM stop button: pythonw -> Tk window only, no console
+start "" "%PYW%" tools\desktop_stop_button.py
+
+REM monitor: runs inside this hidden cmd, output redirected -> no visible window
+"%PY%" -u main.py > logs\monitor_live.log 2>&1
