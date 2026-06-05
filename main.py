@@ -311,13 +311,18 @@ def _process_room_result(
         except Exception as e:
             print(f"     → 잔존 정리 예외 (무시): {e}")
 
-    # ── 구글시트에 분류 기록 ──
-    try:
-        logged = classify_and_log_delta(room_name, delta)
-        if logged:
-            print(f"     → 구글시트 {logged}건 기록")
-    except Exception as e:
-        print(f"     → 시트 기록 실패: {e}")
+    # ── 구글시트에 분류 기록 (인라인) ──
+    # 기본 ON(런처 없이 단독 실행 호환). 런처가 NENOVA_INLINE_SHEETSYNC=0 으로 끄면
+    # 별도 프로세스 sync_worker.py 가 collected_data.jsonl 에서 시트 동기화한다
+    # (미러 블로킹 제거 + 워커와 이중 동기화 방지). collected_data 적재는 아래 미러 경로에서 계속됨.
+    import os as _os_sync
+    if _os_sync.environ.get("NENOVA_INLINE_SHEETSYNC", "1") != "0":
+        try:
+            logged = classify_and_log_delta(room_name, delta)
+            if logged:
+                print(f"     → 구글시트 {logged}건 기록")
+        except Exception as e:
+            print(f"     → 시트 기록 실패: {e}")
 
     # ── 카카오워크 미러 방에 **시간순 교차** 전송 ──
     # 텍스트는 Bot API, 사진은 카카오워크 앱 Ctrl+T 업로드.
@@ -1365,10 +1370,12 @@ def cmd_monitor_agentic() -> int:
                         send_messages_individually(room_name, delta)
                     except Exception as e:
                         print(f"     → 워크 전송 실패: {e}", flush=True)
-                    try:
-                        classify_and_log_delta(room_name, delta, result["timestamp"])
-                    except Exception as e:
-                        print(f"     → 시트 기록 실패: {e}", flush=True)
+                    import os as _os_sync2
+                    if _os_sync2.environ.get("NENOVA_INLINE_SHEETSYNC", "1") != "0":
+                        try:
+                            classify_and_log_delta(room_name, delta, result["timestamp"])
+                        except Exception as e:
+                            print(f"     → 시트 기록 실패: {e}", flush=True)
                 except Exception as e:
                     print(f"     [ERROR] {fpath.name}: {e}", flush=True)
 

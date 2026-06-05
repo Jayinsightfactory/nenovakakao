@@ -23,6 +23,9 @@ set NENOVA_NO_OVERLAY=1
 set NENOVA_NO_ACTION_LOG=1
 set NENOVA_WORKBRIDGE_INTERVAL=10
 set NENOVA_WORKBRIDGE_MAXROOMS=10
+REM inline sheet-sync OFF: separate sync_worker handles Sheets (parallel, no mirror blocking)
+set NENOVA_INLINE_SHEETSYNC=0
+set NENOVA_SYNC_INTERVAL=300
 
 if exist "%PROJ%\data\_STOP" del "%PROJ%\data\_STOP"
 
@@ -35,6 +38,7 @@ echo.
 
 start "nenova-monitor" "%PYTHON%" -u main.py
 start "nenova-stop-btn" "%PYTHON%" -u tools\desktop_stop_button.py
+start "nenova-sync" "%PYTHON%" -u -m core.sync_worker
 
 echo  Started. You can close this window; the monitor keeps running.
 timeout /t 6 /nobreak >nul
