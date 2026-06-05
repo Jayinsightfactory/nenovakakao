@@ -664,6 +664,20 @@ def cmd_monitor(*, with_recorder: bool = False) -> int:
             cycle_nochange: list[str] = []
             cycle_skipped: list[str] = []
 
+            # ── W→K 우선: 무거운 K→W(사진/대량) 처리 '전에' 먼저 워크→카톡 중계 ──
+            # 워크에 새로 올라온 메시지가 K→W 백로그에 막혀 지연되던 문제 해소(2026-06-05).
+            # 직전 사이클 끝에서 팝업정리+카톡포커스를 했으므로 시작 시점 카톡 상태는 깨끗.
+            if (WORKBRIDGE_ENABLED and not _stop_requested()
+                    and time.time() - last_workbridge_ts >= WORKBRIDGE_INTERVAL):
+                last_workbridge_ts = time.time()
+                try:
+                    from core.work_bridge import cycle_once_v3 as _wb_v3
+                    print(f"[{cycle}] ── 워크→카톡 v3 패스{' (DRY)' if WORKBRIDGE_DRY else ''} (우선) ──", flush=True)
+                    _wb_stats = _wb_v3(forward=not WORKBRIDGE_DRY, verbose=True, max_rooms=WORKBRIDGE_MAX_ROOMS)
+                    print(f"[{cycle}] 워크→카톡 결과: {_wb_stats}", flush=True)
+                except Exception as _e:
+                    print(f"[{cycle}] 워크→카톡 v3 패스 예외(무시): {type(_e).__name__}: {_e}", flush=True)
+
             # ── 매 사이클 시작: 정체 다이얼로그 처치 + 잔여 분리창 정리 + 팝업 정리 + 카톡 활성화 ──
             try:
                 import win32gui as _w32
@@ -1229,20 +1243,7 @@ def cmd_monitor(*, with_recorder: bool = False) -> int:
                     if _got:
                         _klock.release("monitor")
 
-            # ── P4 통합: 워크→카톡 역방향 패스 (시간 간격) ──
-            # 카톡→워크 처리가 끝난 뒤, 워크에 새로 올라온 '워크 네이티브' 메시지를
-            # 카톡으로 중계. cycle_once_v3 가 내부에서 kakao_lock 을 잡으므로(직렬화)
-            # 같은 프로세스의 모니터 카톡 제어와 충돌하지 않는다.
-            if (WORKBRIDGE_ENABLED and not _stop_requested()
-                    and time.time() - last_workbridge_ts >= WORKBRIDGE_INTERVAL):
-                last_workbridge_ts = time.time()
-                try:
-                    from core.work_bridge import cycle_once_v3 as _wb_v3
-                    print(f"[{cycle}] ── 워크→카톡 v3 패스{' (DRY)' if WORKBRIDGE_DRY else ''} ──", flush=True)
-                    _wb_stats = _wb_v3(forward=not WORKBRIDGE_DRY, verbose=True, max_rooms=WORKBRIDGE_MAX_ROOMS)
-                    print(f"[{cycle}] 워크→카톡 결과: {_wb_stats}", flush=True)
-                except Exception as _e:
-                    print(f"[{cycle}] 워크→카톡 v3 패스 예외(무시): {type(_e).__name__}: {_e}", flush=True)
+            # (워크→카톡 v3 패스는 사이클 '시작부'로 이동 — W→K 우선. 위 참조.)
 
             try:
                 cleanup_popups()

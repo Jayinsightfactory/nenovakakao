@@ -32,7 +32,7 @@ set NENOVA_NO_ACTION_LOG=1
 
 REM W→K(워크→카톡) 트래픽이 K→W 보다 많을 예정 → 역방향 패스를 더 자주(기본 60s→20s),
 REM 패스당 더 많은 방(기본 4→10개) 처리해 응답성·처리량 확보. (2026-06-05)
-set NENOVA_WORKBRIDGE_INTERVAL=20
+set NENOVA_WORKBRIDGE_INTERVAL=10
 set NENOVA_WORKBRIDGE_MAXROOMS=10
 
 REM 강제정지: 실행 중 언제든 Ctrl+Alt+Q (키보드 전역 핫키, 마우스 미스클릭 무관) 또는

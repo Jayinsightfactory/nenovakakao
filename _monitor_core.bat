@@ -7,7 +7,7 @@ set PYW=C:\Users\USER\AppData\Local\Programs\Python\Python312\pythonw.exe
 
 set NENOVA_NO_OVERLAY=1
 set NENOVA_NO_ACTION_LOG=1
-set NENOVA_WORKBRIDGE_INTERVAL=20
+set NENOVA_WORKBRIDGE_INTERVAL=10
 set NENOVA_WORKBRIDGE_MAXROOMS=10
 
 if not exist logs mkdir logs
