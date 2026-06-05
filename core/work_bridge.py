@@ -583,7 +583,9 @@ def cycle_once_v2(*, forward: bool = True, verbose: bool = True, max_rooms: int 
             key = _v2_msg_key(kk, m)
             if key in ledger:
                 continue  # 이미 카톡으로 중계함
-            to_send.append((content, key))
+            _sender = (m.get("sender") or "").strip()
+            _txt = f"[{_sender}] {content}" if _sender else content
+            to_send.append((_txt, key))
 
         if not to_send:
             continue
@@ -787,7 +789,10 @@ def cycle_once_v3(*, forward: bool = True, verbose: bool = True, max_rooms: int 
             key = _v2_msg_key(kk, m)
             if key in ledger:
                 continue
-            to_send.append((content, key))
+            # 카톡에 '작성자(워크멤버)'를 함께 표기해서 보냄: "[임재용] 본문" (누가 보냈는지)
+            _sender = (m.get("sender") or "").strip()
+            _txt = f"[{_sender}] {content}" if _sender else content
+            to_send.append((_txt, key))
         if not to_send:
             if verbose:
                 print(f"  [WORK→KK v3] '{title}'→'{kk}': 워크네이티브 신규 없음", flush=True)
