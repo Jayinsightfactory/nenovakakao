@@ -203,6 +203,12 @@ def _is_mirror_origin(m: dict) -> bool:
     sender = _norm_name(m.get("sender", ""))
     if not sender:
         return True  # 발신자 불명 → 안전하게 미러 취급
+    # 봇(네노바 주문 알림봇 / 카톡복사봇)은 워크네이티브 아님 → 미러 취급(에코·봇알림 재전송 차단).
+    # Vision 이 봇 이름을 발신자='네노바'(화이트리스트 일치!) + 본문='주문 알림봇' 으로 쪼개
+    # 읽어 통과시키는 사고가 있어, 발신자+본문을 합쳐 봇 표지를 검사한다.
+    _bj = (sender + (m.get("content") or "")).replace(" ", "")
+    if any(t in _bj for t in ("알림봇", "복사봇", "주문알림봇")):
+        return True
     members = _work_member_names()
     if not members:
         # 멤버목록 없으면 네이티브 판별 불가 → fail-closed(전부 미러 간주, 송신 보류)로
