@@ -51,6 +51,8 @@ def main():
             verdict, why = "[X 봇/미러]", "내용이 '['로 시작 또는 봇표지"
         elif wb._is_emoji_only(content):
             verdict, why = "[X 이모지]", "이모지/기호 반응만"
+        elif wb._is_kakao_origin(kk, content):
+            verdict, why = "[X 카톡기원]", "카톡에서 온 미러 내용(에코차단)"
         elif wb._is_our_message(kk, content):
             verdict, why = "[X 에코]", "직전 송신(에코)"
         else:

@@ -30,6 +30,7 @@ DATA = ROOT / "data"
 SENT_RECENT = DATA / "work_sent_recent.json"
 VISION_STATE = DATA / "work_vision_state.json"
 WORK_SENT_LEDGER = DATA / "work_bridge_sent_ledger.json"  # v2: 카톡으로 중계한 메시지 해시
+COLLECTED = DATA / "collected_data.jsonl"  # 카톡→워크 미러 수집기록(원본 카톡 내용) — W→K 에코차단 대조용
 MAX_PER_ROOM = 40  # 방당 최근 N건 보관 (loop 필터링)
 SENT_TTL_SEC = 7200  # 2시간 — 그 이후 entry 만료 (메모리/판별 단순화)
 
@@ -119,6 +120,7 @@ _NON_USER_PATTERNS = (
     _re_sys.compile(r"님(이|을)\s*.*?(들어왔|나갔|초대|입장|퇴장|변경)"),  # 입퇴장/초대/변경
     _re_sys.compile(r"^\[?카톡\s*답장\]?$"),                # 답장버튼 라벨
     _re_sys.compile(r"^https?://"),                          # URL 단독(봇 이미지 등)
+    _re_sys.compile(r"^\[?(사진|동영상|이모티콘|음성메시지|보이스톡|페이스톡|파일|선물)\]?$"),  # 미디어 placeholder(미러 흔적, 본문 아님)
     _re_sys.compile(r"^\s*$"),                               # 빈 줄
 )
 
@@ -259,6 +261,96 @@ def _is_emoji_only(content: str) -> bool:
     if not s:
         return True
     return not _TEXT_CHAR_RE.search(s)
+
+
+# ─────────────────────────────────────────────────────────
+# 카톡-기원 내용 대조 (W→K 에코 차단의 핵심 — 사용자 기준 2026-06-08)
+#   "카톡→워크로 미러한 내용을 워크→카톡으로 되보내면 안 된다."
+#   collected_data.jsonl(카톡 원본 수집기록)의 '해당 카톡방' 최근 delta 안에 워크 본문이
+#   들어있으면 = 카톡에서 온 미러 → 전송 안 함. 발신자 표기에 의존 안 해 견고
+#   (Vision 이 미러 헤더 "[발신자][시각]"를 sender 로 쪼개 읽어도 내용으로 잡힌다).
+# ─────────────────────────────────────────────────────────
+_KAKAO_CONTENT_CACHE = {"mtime": None, "size": None, "by_room": {}}
+_KAKAO_TAIL_BYTES = 3_000_000   # collected_data 끝에서 이만큼만 인덱싱(최근분)
+_KAKAO_MIN_MATCH_LEN = 6        # 정규화 후 이 길이 미만이면 대조 안 함(짧은 글 오매칭 방지)
+_MATCH_KEEP_RE = _re_sys.compile(r"[^0-9A-Za-z가-힣一-鿿]")  # 한글·영숫자·한자 외 전부 제거
+
+
+def _norm_for_match(s: str) -> str:
+    """대조용 정규화: 한글·영숫자·한자만 남기고 공백/기호/대괄호/이모지 제거 + 소문자.
+    (OCR 띄어쓰기·구두점·헤더 대괄호 변동을 흡수)"""
+    return _MATCH_KEEP_RE.sub("", (s or "")).lower()
+
+
+def _build_kakao_index() -> dict:
+    """collected_data.jsonl 끝부분을 읽어 {정규화방이름: [정규화delta, ...]} 인덱스.
+    mtime/size 안 변하면 캐시 재사용."""
+    global _KAKAO_CONTENT_CACHE
+    try:
+        st = COLLECTED.stat()
+    except Exception:
+        return {}
+    if (_KAKAO_CONTENT_CACHE.get("mtime") == st.st_mtime
+            and _KAKAO_CONTENT_CACHE.get("size") == st.st_size):
+        return _KAKAO_CONTENT_CACHE["by_room"]
+    by_room: dict = {}
+    try:
+        with open(COLLECTED, "rb") as f:
+            if st.st_size > _KAKAO_TAIL_BYTES:
+                f.seek(st.st_size - _KAKAO_TAIL_BYTES)
+                f.readline()  # 잘린 첫 줄 버림
+            raw = f.read()
+        for line in raw.decode("utf-8", errors="replace").splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                rec = json.loads(line)
+            except Exception:
+                continue
+            room = _norm_for_match(rec.get("room_name") or "")
+            delta = _norm_for_match(rec.get("delta") or "")
+            if room and delta:
+                by_room.setdefault(room, []).append(delta)
+    except Exception:
+        return _KAKAO_CONTENT_CACHE.get("by_room", {})
+    for r in by_room:                       # 방당 최근 400건만 (메모리 제한)
+        if len(by_room[r]) > 400:
+            by_room[r] = by_room[r][-400:]
+    _KAKAO_CONTENT_CACHE = {"mtime": st.st_mtime, "size": st.st_size, "by_room": by_room}
+    return by_room
+
+
+def _is_kakao_origin(kakao_room: str, content: str) -> bool:
+    """워크 본문이 '해당 카톡방에서 온(미러된) 내용'이면 True → 되보내면 에코.
+    collected_data 의 그 방 최근 delta 안에 본문이 (정규화 후) 통째로/거의 들어있으면 카톡기원.
+    """
+    body = _norm_for_match(content)
+    if len(body) < _KAKAO_MIN_MATCH_LEN:
+        return False  # 너무 짧으면 대조 신뢰 불가 → 다른 필터/ledger 에 맡김
+    deltas = _build_kakao_index().get(_norm_for_match(kakao_room or ""))
+    if not deltas:
+        return False
+    from difflib import SequenceMatcher
+    fuzzy_ok = len(body) >= 12
+    need = int(len(body) * 0.85)
+    for d in deltas:
+        if body in d:                       # 정규화 후 통째 포함 = 카톡기원(대부분 여기서 잡힘)
+            return True
+        if fuzzy_ok and len(d) >= len(body):  # OCR 미세차이 허용(앵커 최장일치 85%+)
+            if SequenceMatcher(None, body, d, autojunk=False).find_longest_match(
+                    0, len(body), 0, len(d)).size >= need:
+                return True
+    return False
+
+
+def _is_work_native_sender(m: dict) -> bool:
+    """발신자가 '본인(나)' 또는 워크 실멤버면 True. (짧은 글의 보조 판별용 — 긴 글은 내용대조로 충분)"""
+    s = _norm_name(m.get("sender", ""))
+    if _is_self_sender(s):
+        return True
+    mem = _work_member_names()
+    return bool(mem) and s in mem
 
 
 def _is_our_message(kakaotalk_room: str, preview: str) -> bool:
@@ -626,6 +718,14 @@ def cycle_once_v2(*, forward: bool = True, verbose: bool = True, max_rooms: int 
                 continue
             if _is_emoji_only(content):   # 이모지/기호 반응만 있는 글은 안 보냄
                 continue
+            # ★ 에코 차단 핵심: 본문이 그 카톡방에서 온(미러된) 내용이면 되보내지 않음
+            if _is_kakao_origin(kk, content):
+                stats["kakao_origin_skipped"] = stats.get("kakao_origin_skipped", 0) + 1
+                continue
+            # 짧은 글은 내용대조 신뢰불가 → 팀(본인/멤버) 발신자만 허용(짧은 미러 에코 차단)
+            if len(_norm_for_match(content)) < _KAKAO_MIN_MATCH_LEN and not _is_work_native_sender(m):
+                stats["kakao_origin_skipped"] = stats.get("kakao_origin_skipped", 0) + 1
+                continue
             key = _v2_msg_key(kk, m)
             if key in ledger:
                 continue  # 이미 카톡으로 중계함
@@ -761,7 +861,8 @@ def cycle_once_v3(*, forward: bool = True, verbose: bool = True, max_rooms: int 
     from core.kakaowork_router import _load_room_mapping
 
     stats = {"unread_top": 0, "opened": 0, "forwarded": 0,
-             "unmapped_skipped": 0, "dup_title_break": 0, "self_loop_skipped": 0}
+             "unmapped_skipped": 0, "dup_title_break": 0, "self_loop_skipped": 0,
+             "kakao_origin_skipped": 0}
 
     lock_kakaowork_window()
     lock_kakaotalk_window()
@@ -829,6 +930,14 @@ def cycle_once_v3(*, forward: bool = True, verbose: bool = True, max_rooms: int 
                 continue
             # 이모지/기호 반응만 있는 글은 카톡으로 안 보냄
             if _is_emoji_only(content):
+                continue
+            # ★ 에코 차단 핵심: 본문이 그 카톡방에서 온(미러된) 내용이면 되보내지 않음
+            if _is_kakao_origin(kk, content):
+                stats["kakao_origin_skipped"] = stats.get("kakao_origin_skipped", 0) + 1
+                continue
+            # 짧은 글은 내용대조 신뢰불가 → 팀(본인/멤버) 발신자만 허용(짧은 미러 에코 차단)
+            if len(_norm_for_match(content)) < _KAKAO_MIN_MATCH_LEN and not _is_work_native_sender(m):
+                stats["kakao_origin_skipped"] = stats.get("kakao_origin_skipped", 0) + 1
                 continue
             # 에코 차단: 우리가 직전에 카톡으로 보낸 내용이 워크로 되미러된 것이면 스킵
             if _is_our_message(kk, content):
