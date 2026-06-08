@@ -46,15 +46,15 @@ def main():
         verdict = "[SEND]"
         why = ""
         if wb._is_non_user_message(content):
-            verdict, why = "[X f1]", "비사용자(날짜/읽음/URL)"
-        elif wb._is_bot_system_preview(content) or wb._looks_like_mirror_header(content):
-            verdict, why = "[X f2]", "봇시스템/미러헤더"
-        elif wb._is_mirror_origin(m):
-            verdict, why = "[X f3]", f"미러출신(sender='{sender}' 멤버아님/공백)"
+            verdict, why = "[X 비사용자]", "날짜/읽음/입퇴장/URL"
+        elif wb._is_bot_or_mirror(m, content):
+            verdict, why = "[X 봇/미러]", "내용이 '['로 시작 또는 봇표지"
+        elif wb._is_emoji_only(content):
+            verdict, why = "[X 이모지]", "이모지/기호 반응만"
         elif wb._is_our_message(kk, content):
-            verdict, why = "[X f4]", "에코(직전 송신)"
+            verdict, why = "[X 에코]", "직전 송신(에코)"
         else:
-            why = "통과 -> 카톡 전송됨"
+            why = f"통과 -> 카톡 전송됨 (작성자표기 [{wb._display_sender(m.get('sender'))}])"
         print(f"  [{i}] sender='{sender}'  {verdict}  {why}")
         print(f"      content: {content[:70]!r}")
     print()

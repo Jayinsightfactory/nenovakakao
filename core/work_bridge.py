@@ -220,39 +220,45 @@ def _work_member_names() -> list[str]:
     return names
 
 
-def _is_mirror_origin(m: dict) -> bool:
-    """Vision 추출 메시지가 '카톡→워크 미러 복사본'이면 True (=되보내면 에코).
+# ─────────────────────────────────────────────────────────
+# 봇/미러 복사본 판별 + 이모지반응 판별 (사용자 기준 2026-06-08)
+#   · 워크 본문이 '['로 시작 → 봇 미러("[발신자][시각] 본문" / "[카톡 미러]…" / "[사진]…").
+#     봇은 항상 대괄호 헤더로 올리므로 이게 가장 단순·견고한 봇 판별이다.
+#   · 그 외엔 발신자 화이트리스트 없이 전부 카톡 전송(사람이 직접 친 네이티브로 봄).
+#   · 단, 이모지/기호 반응만 있는 글은 안 보냄.
+# (과거 발신자 화이트리스트 방식은 '나'·비멤버를 과차단 → W→K 0건 사고. 폐기.)
+# ─────────────────────────────────────────────────────────
+def _is_bot_or_mirror(m: dict, content: str | None = None) -> bool:
+    """카톡으로 되보내면 안 되는 봇/미러 복사본이면 True.
 
-    판별: 발신자가 워크 실멤버가 아니면 미러로 본다. 미러는 봇이
-    "[원발신자][시각] 본문"으로 올린 걸 Vision 이 분리 추출해 sender 가
-    카톡쪽 사람(농장/거래처)이 된다. 워크 네이티브(사람이 워크에서 직접 친 글)는
-    sender 가 워크 멤버. 안전 측: 발신자 불명/비멤버는 안 보냄.
-    (더 견고한 방식 = 시간 워터마크: 마지막 카톡→워크 미러 시각 이후만 네이티브 — TODO)
+    판별(사용자 기준):
+      1) 본문이 여는 대괄호('[' 등)로 시작 → 봇이 올린 미러("[발신자][시각] 본문").
+      2) 봇 시스템 마커(_BOT_SYSTEM_MARKERS) 포함.
+      3) 발신자/본문에 봇 이름(알림봇/복사봇).
+    사람이 워크에서 직접 친 글은 '['로 시작하지 않으므로 발신자와 무관하게 전송 대상.
     """
-    sender = _norm_name(m.get("sender", ""))
-    # 봇(네노바 주문 알림봇 / 카톡복사봇)은 워크네이티브 아님 → 미러 취급(에코·봇알림 재전송 차단).
-    # Vision 이 봇 이름을 발신자='네노바'(화이트리스트 일치!) + 본문='주문 알림봇' 으로 쪼개
-    # 읽어 통과시키는 사고가 있어, 발신자+본문을 합쳐 봇 표지를 검사한다. (자가판정보다 우선)
-    _bj = (sender + (m.get("content") or "")).replace(" ", "")
+    c = (content if content is not None else (m.get("content") or "")).strip()
+    if c[:1] in ("[", "【", "〔", "「", "［"):   # 반각/전각 여는 대괄호
+        return True
+    if _is_bot_system_preview(c):
+        return True
+    _bj = (_norm_name(m.get("sender", "")) + c).replace(" ", "")
     if any(t in _bj for t in ("알림봇", "복사봇", "주문알림봇")):
         return True
-    # 오른쪽 정렬(이름표 없는) 말풍선 = 로그인 계정 본인이 워크에서 직접 친 글 → 네이티브.
-    # Vision 이 sender='나'(또는 내가/본인/me)로 읽는다. 봇 검사 통과 후에만 네이티브 인정.
-    if _is_self_sender(sender):
-        return False
-    if not sender:
-        return True  # 그 외 발신자 불명 → 안전하게 미러 취급(거래처 메시지 에코 방지)
-    members = _work_member_names()
-    if not members:
-        # 멤버목록 없으면 네이티브 판별 불가 → fail-closed(전부 미러 간주, 송신 보류)로
-        # 거래처 메시지 에코를 막는다(안전 우선). 1회만 경고.
-        global _WORK_MEMBERS_WARNED
-        if not _WORK_MEMBERS_WARNED:
-            print("[WORK→KK] ⚠️ 워크 멤버목록 로드 실패 → 안전모드(전부 미러 간주, 송신 보류). "
-                  "data/kakaowork_users.json 확인 필요", flush=True)
-            _WORK_MEMBERS_WARNED = True
+    return False
+
+
+_TEXT_CHAR_RE = _re_sys.compile(r"[0-9A-Za-z가-힣ㄱ-ㅎㅏ-ㅣ一-鿿぀-ヿ]")
+
+
+def _is_emoji_only(content: str) -> bool:
+    """의미있는 텍스트(한글·영숫자·한자·가나)가 하나도 없고 이모지/기호/반응만이면 True.
+    예: '👍😊😊🤩' → True(안 보냄). '수국 23-2차 시작재고' → False(보냄).
+    빈 문자열도 True(보낼 내용 없음)."""
+    s = (content or "").strip()
+    if not s:
         return True
-    return sender not in members
+    return not _TEXT_CHAR_RE.search(s)
 
 
 def _is_our_message(kakaotalk_room: str, preview: str) -> bool:
@@ -615,9 +621,10 @@ def cycle_once_v2(*, forward: bool = True, verbose: bool = True, max_rooms: int 
             #    전부 걸러 0건이 되는 버그였다. Vision 은 미러 메시지의 "[발신자][시각]"
             #    접두사를 sender/time 필드로 분리 추출하므로, 미러 식별은 content 가
             #    아니라 sender 화이트리스트/시간 워터마크로 해야 한다(아래 _is_mirror_origin).
-            if _is_bot_system_preview(content) or _looks_like_mirror_header(content):
+            # 봇/미러 글('['로 시작 등)은 제외 — 그 외엔 발신자 무관 전부 전송(사용자 기준 2026-06-08)
+            if _is_bot_or_mirror(m, content):
                 continue
-            if _is_mirror_origin(m):
+            if _is_emoji_only(content):   # 이모지/기호 반응만 있는 글은 안 보냄
                 continue
             key = _v2_msg_key(kk, m)
             if key in ledger:
@@ -741,7 +748,7 @@ def cycle_once_v3(*, forward: bool = True, verbose: bool = True, max_rooms: int 
         그 사이 재정렬 거의 없음. 인덱스/행높이 추정에 의존하지 않음.
       · 클릭으로 연 방의 '제목'을 신뢰원천으로 삼아 카톡방 매핑(엉뚱한 방이면 매핑/제목으로 드러남).
       · 방을 읽으면 뱃지가 사라져 다음 방이 top 으로 → 반복하면 안읽음 소진.
-      · 미러 본문 식별 _is_mirror_origin(발신자 화이트리스트), 재전송 방지 ledger.
+      · 봇/미러 식별 _is_bot_or_mirror(본문 '['시작/봇표지) + 이모지반응 제외, 재전송 방지 ledger.
     """
     from core.work_vision_reader import (
         find_kakaowork_window, capture_region, open_work_room_verify_and_read,
@@ -817,9 +824,11 @@ def cycle_once_v3(*, forward: bool = True, verbose: bool = True, max_rooms: int 
             content = (m.get("content") or "").strip()
             if _is_non_user_message(content):
                 continue
-            if _is_bot_system_preview(content) or _looks_like_mirror_header(content):
+            # 봇/미러 글('['로 시작 등)은 제외 — 그 외엔 발신자 무관 전부 전송(사용자 기준 2026-06-08)
+            if _is_bot_or_mirror(m, content):
                 continue
-            if _is_mirror_origin(m):
+            # 이모지/기호 반응만 있는 글은 카톡으로 안 보냄
+            if _is_emoji_only(content):
                 continue
             # 에코 차단: 우리가 직전에 카톡으로 보낸 내용이 워크로 되미러된 것이면 스킵
             if _is_our_message(kk, content):
