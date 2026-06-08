@@ -20,6 +20,7 @@ CLI:
 """
 from __future__ import annotations
 
+import os
 import json
 import time
 from pathlib import Path
@@ -164,6 +165,34 @@ def _norm_name(s: str) -> str:
     return s.replace(" ", "")
 
 
+# 카카오워크는 '로그인 계정 본인'이 보낸 메시지를 화면 오른쪽에 이름표 없이 표시한다.
+# Vision 은 이 오른쪽(본인) 말풍선의 발신자를 '나'(또는 '내가/본인/me')로 읽는다.
+# 이 PC 워크앱은 워크 실멤버(네노바)로 로그인돼 있으므로 '나' = 네이티브(직접 친 글) → 카톡 전송 대상.
+# (과거 버그: '나'가 멤버목록에 없어 _is_mirror_origin 이 전부 미러로 차단 → W→K 0건)
+_SELF_SENDERS = {"나", "내가", "본인", "(나)", "me"}
+
+
+def _is_self_sender(sender_norm: str) -> bool:
+    """정규화된 발신자가 '로그인 계정 본인'(오른쪽 정렬 말풍선)인가."""
+    if not sender_norm:
+        return False
+    return sender_norm in _SELF_SENDERS or sender_norm.lower() == "me"
+
+
+def _self_display_name() -> str:
+    """'나'(본인) 메시지를 카톡으로 보낼 때 붙일 작성자 표기. 기본 '네노바'(로그인 계정).
+    환경변수 NENOVA_WORK_SELF_NAME 로 변경 가능."""
+    return (os.environ.get("NENOVA_WORK_SELF_NAME") or "네노바").strip()
+
+
+def _display_sender(raw) -> str:
+    """카톡 전송 시 붙일 작성자 라벨. '나'/본인 표기는 실제 로그인 계정명으로 치환."""
+    s = (raw or "").strip()
+    if _is_self_sender(_norm_name(s)):
+        return _self_display_name()
+    return s
+
+
 _WORK_MEMBERS_WARNED = False
 
 
@@ -201,14 +230,18 @@ def _is_mirror_origin(m: dict) -> bool:
     (더 견고한 방식 = 시간 워터마크: 마지막 카톡→워크 미러 시각 이후만 네이티브 — TODO)
     """
     sender = _norm_name(m.get("sender", ""))
-    if not sender:
-        return True  # 발신자 불명 → 안전하게 미러 취급
     # 봇(네노바 주문 알림봇 / 카톡복사봇)은 워크네이티브 아님 → 미러 취급(에코·봇알림 재전송 차단).
     # Vision 이 봇 이름을 발신자='네노바'(화이트리스트 일치!) + 본문='주문 알림봇' 으로 쪼개
-    # 읽어 통과시키는 사고가 있어, 발신자+본문을 합쳐 봇 표지를 검사한다.
+    # 읽어 통과시키는 사고가 있어, 발신자+본문을 합쳐 봇 표지를 검사한다. (자가판정보다 우선)
     _bj = (sender + (m.get("content") or "")).replace(" ", "")
     if any(t in _bj for t in ("알림봇", "복사봇", "주문알림봇")):
         return True
+    # 오른쪽 정렬(이름표 없는) 말풍선 = 로그인 계정 본인이 워크에서 직접 친 글 → 네이티브.
+    # Vision 이 sender='나'(또는 내가/본인/me)로 읽는다. 봇 검사 통과 후에만 네이티브 인정.
+    if _is_self_sender(sender):
+        return False
+    if not sender:
+        return True  # 그 외 발신자 불명 → 안전하게 미러 취급(거래처 메시지 에코 방지)
     members = _work_member_names()
     if not members:
         # 멤버목록 없으면 네이티브 판별 불가 → fail-closed(전부 미러 간주, 송신 보류)로
@@ -589,7 +622,7 @@ def cycle_once_v2(*, forward: bool = True, verbose: bool = True, max_rooms: int 
             key = _v2_msg_key(kk, m)
             if key in ledger:
                 continue  # 이미 카톡으로 중계함
-            _sender = (m.get("sender") or "").strip()
+            _sender = _display_sender(m.get("sender"))
             _txt = f"[{_sender}] {content}" if _sender else content
             to_send.append((_txt, key))
 
@@ -796,7 +829,8 @@ def cycle_once_v3(*, forward: bool = True, verbose: bool = True, max_rooms: int 
             if key in ledger:
                 continue
             # 카톡에 '작성자(워크멤버)'를 함께 표기해서 보냄: "[임재용] 본문" (누가 보냈는지)
-            _sender = (m.get("sender") or "").strip()
+            # '나'(본인) 메시지는 실제 로그인 계정명(기본 '네노바')으로 치환.
+            _sender = _display_sender(m.get("sender"))
             _txt = f"[{_sender}] {content}" if _sender else content
             to_send.append((_txt, key))
         if not to_send:
