@@ -56,10 +56,16 @@ def _v2_load_ledger() -> set:
 def _v2_save_ledger(s: set) -> None:
     try:
         DATA.mkdir(parents=True, exist_ok=True)
-        keep = list(s)[-4000:]  # 무한증가 방지
+        keep = list(s)[-50000:]  # 무한증가 방지(기준선 키 다수 보관 위해 상향)
         WORK_SENT_LEDGER.write_text(json.dumps(keep, ensure_ascii=False), encoding="utf-8")
     except Exception:
         pass
+
+
+# 이 세션(프로세스)에서 '첫 오픈 기준선'을 등록한 카톡방. 첫 오픈 시 tail 전체를
+# ledger 에 '본 것'으로만 기록하고 전송하지 않는다 → 과거 미러글이 뒤늦게 카톡으로
+# 쏟아지는 것 원천 차단. 이후엔 '새로 올라온' 글만 처리. (프로세스 시작마다 리셋)
+_baselined_rooms: set = set()
 
 
 # ─────────────────────────────────────────────────────────
@@ -701,6 +707,16 @@ def cycle_once_v2(*, forward: bool = True, verbose: bool = True, max_rooms: int 
             continue
         stats["opened"] += 1
 
+        # ★ 첫 오픈 기준선: 현재 tail 전체를 '본 것'으로만 기록(전송 안 함) → 과거 미러글 폭주 차단
+        if kk not in _baselined_rooms:
+            for m in msgs:
+                ledger.add(_v2_msg_key(kk, m))
+            _baselined_rooms.add(kk)
+            stats["baseline_marked"] = stats.get("baseline_marked", 0) + len(msgs)
+            if verbose:
+                print(f"  [WORK→KK v2] '{kk}' 첫 오픈 — tail {len(msgs)}건 기준선 등록(전송 안 함). 이후 신규만.", flush=True)
+            continue
+
         # 본문 → 워크 네이티브 신규만 추출(봇/미러/비사용자/이미중계 제외)
         to_send = []
         for m in msgs:
@@ -862,7 +878,7 @@ def cycle_once_v3(*, forward: bool = True, verbose: bool = True, max_rooms: int 
 
     stats = {"unread_top": 0, "opened": 0, "forwarded": 0,
              "unmapped_skipped": 0, "dup_title_break": 0, "self_loop_skipped": 0,
-             "kakao_origin_skipped": 0}
+             "kakao_origin_skipped": 0, "baseline_marked": 0}
 
     lock_kakaowork_window()
     lock_kakaotalk_window()
@@ -917,6 +933,18 @@ def cycle_once_v3(*, forward: bool = True, verbose: bool = True, max_rooms: int 
             stats["unmapped_skipped"] += 1
             if verbose:
                 print(f"  [WORK→KK v3] unmapped(제목 '{title}') — 스킵", flush=True)
+            continue
+
+        # ★ 첫 오픈 기준선: 이 방을 이 세션에서 처음 열면 현재 tail 전체를 '본 것'으로만
+        #   기록하고 전송하지 않는다 → 과거 미러글/내용이 뒤늦게 카톡으로 쏟아지는 것 원천 차단.
+        #   이후 사이클부터 '새로 올라온' 글만 후보가 된다.
+        if kk not in _baselined_rooms:
+            for m in msgs:
+                ledger.add(_v2_msg_key(kk, m))
+            _baselined_rooms.add(kk)
+            stats["baseline_marked"] = stats.get("baseline_marked", 0) + len(msgs)
+            if verbose:
+                print(f"  [WORK→KK v3] '{kk}' 첫 오픈 — tail {len(msgs)}건 기준선 등록(전송 안 함). 이후 신규만.", flush=True)
             continue
 
         # 3) 본문 → 워크 네이티브 신규만
