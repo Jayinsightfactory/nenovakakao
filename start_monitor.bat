@@ -21,8 +21,9 @@ cd /d "%PROJ%"
 
 set NENOVA_NO_OVERLAY=1
 set NENOVA_NO_ACTION_LOG=1
-set NENOVA_WORKBRIDGE_INTERVAL=10
-set NENOVA_WORKBRIDGE_MAXROOMS=10
+REM === W->K (work->kakao reverse) DISABLED -> K->W mirroring ONLY (safe; never sends to suppliers) ===
+REM   To re-enable later (ONLY after dry-run verify): change to set NENOVA_WORKBRIDGE=1
+set NENOVA_WORKBRIDGE=0
 REM inline sheet-sync OFF: separate sync_worker handles Sheets (parallel, no mirror blocking)
 set NENOVA_INLINE_SHEETSYNC=0
 set NENOVA_SYNC_INTERVAL=300
@@ -31,7 +32,7 @@ if exist "%PROJ%\data\_STOP" del "%PROJ%\data\_STOP"
 
 echo.
 echo  ============================================
-echo   Nenova bidirectional monitoring - STARTING
+echo   Nenova K-^>W mirroring ONLY (reverse W-^>K OFF) - STARTING
 echo   Stop: Ctrl+Alt+Q / red STOP button / stop_nenova.bat
 echo  ============================================
 echo.
