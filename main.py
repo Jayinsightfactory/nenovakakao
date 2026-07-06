@@ -119,8 +119,12 @@ def _process_room_result(
     # 사진 다운로드 스킵 토글 — 드로어(서랍) 저장이 불안정하면 사진 단계가
     # 무한 재시도하며 락을 오래 쥐어 답장·텍스트미러를 막는다.
     # NENOVA_SKIP_PHOTOS=1 이면 텍스트만 미러(안정), 사진은 건너뜀.
-    if _os.environ.get("NENOVA_SKIP_PHOTOS") == "1" and photo_count > 0:
-        print(f"     → [사진] {photo_count}개 감지 — NENOVA_SKIP_PHOTOS=1 → 사진 스킵(텍스트만)", flush=True)
+    # NENOVA_MIRROR_TO_WORK=0 이면 워크 업로드 자체를 안 하므로 사진도 불필요 → 스킵(시트 전용).
+    _mirror_to_work = _os.environ.get("NENOVA_MIRROR_TO_WORK", "1") != "0"
+    _skip_photos = (_os.environ.get("NENOVA_SKIP_PHOTOS") == "1") or (not _mirror_to_work)
+    if _skip_photos and photo_count > 0:
+        _why = "NENOVA_SKIP_PHOTOS=1" if _os.environ.get("NENOVA_SKIP_PHOTOS") == "1" else "워크미러 OFF"
+        print(f"     → [사진] {photo_count}개 감지 — {_why} → 사진 스킵(텍스트만)", flush=True)
         photo_count = 0
 
     # ── 첫 가동/대량 baseline 가드 ──
@@ -323,6 +327,12 @@ def _process_room_result(
                 print(f"     → 구글시트 {logged}건 기록")
         except Exception as e:
             print(f"     → 시트 기록 실패: {e}")
+
+    # ── 워크 미러 OFF 모드(NENOVA_MIRROR_TO_WORK=0): 시트 기록만 하고 워크 전송은 스킵 ──
+    #    카톡 읽기·collected_data 적재·구글시트 업로드는 위에서 이미 처리됨. 여기서 워크로만 안 보냄.
+    if not _mirror_to_work:
+        print(f"  └─ 📊 [{room_name}] 워크 업로드 OFF — 구글시트 기록만 (신규 {len(delta)}자)\n", flush=True)
+        return room_name
 
     # ── 카카오워크 미러 방에 **시간순 교차** 전송 ──
     # 텍스트는 Bot API, 사진은 카카오워크 앱 Ctrl+T 업로드.

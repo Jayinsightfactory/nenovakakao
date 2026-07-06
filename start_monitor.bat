@@ -24,6 +24,10 @@ set NENOVA_NO_ACTION_LOG=1
 REM === W->K (work->kakao reverse) DISABLED -> K->W mirroring ONLY (safe; never sends to suppliers) ===
 REM   To re-enable later (ONLY after dry-run verify): change to set NENOVA_WORKBRIDGE=1
 set NENOVA_WORKBRIDGE=0
+REM === K->W (kakao->work mirror UPLOAD) DISABLED -> SHEETS ONLY (kakao read -> Google Sheets) ===
+REM   Per user: stop uploading kakao content to Work; keep only Google Sheets upload.
+REM   To re-enable Work mirroring later: change to set NENOVA_MIRROR_TO_WORK=1
+set NENOVA_MIRROR_TO_WORK=0
 REM inline sheet-sync OFF: separate sync_worker handles Sheets (parallel, no mirror blocking)
 set NENOVA_INLINE_SHEETSYNC=0
 set NENOVA_SYNC_INTERVAL=300
@@ -32,7 +36,7 @@ if exist "%PROJ%\data\_STOP" del "%PROJ%\data\_STOP"
 
 echo.
 echo  ============================================
-echo   Nenova K-^>W mirroring ONLY (reverse W-^>K OFF) - STARTING
+echo   Nenova SHEETS-ONLY (kakao read -^> Google Sheets; no Work upload) - STARTING
 echo   Stop: Ctrl+Alt+Q / red STOP button / stop_nenova.bat
 echo  ============================================
 echo.

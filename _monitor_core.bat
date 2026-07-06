@@ -11,6 +11,11 @@ REM === W->K (work->kakao reverse) DISABLED -> K->W mirroring ONLY (safe; never 
 REM   Reverse direction echoed mirror content back to suppliers twice; kept OFF per user.
 REM   To re-enable later (ONLY after dry-run verify): change to set NENOVA_WORKBRIDGE=1
 set NENOVA_WORKBRIDGE=0
+REM === K->W (kakao->work mirror UPLOAD) DISABLED -> SHEETS ONLY (kakao read -> Google Sheets) ===
+REM   Per user: stop uploading kakao content to Work; keep only Google Sheets upload.
+REM   (kakao reading + collected_data + Sheets sync stay ON; only the Work upload is skipped.)
+REM   To re-enable Work mirroring later: change to set NENOVA_MIRROR_TO_WORK=1
+set NENOVA_MIRROR_TO_WORK=0
 REM inline sheet-sync OFF: the separate sync_worker handles Sheets (no mirror blocking, no double-sync)
 set NENOVA_INLINE_SHEETSYNC=0
 set NENOVA_SYNC_INTERVAL=300
