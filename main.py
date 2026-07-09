@@ -334,14 +334,14 @@ def _process_room_result(
         print(f"  └─ 📊 [{room_name}] 워크 업로드 OFF — 구글시트 기록만 (신규 {len(delta)}자)\n", flush=True)
         return room_name
 
-    # ── 카카오워크 미러 방에 **시간순 교차** 전송 ──
-    # 텍스트는 Bot API, 사진은 카카오워크 앱 Ctrl+T 업로드.
-    # 각 사진 직전에 "[발신자] [시각] [사진]" 헤더를 Bot API로 선전송 →
-    # 도착시간·발신자·첨부파일이 실제 카톡 순서대로 미러 방에 표시됨.
-    from core.kakaowork_router import send_delta_interleaved
+    # ── 미러 전송 (대상은 MIRROR_TARGET 스위치: kakaowork|talkhub|both|none) ──
+    # kakaowork: 텍스트=Bot API, 사진=앱 Ctrl+T. talkhub(MOYI): inbound + files/upload(API).
+    # 기본 kakaowork(기존 동작 불변). mirror_dispatch 가 대상 라우터로 위임.
+    from core.mirror_dispatch import send_delta_interleaved
     r = None
     try:
-        if downloaded_files:
+        # 카카오워크 앱 포커스는 워크 사진 업로드용 — talkhub 전용일 땐 불필요(무해).
+        if downloaded_files and _os.environ.get("MIRROR_TARGET", "kakaowork").lower() in ("kakaowork", "kw", "both"):
             focus_kakaowork()
         r = send_delta_interleaved(room_name, delta, downloaded_files)
         print(
