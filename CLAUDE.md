@@ -32,6 +32,7 @@ PYTHON="C:/Users/USER/AppData/Local/Programs/Python/Python312/python.exe"
 "$PYTHON" main.py scan       # 방 리스트 전체 스캔
 "$PYTHON" main.py select     # 감시 방 GUI 선택
 "$PYTHON" main.py mirror     # 카카오워크 미러 방 생성
+"$PYTHON" main.py moyi-worker # MOYI→카톡 발송 워커 (KakaoOutbox 폴링→발송→ack, .env: MOYI_BRIDGE_SECRET)
 ```
 
 ## 📏 하네스 운영 원칙 (반드시 준수)
