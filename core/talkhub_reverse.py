@@ -11,9 +11,9 @@ talkhub outbound 큐(GET /bridge/kakao/outbound/pending)를 폴링 → kakao_win
   ⑤ 감사로그 data/talkhub_reverse_audit.jsonl   (누가/언제/무엇을 보냈나)
   ⑥ 송신 실패 로그(+원장 미기록 → 다음에 재시도 가능)
 
-⚠️ 드레인 주의: /outbound/pending 은 조회 시 서버 큐를 비운다. 그래서 REVERSE_RELAY!=1 이면
-   **아예 폴링하지 않는다**(dry 상태로 폴링하면 항목이 소실되기 때문). 실테스트는 REVERSE_RELAY=1 로.
-   (백엔드 outbound 는 현재 in-memory + ack 없음 = 이슈 T7. 100% 보장은 T7 반영 후.)
+백엔드(d1a3274~): KakaoOutbox 영구 큐 + ack. /outbound/pending 은 **드레인 안 함**(ack 전까지 유지).
+  → 송신 성공 시 POST /outbound/{id}/ack{ok:true}, 실패 시 {ok:false,error} 필수(안 하면 재노출/재시도).
+  REVERSE_RELAY!=1 이면 폴링/송신 안 함(거래처 발송 킬스위치는 그대로 유지).
 
 env:
   TALKHUB_BASE_URL / TALKHUB_BRIDGE_SECRET   (forward 와 공유)
@@ -130,6 +130,24 @@ def _poll_pending() -> list[dict]:
     return []
 
 
+def _ack(outbox_id: str, ok: bool, error: str | None = None) -> bool:
+    """송신 결과 보고. ok=True → sent, ok=False → attempts++ (5회 넘으면 held). ack 없으면 재노출."""
+    import requests
+    c = _cfg()
+    headers = {"Content-Type": "application/json"}
+    if c["secret"]:
+        headers["X-Bridge-Secret"] = c["secret"]
+    try:
+        r = requests.post(c["base"] + f"/bridge/kakao/outbound/{outbox_id}/ack",
+                          json={"ok": ok, "error": error}, headers=headers, timeout=c["timeout"])
+        if r.status_code < 300:
+            return True
+        print(f"  [talkhub-rev] ack({outbox_id}) → HTTP {r.status_code}: {r.text[:100]}", flush=True)
+    except Exception as e:
+        print(f"  [talkhub-rev] ack 예외: {type(e).__name__}: {e}", flush=True)
+    return False
+
+
 def _send_to_kakao(kakao_room: str, text: str) -> bool:
     """kakao_lock 확보 후 분리창 찾기/열기 → 전면검증 송신. work_bridge._forward_to_kakao 패턴 재사용."""
     from core import kakao_win32 as kw
@@ -183,12 +201,18 @@ def poll_once() -> dict:
         if _stop_requested():
             print("  [talkhub-rev] _STOP — 송신 중단", flush=True)
             break
+        oid = it.get("id")
         content = (it.get("content") or "").strip()
         ext_room = it.get("external_room_id") or ""
         if not content or not ext_room:
+            if oid:
+                _ack(oid, True)   # 빈 항목 → sent 처리해 큐에서 제거
             continue
         key = _dedup_key(it)
         if key in ledger:
+            # 이미 로컬 송신했으나 ack 미완 → 서버에 sent 보고하고 스킵(중복 재송신 방지)
+            if oid:
+                _ack(oid, True)
             stats["skipped_dup"] += 1
             continue
         kakao_room = _reverse_kakao_room(ext_room)
@@ -196,14 +220,18 @@ def poll_once() -> dict:
         label = f"[{c['label']}·{sender}]" if sender else f"[{c['label']}]"
         text = f"{label} {content}"
         ok = _send_to_kakao(kakao_room, text)
-        _audit({"external_room_id": ext_room, "kakao_room": kakao_room,
+        _audit({"outbox_id": oid, "external_room_id": ext_room, "kakao_room": kakao_room,
                 "text": text[:200], "ok": ok})
         if ok:
             stats["sent"] += 1
             ledger.add(key)
+            if oid:
+                _ack(oid, True)
             print(f"  [talkhub-rev] ✅ '{kakao_room}' ← '{text[:50]}'", flush=True)
         else:
             stats["failed"] += 1
+            if oid:
+                _ack(oid, False, "kakao send failed")
             print(f"  [talkhub-rev] ❌ '{kakao_room}' 송신실패 — '{text[:50]}'", flush=True)
         time.sleep(0.5)
     _save_ledger(ledger)
