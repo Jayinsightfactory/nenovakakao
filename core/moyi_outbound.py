@@ -1,19 +1,22 @@
-"""MOYI→카톡 발송 워커 (이슈 ⑦).
+"""MOYI→카톡 발송 워커 (이슈 ⑦) — 회사별 연결(트랙1 P2).
 
-MOYI(talkhub) 서버의 KakaoOutbox 큐를 폴링해서 카카오톡 PC로 발송하고 ack한다.
+MOYI(talkhub) 서버의 회사별 KakaoOutbox 큐를 폴링해서 카카오톡 PC로 발송하고 ack한다.
+카톡→MOYI 수신(inbound)도 이 회사 시크릿으로 보낸다.
 
-계약 (talkhub 서버, 2026-07-09 라이브):
-- GET  {MOYI_API_BASE}/bridge/kakao/outbound/pending?limit=20  (헤더 X-Bridge-Secret)
+계약 (talkhub 서버 /kakao/agent/*, 회사별 시크릿 = 헤더 X-Company-Secret):
+- GET  {SERVER}/kakao/agent/pending?limit=20
   → {"items": [{id, external_room_id, content, sender_name, attachments[{name,url,mime}], attempts}]}
-- POST {MOYI_API_BASE}/bridge/kakao/outbound/{id}/ack  {"ok": true} 또는 {"ok": false, "error": "..."}
+- POST {SERVER}/kakao/agent/ack/{id}  {"ok": true} 또는 {"ok": false, "error": "..."}
   → at-least-once: ack 전까지 같은 항목이 재노출되므로 발송 성공 후 반드시 ack.
+- POST {SERVER}/kakao/agent/inbound  {external_room_id, sender_name, content, attachments}
+  → 카톡방(제목)이 이 회사의 승인·import 연결일 때만 MOYI 방에 게시.
 
-발송 방식: 카카오톡 메인 창에서 Ctrl+F 검색 → 방 이름(external_room_id) 입력 → Enter로 방 열기
+발송 방식: 카카오톡 메인 창에서 Ctrl+F 검색 → 방 이름(external_room_id=카톡방 제목) 입력 → Enter로 방 열기
 → 입력란 클릭 → 클립보드 붙여넣기 → Enter. 첨부는 URL을 본문에 병기(파일 자동 업로드는 후속).
 
-.env:
-- MOYI_API_BASE      (기본 https://api.nowlink.kr)
-- MOYI_BRIDGE_SECRET (talkhub Railway의 BRIDGE_SECRET와 동일 값)
+.env (설치파일이 자동 작성):
+- MOYI_SERVER 또는 MOYI_API_BASE   (기본 https://api.nowlink.kr)
+- MOYI_BRIDGE_SECRET               (회사 전용 시크릿 = 연결코드 교환값. X-Company-Secret로 전송)
 """
 from __future__ import annotations
 
@@ -31,21 +34,25 @@ SEND_COOLDOWN_SEC = 2.0
 
 
 def _base() -> str:
-    return (os.getenv("MOYI_API_BASE") or "https://api.nowlink.kr").rstrip("/")
+    return (os.getenv("MOYI_SERVER") or os.getenv("MOYI_API_BASE") or "https://api.nowlink.kr").rstrip("/")
 
 
 def _secret() -> str:
     s = os.getenv("MOYI_BRIDGE_SECRET") or ""
     if not s:
-        raise RuntimeError("MOYI_BRIDGE_SECRET가 .env에 없습니다 (talkhub BRIDGE_SECRET와 동일 값)")
+        raise RuntimeError("MOYI_BRIDGE_SECRET가 .env에 없습니다 (회사 연결코드로 교환한 회사 전용 시크릿)")
     return s
+
+
+def _headers() -> dict:
+    return {"X-Company-Secret": _secret()}
 
 
 def fetch_pending(limit: int = 20) -> list[dict]:
     r = requests.get(
-        f"{_base()}/bridge/kakao/outbound/pending",
+        f"{_base()}/kakao/agent/pending",
         params={"limit": limit},
-        headers={"X-Bridge-Secret": _secret()},
+        headers=_headers(),
         timeout=15,
     )
     r.raise_for_status()
@@ -55,17 +62,36 @@ def fetch_pending(limit: int = 20) -> list[dict]:
 
 def ack(item_id: str, ok: bool, error: str | None = None) -> None:
     requests.post(
-        f"{_base()}/bridge/kakao/outbound/{item_id}/ack",
+        f"{_base()}/kakao/agent/ack/{item_id}",
         json={"ok": ok, "error": error},
-        headers={"X-Bridge-Secret": _secret()},
+        headers=_headers(),
         timeout=15,
     ).raise_for_status()
 
 
+def push_inbound(external_room_id: str, sender_name: str, content: str, attachments: list | None = None) -> dict | None:
+    """카톡 → MOYI. 이 회사의 승인·import 연결 방에만 게시(서버가 검증). 매핑 없으면 404(무시)."""
+    try:
+        r = requests.post(
+            f"{_base()}/kakao/agent/inbound",
+            json={"external_room_id": external_room_id, "sender_name": sender_name,
+                  "content": content, "attachments": attachments or []},
+            headers=_headers(),
+            timeout=15,
+        )
+        if r.status_code == 404:
+            return None  # 이 회사에 연결·승인된 방이 아님 — 조용히 무시
+        r.raise_for_status()
+        return r.json()
+    except Exception as e:
+        print(f"[moyi-inbound] 전송 실패: {e}")
+        return None
+
+
 def compose_text(item: dict) -> str:
-    sender = (item.get("sender_name") or "").strip()
+    # content는 서버가 이미 평문 변환(발신자명 + ↳ 본문). 태그 재부착 없이 그대로 사용.
     content = (item.get("content") or "").strip()
-    lines = [f"[MOYI/{sender}] {content}" if sender else content]
+    lines = [content] if content else []
     for att in item.get("attachments") or []:
         name = att.get("name") or "첨부"
         url = att.get("url") or ""
