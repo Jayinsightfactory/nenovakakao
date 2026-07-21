@@ -242,6 +242,13 @@ def main(argv: list[str]) -> int:
         from moyi_console import Console
         Console().mainloop()
         return 0
+    elif cmd == "moyi-room-sync":
+        from core.moyi_room_sync import sync_once
+        sync_once()
+        return 0
+    elif cmd == "moyi-room-watch":
+        from core.moyi_room_sync import watch
+        return watch()
     else:
         print(f"[ERROR] 알 수 없는 명령: {cmd}")
         print(__doc__)

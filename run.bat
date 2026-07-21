@@ -13,6 +13,10 @@ if "%1"=="scan" (
     %PYTHON% main.py moyi-worker
 ) else if "%1"=="moyi-console" (
     %PYTHON% main.py moyi-console
+) else if "%1"=="moyi-room-sync" (
+    %PYTHON% main.py moyi-room-sync
+) else if "%1"=="moyi-room-watch" (
+    %PYTHON% main.py moyi-room-watch
 ) else (
     %PYTHON% main.py
 )
