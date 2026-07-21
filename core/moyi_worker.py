@@ -12,7 +12,8 @@ EVENT_LOG = ROOT / "data" / "moyi_events.jsonl"
 
 def _config() -> tuple[str, str]:
     load_dotenv(ROOT / ".env")
-    server, secret = os.getenv("MOYI_SERVER", "").rstrip("/"), os.getenv("MOYI_BRIDGE_SECRET", "")
+    server = (os.getenv("MOYI_SERVER") or os.getenv("MOYI_API_BASE") or "").rstrip("/")
+    secret = os.getenv("MOYI_BRIDGE_SECRET", "")
     if not server or not secret:
         raise RuntimeError("MOYI_SERVER와 MOYI_BRIDGE_SECRET가 필요합니다")
     return server, secret
@@ -36,6 +37,22 @@ def _event(item: dict | None, state: str, detail: str = "") -> None:
     with EVENT_LOG.open("a", encoding="utf-8") as f:
         f.write(json.dumps(record, ensure_ascii=False) + "\n")
 
+def _load_journal() -> dict[tuple[str, str], str]:
+    sent = {}
+    if not JOURNAL.exists(): return sent
+    for line in JOURNAL.read_text(encoding="utf-8", errors="ignore").splitlines():
+        try:
+            row = json.loads(line)
+            sent[(_journal_key(row), str(row.get("part_id") or ""))] = row.get("result", "")
+        except json.JSONDecodeError:
+            continue
+    return sent
+
+def _assert_room(hwnd: int, title: str) -> None:
+    import win32gui
+    if win32gui.GetForegroundWindow() != hwnd or win32gui.GetWindowText(hwnd) != title:
+        raise RuntimeError("전송 직전 카카오톡 방 포커스/제목이 변경되었습니다")
+
 def _send_text(text: str) -> None:
     pyperclip = __import__("pyperclip")
     pyperclip.copy(text)
@@ -56,19 +73,29 @@ def process_item(server: str, secret: str, item: dict) -> None:
     verify.raise_for_status()
     _event(item, "room_verified", title)
     completed = set(item.get("completed_part_ids") or [])
+    journal = _load_journal()
     try:
         for part in sorted(item.get("parts") or [], key=lambda p: p.get("sequence", 0)):
             part_id = str(part.get("part_id") or "")
             if not part_id or part_id in completed:
                 continue
+            previous = journal.get((_journal_key(item), part_id))
+            if previous in ("sent", "unknown_result"):
+                completed.add(part_id)
+                _event(item, "journal_hold", f"part={part_id}, previous={previous}")
+                continue
             if part.get("type") != "text":
-                raise RuntimeError(f"지원하지 않는 part type: {part.get('type')}")
+                raise RuntimeError(f"not_sent: 지원하지 않는 part type: {part.get('type')}")
+            _assert_room(hwnd, title)
+            _event(item, "paste_started", f"part={part_id}")
             _send_text(str(part.get("text") or ""))
+            _event(item, "enter_pressed", f"part={part_id}")
             completed.add(part_id)
             _append_journal(item, part_id, "sent")
             _event(item, "sent", f"part={part_id}")
             response = requests.post(f"{server}/kakao/agent/ack/{item['id']}", headers=_headers(secret), json={"ok": True, "lease_token": item.get("lease_token"), "completed_part_ids": sorted(completed), "current_part_id": part_id}, timeout=20)
             response.raise_for_status()
+        requests.post(f"{server}/kakao/agent/ack/{item['id']}", headers=_headers(secret), json={"ok": True, "final": True, "outcome": "sent", "lease_token": item.get("lease_token"), "completed_part_ids": sorted(completed)}, timeout=20).raise_for_status()
     finally:
         close_room(hwnd)
 
@@ -83,7 +110,9 @@ def run() -> int:
             try:
                 process_item(server, secret, item)
             except Exception as exc:
-                print(f"[MOYI] HOLD {item.get('id')}: {exc}")
-                _event(item, "unknown_result", str(exc))
+                detail = str(exc)
+                state = "failed_not_sent" if detail.startswith("not_sent:") or "방 제목" in detail or "exact room" in detail else "unknown_result"
+                print(f"[MOYI] {state} {item.get('id')}: {detail}")
+                _event(item, state, detail)
                 requests.post(f"{server}/kakao/agent/ack/{item['id']}", headers=_headers(secret), json={"ok": False, "outcome": "unknown_result", "lease_token": item.get("lease_token"), "error": str(exc)[:500]}, timeout=20).raise_for_status()
         time.sleep(5)

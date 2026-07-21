@@ -9,6 +9,10 @@ if "%1"=="scan" (
     %PYTHON% main.py select
 ) else if "%1"=="install" (
     %PYTHON% -m pip install -r requirements.txt
+) else if "%1"=="moyi-worker" (
+    %PYTHON% main.py moyi-worker
+) else if "%1"=="moyi-console" (
+    %PYTHON% main.py moyi-console
 ) else (
     %PYTHON% main.py
 )

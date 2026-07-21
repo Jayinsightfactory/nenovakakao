@@ -24,3 +24,5 @@ data/explorer/
 data/guard/
 data/last_content/
 data/learning/
+data/moyi_events.jsonl
+data/moyi_outbound_journal.jsonl

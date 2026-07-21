@@ -236,8 +236,11 @@ def main(argv: list[str]) -> int:
     elif cmd == "mirror":
         return cmd_mirror()
     elif cmd == "moyi-worker":
-        from core.moyi_outbound import run_worker
-        run_worker()
+        from core.moyi_worker import run
+        return run()
+    elif cmd == "moyi-console":
+        from moyi_console import Console
+        Console().mainloop()
         return 0
     else:
         print(f"[ERROR] 알 수 없는 명령: {cmd}")
