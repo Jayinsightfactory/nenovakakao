@@ -12,6 +12,11 @@ SEARCH_Y_RATIO = 0.11
 
 def replace_room_search(window, title: str) -> None:
     """Focus the visible search box, clear it, and paste one exact title."""
+    # Ctrl+F toggles the search field in recent KakaoTalk versions. Always
+    # close any search left behind by a previous scan before opening a fresh
+    # one, otherwise the click below lands on the room list and no room opens.
+    pyautogui.press("esc")
+    time.sleep(0.2)
     pyautogui.hotkey("ctrl", "f")
     time.sleep(0.3)
     pyautogui.click(
