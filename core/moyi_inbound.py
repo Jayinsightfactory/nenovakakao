@@ -111,7 +111,6 @@ def has_unread_exact_room(title: str) -> bool:
     pyautogui.hotkey("ctrl", "f")
     time.sleep(0.4)
     pyperclip.copy(title)
-    pyautogui.hotkey("ctrl", "a")
     pyautogui.hotkey("ctrl", "v")
     time.sleep(0.8)
     image_name = hashlib.sha256(title.encode()).hexdigest()[:16] + ".png"

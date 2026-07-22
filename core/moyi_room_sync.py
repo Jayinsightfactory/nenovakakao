@@ -81,7 +81,6 @@ def _scan_allowlisted_rooms(window, allowlist: tuple[str, ...]) -> list[dict]:
         pyautogui.hotkey("ctrl", "f")
         time.sleep(0.3)
         pyperclip.copy(title)
-        pyautogui.hotkey("ctrl", "a")
         pyautogui.hotkey("ctrl", "v")
         time.sleep(0.8)
         image_name = hashlib.sha256(title.encode()).hexdigest()[:16] + ".png"
