@@ -76,6 +76,24 @@ second line
             self.assertEqual(result, {"sent": 0, "initialized": 0})
             export.assert_not_called()
 
+    def test_targeted_scan_skips_every_other_room(self):
+        with TemporaryDirectory() as tmp, patch.object(inbound, "STATE_FILE", Path(tmp) / "state.json"):
+            rooms = Mock()
+            rooms.json.return_value = {"items": [
+                {"room_binding_id": "other", "exact_title": "other-room"},
+                {"room_binding_id": "target", "exact_title": "target-room"},
+            ]}
+            rooms.raise_for_status.return_value = None
+            with patch.object(inbound.requests, "get", return_value=rooms), \
+                 patch.object(inbound, "export_exact_room", return_value="") as export, \
+                 patch.object(inbound.requests, "post") as post:
+                post.return_value.raise_for_status.return_value = None
+                result = inbound.poll_once(
+                    "https://example.test", "secret", only_title="target-room"
+                )
+            self.assertEqual(result["initialized"], 1)
+            export.assert_called_once_with("target-room")
+
     def test_failed_unread_delivery_keeps_rescan_marker(self):
         with TemporaryDirectory() as tmp, patch.object(inbound, "STATE_FILE", Path(tmp) / "state.json"), \
              patch.object(inbound, "OUTBOUND_JOURNAL", Path(tmp) / "journal.jsonl"):
