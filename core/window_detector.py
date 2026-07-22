@@ -35,8 +35,8 @@ ROOM_LIST_BOTTOM_RATIO = 0.97  # 창 하단 97% 지점까지 (상태바 제외)
 
 # 사이드바 채팅 탭 아이콘 위치 (고정 픽셀 — 사이드바는 창 크기와 무관하게 고정)
 # 2026-04 kakaotalk_full.png 분석 기준: 아이콘 간격 ~50px
-CHAT_TAB_X_OFFSET = 27     # 창 좌측에서 27px (사이드바 중앙)
-CHAT_TAB_Y_OFFSET = 115    # 창 상단에서 115px (두 번째 아이콘 = 채팅)
+CHAT_TAB_X_OFFSET = 33     # 현재 카카오톡 왼쪽 채팅 아이콘 중심
+CHAT_TAB_Y_OFFSET = 115    # 현재 카카오톡 채팅 아이콘 중심
 
 
 @dataclass
