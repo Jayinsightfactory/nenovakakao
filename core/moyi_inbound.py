@@ -204,7 +204,7 @@ def _find_local_kakao_file(name: str) -> Path:
     return unique[0]
 
 
-def poll_once(server: str, secret: str) -> dict[str, int]:
+def poll_once(server: str, secret: str, only_title: str | None = None) -> dict[str, int]:
     """Open only unread/retry rooms and post messages newer than the baseline."""
     headers = {"X-Company-Secret": secret}
     response = requests.get(f"{server}/kakao/agent/rooms", headers=headers, timeout=20)
@@ -218,6 +218,8 @@ def poll_once(server: str, secret: str) -> dict[str, int]:
         binding = str(room.get("room_binding_id") or "").strip()
         title = str(room.get("exact_title") or "").strip()
         if not binding or not title:
+            continue
+        if only_title is not None and title != only_title:
             continue
         needs_initialization = binding not in state
         has_unread = (
