@@ -60,13 +60,6 @@ class MoyiRoomSyncSafetyTests(unittest.TestCase):
         detector = types.ModuleType("core.window_detector")
         detector.activate_kakaotalk = Mock(return_value="window")
         detector.switch_to_chat_tab = Mock()
-        scanner = types.ModuleType("core.room_scanner")
-        scanner.scan_rooms_full = Mock(
-            return_value=[
-                {"name": "private-room", "order": 1},
-                {"name": "test-room", "order": 2},
-            ]
-        )
         response = Mock()
         response.json.return_value = {"items": [{"exact_title": "test-room"}]}
 
@@ -81,12 +74,10 @@ class MoyiRoomSyncSafetyTests(unittest.TestCase):
                     ("test-room",),
                 ),
             ),
-            patch.dict(
-                sys.modules,
-                {
-                    "core.window_detector": detector,
-                    "core.room_scanner": scanner,
-                },
+            patch.dict(sys.modules, {"core.window_detector": detector}),
+            patch(
+                "core.moyi_room_sync._scan_allowlisted_rooms",
+                return_value=[{"name": "test-room", "order": 1}],
             ),
             patch("core.moyi_room_sync.requests.post", return_value=response) as post,
         ):
