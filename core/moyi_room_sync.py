@@ -36,7 +36,7 @@ def _parse_allowlist(raw: str) -> tuple[str, ...]:
 
 
 def _config() -> tuple[str, str, str, str, tuple[str, ...]]:
-    load_dotenv(ROOT / ".env")
+    load_dotenv(ROOT / ".env", override=True)
     server = (os.getenv("MOYI_SERVER") or os.getenv("MOYI_API_BASE") or "").rstrip("/")
     secret = os.getenv("MOYI_BRIDGE_SECRET", "")
     workspace_id = os.getenv("MOYI_WORKSPACE_ID", "").strip()

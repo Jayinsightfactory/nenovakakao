@@ -35,8 +35,10 @@ class MoyiRoomSyncSafetyTests(unittest.TestCase):
             "MOYI_AGENT_ID": "agent",
             "MOYI_ROOM_ALLOWLIST": "test-room",
         }
-        with patch.dict(os.environ, env, clear=True), self.assertRaisesRegex(
-            RuntimeError, "MOYI_WORKSPACE_ID"
+        with (
+            patch.dict(os.environ, env, clear=True),
+            patch("core.moyi_room_sync.load_dotenv"),
+            self.assertRaisesRegex(RuntimeError, "MOYI_WORKSPACE_ID"),
         ):
             _config()
 
@@ -47,8 +49,10 @@ class MoyiRoomSyncSafetyTests(unittest.TestCase):
             "MOYI_WORKSPACE_ID": "workspace",
             "MOYI_AGENT_ID": "agent",
         }
-        with patch.dict(os.environ, env, clear=True), self.assertRaisesRegex(
-            RuntimeError, "MOYI_ROOM_ALLOWLIST"
+        with (
+            patch.dict(os.environ, env, clear=True),
+            patch("core.moyi_room_sync.load_dotenv"),
+            self.assertRaisesRegex(RuntimeError, "MOYI_ROOM_ALLOWLIST"),
         ):
             _config()
 
