@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import mimetypes
 import os
 import re
 import time
@@ -14,6 +15,9 @@ import requests
 from core.kakao_search import replace_room_search
 from core.moyi_outbound import open_room_by_name
 from core.safe_worker_room import close_room, open_unique_exact_room
+
+PHOTO_MARKER_RE = re.compile(r"(?:\[사진(?:\s*\d+장)?\]|\[Photo(?:s)?\])", re.IGNORECASE)
+MAX_ATTACHMENT_BYTES = 50 * 1024 * 1024
 
 ROOT = Path(__file__).resolve().parent.parent
 STATE_FILE = ROOT / "data" / "moyi_inbound_state.json"
@@ -145,6 +149,34 @@ def export_exact_room(title: str) -> str:
         close_room(hwnd)
 
 
+def _upload_attachment(server: str, headers: dict[str, str], path: Path) -> dict:
+    """Upload one locally downloaded Kakao attachment without exposing secrets."""
+    if path.stat().st_size > MAX_ATTACHMENT_BYTES:
+        raise RuntimeError(f"Kakao attachment exceeds 50MB: {path.name}")
+    mime = mimetypes.guess_type(path.name)[0] or "application/octet-stream"
+    with path.open("rb") as stream:
+        response = requests.post(
+            f"{server}/kakao/agent/files",
+            headers=headers,
+            files={"file": (path.name, stream, mime)},
+            timeout=90,
+        )
+    response.raise_for_status()
+    return response.json()
+
+
+def _collect_photo_files(title: str, count: int) -> list[Path]:
+    """Download the newest photo thumbnails from one exact Kakao room."""
+    from core.drawer_handler import extract_photos_from_room
+
+    open_room_by_name(title)
+    hwnd = open_unique_exact_room(title)
+    try:
+        return extract_photos_from_room(hwnd, photo_count=count)
+    finally:
+        close_room(hwnd)
+
+
 def poll_once(server: str, secret: str) -> dict[str, int]:
     """Open only unread/retry rooms and post messages newer than the baseline."""
     headers = {"X-Company-Secret": secret}
@@ -193,6 +225,18 @@ def poll_once(server: str, secret: str) -> dict[str, int]:
             state["_needs_rescan"] = sorted(retry_bindings)
             _save_state(state)
             continue
+        new_events = [event for event in events if event["event_id"] not in known]
+        photo_events = [event for event in new_events if PHOTO_MARKER_RE.search(event["content"])]
+        if photo_events:
+            photo_files = _collect_photo_files(title, len(photo_events))
+            if len(photo_files) < len(photo_events):
+                raise RuntimeError(
+                    f"Kakao photo download incomplete: expected {len(photo_events)}, got {len(photo_files)}"
+                )
+            uploaded = [_upload_attachment(server, headers, path) for path in photo_files]
+            # Kakao's drawer is newest-first, as are the downloaded thumbnails.
+            for event, attachment in zip(reversed(photo_events), uploaded):
+                event["attachments"] = [attachment]
         for event in events:
             if event["event_id"] in known:
                 continue
@@ -206,7 +250,7 @@ def poll_once(server: str, secret: str) -> dict[str, int]:
                         "room_binding_id": binding,
                         "external_room_id": title,
                         "origin": "kakao",
-                        "attachments": [],
+                        "attachments": event.get("attachments", []),
                     },
                     timeout=20,
                 )
