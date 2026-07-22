@@ -10,6 +10,7 @@ import time
 from pathlib import Path
 
 import pyautogui
+import pygetwindow as gw
 import requests
 
 from core.kakao_search import replace_room_search
@@ -176,6 +177,56 @@ def _collect_photo_files(title: str, count: int) -> list[Path]:
     open_room_by_name(title)
     hwnd = open_unique_exact_room(title)
     try:
+        if count == 1:
+            roots = _candidate_export_roots()
+            before = {
+                path.resolve(): path.stat().st_mtime_ns
+                for root in roots if root.exists()
+                for path in root.rglob("*") if path.is_file()
+            }
+            existing_hwnds = {window._hWnd for window in gw.getAllWindows()}
+            chat = next(window for window in gw.getAllWindows() if window._hWnd == hwnd)
+            # A new unread photo is the bottom-most media bubble. Kakao opens
+            # it in a separate preview window on double-click.
+            pyautogui.doubleClick(
+                chat.left + int(chat.width * 0.63),
+                chat.top + int(chat.height * 0.58),
+                interval=0.15,
+            )
+            time.sleep(2)
+            previews = [
+                window for window in gw.getAllWindows()
+                if window.visible and window._hWnd not in existing_hwnds
+                and window.width > 500 and window.height > 400
+            ]
+            if len(previews) != 1:
+                raise RuntimeError(f"Kakao photo preview verification failed: {len(previews)} matches")
+            preview = previews[0]
+            preview.activate()
+            pyautogui.click(preview.left + preview.width - 62, preview.top + preview.height - 25)
+            time.sleep(1)
+            save_windows = [window for window in gw.getAllWindows() if window.title == "다른 이름으로 저장"]
+            if len(save_windows) != 1:
+                raise RuntimeError("Kakao photo save dialog was not opened")
+            save_windows[0].activate()
+            pyautogui.press("enter")
+            time.sleep(3)
+            pyautogui.press("left")
+            pyautogui.press("enter")
+            time.sleep(1)
+            after = {
+                path.resolve(): path.stat().st_mtime_ns
+                for root in roots if root.exists()
+                for path in root.rglob("*") if path.is_file()
+            }
+            downloaded = sorted(
+                (path for path, modified in after.items() if before.get(path) != modified),
+                key=lambda path: after[path],
+            )
+            pyautogui.press("escape")
+            if len(downloaded) != 1:
+                raise RuntimeError(f"Kakao photo save verification failed: {len(downloaded)} files")
+            return downloaded
         return extract_photos_from_room(hwnd, photo_count=count)
     finally:
         close_room(hwnd)
