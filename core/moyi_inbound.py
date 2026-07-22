@@ -16,7 +16,11 @@ from core.kakao_search import replace_room_search
 from core.moyi_outbound import open_room_by_name
 from core.safe_worker_room import close_room, open_unique_exact_room
 
-PHOTO_MARKER_RE = re.compile(r"(?:\[사진(?:\s*\d+장)?\]|\[Photo(?:s)?\])", re.IGNORECASE)
+PHOTO_MARKER_RE = re.compile(
+    r"^(?:사진(?:\s*\d+장)?|\[사진(?:\s*\d+장)?\]|Photo(?:s)?|\[Photo(?:s)?\])$",
+    re.IGNORECASE,
+)
+FILE_MARKER_RE = re.compile(r"^(?:파일|File)\s*:\s*(?P<name>.+)$", re.IGNORECASE)
 MAX_ATTACHMENT_BYTES = 50 * 1024 * 1024
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -177,6 +181,29 @@ def _collect_photo_files(title: str, count: int) -> list[Path]:
         close_room(hwnd)
 
 
+def _find_local_kakao_file(name: str) -> Path:
+    """Resolve an exact filename fail-closed from user-approved local roots."""
+    safe_name = Path(name).name.strip()
+    if not safe_name or safe_name != name.strip():
+        raise RuntimeError("Unsafe Kakao attachment filename")
+    configured = Path(os.getenv(
+        "KAKAO_DOWNLOAD_DIR", str(Path.home() / "Documents" / "카카오톡 받은 파일")
+    ))
+    roots = tuple(dict.fromkeys((configured, Path.home() / "Downloads", Path.home() / "Desktop")))
+    matches: list[Path] = []
+    for root in roots:
+        if not root.exists():
+            continue
+        try:
+            matches.extend(path for path in root.rglob(safe_name) if path.is_file())
+        except OSError:
+            continue
+    unique = list(dict.fromkeys(path.resolve() for path in matches))
+    if len(unique) != 1:
+        raise RuntimeError(f"Kakao file resolution requires exactly one local match: {safe_name}")
+    return unique[0]
+
+
 def poll_once(server: str, secret: str) -> dict[str, int]:
     """Open only unread/retry rooms and post messages newer than the baseline."""
     headers = {"X-Company-Secret": secret}
@@ -237,6 +264,11 @@ def poll_once(server: str, secret: str) -> dict[str, int]:
             # Kakao's drawer is newest-first, as are the downloaded thumbnails.
             for event, attachment in zip(reversed(photo_events), uploaded):
                 event["attachments"] = [attachment]
+        for event in new_events:
+            file_match = FILE_MARKER_RE.match(event["content"].strip())
+            if file_match:
+                local_file = _find_local_kakao_file(file_match.group("name").strip())
+                event["attachments"] = [_upload_attachment(server, headers, local_file)]
         for event in events:
             if event["event_id"] in known:
                 continue
