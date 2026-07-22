@@ -1,14 +1,16 @@
 """MOYI PC Kakao bridge operations console.
 
 Usage: ``python moyi_console.py``
-The console is read-only: it never retries or mutates a delivery. This keeps
-human review separate from the sending worker.
+The console can pause/resume polling at a safe boundary. It never retries or
+mutates an individual delivery.
 """
 from __future__ import annotations
 import json, time, tkinter as tk
 from datetime import datetime
 from pathlib import Path
 from tkinter import ttk
+
+from core.moyi_control import is_paused, set_paused
 
 ROOT = Path(__file__).parent
 EVENT_LOG = ROOT / "data" / "moyi_events.jsonl"
@@ -21,12 +23,15 @@ class Console(tk.Tk):
         self.geometry("1080x620")
         self.minsize(800, 480)
         self.status = tk.StringVar(value="대기 중")
+        self.pause_text = tk.StringVar()
         self._build()
+        self._update_pause_display()
         self.after(1000, self.refresh)
 
     def _build(self):
         top = ttk.Frame(self, padding=12); top.pack(fill="x")
         ttk.Label(top, text="MOYI 카카오 연동 운영 콘솔", font=("Segoe UI", 16, "bold")).pack(side="left")
+        ttk.Button(top, textvariable=self.pause_text, command=self.toggle_pause).pack(side="right", padx=(8, 0))
         ttk.Label(top, textvariable=self.status).pack(side="right")
         cards = ttk.Frame(self, padding=(12, 0)); cards.pack(fill="x")
         self.metrics = {}
@@ -64,8 +69,18 @@ class Console(tk.Tk):
             state = row.get("state", "")
             tag = "bad" if state == "unknown_result" else ("ok" if state == "sent" else "")
             self.table.insert("", "end", values=(stamp, state, row.get("room", ""), row.get("outbox_id", ""), row.get("detail", "")), tags=(tag,))
-        self.status.set(f"마지막 갱신 {datetime.now().strftime('%H:%M:%S')} · 이벤트 {len(rows)}건")
+        mode = self._update_pause_display()
+        self.status.set(f"{mode} · {datetime.now().strftime('%H:%M:%S')} · 이벤트 {len(rows)}건")
         self.after(1000, self.refresh)
+
+    def toggle_pause(self):
+        set_paused(not is_paused())
+        self._update_pause_display()
+
+    def _update_pause_display(self) -> str:
+        paused = is_paused()
+        self.pause_text.set("재개" if paused else "일시중지")
+        return "일시중지됨" if paused else "실행 중"
 
     def open_log_folder(self):
         import os

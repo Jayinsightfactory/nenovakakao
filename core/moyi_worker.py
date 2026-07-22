@@ -4,6 +4,7 @@ import hashlib, json, os, time
 from pathlib import Path
 import pyautogui, requests
 from dotenv import load_dotenv
+from core.moyi_control import is_paused
 from core.safe_worker_room import open_unique_exact_room, close_room
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -113,8 +114,20 @@ def run() -> int:
     from core.moyi_inbound import poll_once as poll_inbound_once
     inbound_interval = max(15, int(os.getenv("MOYI_INBOUND_SCAN_SEC", "30")))
     next_inbound_at = 0.0
+    pause_announced = False
     print("[MOYI] Kakao connector worker started (fail-closed)")
     while True:
+        if is_paused():
+            if not pause_announced:
+                print("[MOYI] connector paused from operations console")
+                _event(None, "paused", "operations console")
+                pause_announced = True
+            time.sleep(1)
+            continue
+        if pause_announced:
+            print("[MOYI] connector resumed from operations console")
+            _event(None, "resumed", "operations console")
+            pause_announced = False
         try:
             response = requests.get(f"{server}/kakao/agent/pending", headers=_headers(secret), params={"limit": 10}, timeout=20)
             response.raise_for_status()
