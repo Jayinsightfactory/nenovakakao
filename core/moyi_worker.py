@@ -1,7 +1,8 @@
 """Fail-closed MOYI/KakaoTalk bridge worker."""
 from __future__ import annotations
-import hashlib, json, os, time
+import hashlib, json, os, struct, time
 from pathlib import Path
+from urllib.parse import urlparse
 import pyautogui, requests
 from dotenv import load_dotenv
 from core.moyi_control import is_paused
@@ -11,6 +12,7 @@ ROOT = Path(__file__).resolve().parent.parent
 JOURNAL = ROOT / "data" / "moyi_outbound_journal.jsonl"
 EVENT_LOG = ROOT / "data" / "moyi_events.jsonl"
 POLL_RETRY_SEC = 5
+MAX_ATTACHMENT_BYTES = 50 * 1024 * 1024
 
 def _config() -> tuple[str, str]:
     load_dotenv(ROOT / ".env")
@@ -70,6 +72,51 @@ def _send_text(text: str) -> None:
     pyautogui.press("enter")
     time.sleep(0.4)
 
+def _safe_attachment_name(name: str) -> str:
+    return Path(name or "attachment.bin").name or "attachment.bin"
+
+def _download_attachment(server: str, part: dict) -> Path:
+    url = str(part.get("url") or "")
+    parsed, expected = urlparse(url), urlparse(server)
+    if parsed.scheme != "https" or parsed.netloc != expected.netloc:
+        raise RuntimeError("not_sent: attachment URL is outside the MOYI server")
+    target_dir = ROOT / "data" / "moyi_attachment_cache" / _journal_key(part)
+    target_dir.mkdir(parents=True, exist_ok=True)
+    target = target_dir / _safe_attachment_name(str(part.get("name") or "attachment.bin"))
+    total = 0
+    try:
+        with requests.get(url, stream=True, timeout=60) as response:
+            response.raise_for_status()
+            with target.open("wb") as output:
+                for chunk in response.iter_content(1024 * 256):
+                    if not chunk:
+                        continue
+                    total += len(chunk)
+                    if total > MAX_ATTACHMENT_BYTES:
+                        raise RuntimeError("not_sent: attachment exceeds 50MB")
+                    output.write(chunk)
+    except Exception:
+        target.unlink(missing_ok=True)
+        raise
+    return target
+
+def _copy_file_to_clipboard(path: Path) -> None:
+    import win32clipboard
+    payload = struct.pack("IiiII", 20, 0, 0, 0, 1) + (str(path.resolve()) + "\0\0").encode("utf-16le")
+    win32clipboard.OpenClipboard()
+    try:
+        win32clipboard.EmptyClipboard()
+        win32clipboard.SetClipboardData(win32clipboard.CF_HDROP, payload)
+    finally:
+        win32clipboard.CloseClipboard()
+
+def _send_attachment(path: Path) -> None:
+    _copy_file_to_clipboard(path)
+    pyautogui.hotkey("ctrl", "v")
+    time.sleep(1.2)
+    pyautogui.press("enter")
+    time.sleep(1.0)
+
 def process_item(server: str, secret: str, item: dict) -> None:
     title, binding = str(item.get("external_room_id") or "").strip(), str(item.get("room_binding_id") or "").strip()
     if not title or not binding:
@@ -94,14 +141,20 @@ def process_item(server: str, secret: str, item: dict) -> None:
                 completed.add(part_id)
                 _event(item, "journal_hold", f"part={part_id}, previous={previous}")
                 continue
-            if part.get("type") != "text":
-                raise RuntimeError(f"not_sent: 지원하지 않는 part type: {part.get('type')}")
             _assert_room(hwnd, title)
             _event(item, "paste_started", f"part={part_id}")
-            _send_text(str(part.get("text") or ""))
+            if part.get("type") == "text":
+                _send_text(str(part.get("text") or ""))
+                hash_text = str(part.get("text") or "")
+            elif part.get("type") in ("image", "file"):
+                downloaded = _download_attachment(server, {**item, **part})
+                _send_attachment(downloaded)
+                hash_text = ""
+            else:
+                raise RuntimeError(f"not_sent: 지원하지 않는 part type: {part.get('type')}")
             _event(item, "enter_pressed", f"part={part_id}")
             completed.add(part_id)
-            _append_journal(item, part_id, "sent", str(part.get("text") or ""))
+            _append_journal(item, part_id, "sent", hash_text)
             _event(item, "sent", f"part={part_id}")
             response = requests.post(f"{server}/kakao/agent/ack/{item['id']}", headers=_headers(secret), json={"ok": True, "lease_token": item.get("lease_token"), "completed_part_ids": sorted(completed), "current_part_id": part_id}, timeout=20)
             response.raise_for_status()

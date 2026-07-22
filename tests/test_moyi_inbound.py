@@ -8,6 +8,30 @@ from core.moyi_inbound import parse_export
 
 
 class MoyiInboundParserTests(unittest.TestCase):
+    def test_upload_attachment_posts_multipart_and_returns_reference(self):
+        with TemporaryDirectory() as tmp:
+            path = Path(tmp) / "sample.png"
+            path.write_bytes(b"png")
+            response = Mock()
+            response.json.return_value = {"file_id": "file-1", "name": "sample.png"}
+            with patch.object(inbound.requests, "post", return_value=response) as post:
+                result = inbound._upload_attachment(
+                    "https://moyi.example", {"X-Company-Secret": "secret"}, path
+                )
+            self.assertEqual(result["file_id"], "file-1")
+            self.assertIn("files", post.call_args.kwargs)
+            self.assertNotIn("secret", str(post.call_args.args))
+
+    def test_upload_attachment_rejects_oversized_file_before_request(self):
+        with TemporaryDirectory() as tmp:
+            path = Path(tmp) / "large.bin"
+            path.write_bytes(b"")
+            with patch.object(Path, "stat") as stat, patch.object(inbound.requests, "post") as post:
+                stat.return_value.st_size = inbound.MAX_ATTACHMENT_BYTES + 1
+                with self.assertRaises(RuntimeError):
+                    inbound._upload_attachment("https://moyi.example", {}, path)
+            post.assert_not_called()
+
     def test_parse_export_creates_stable_events_and_multiline_content(self):
         text = """room 님과 카카오톡 대화
 --------------- 2026년 7월 22일 수요일 ---------------
