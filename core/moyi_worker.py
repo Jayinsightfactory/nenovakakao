@@ -9,6 +9,7 @@ from core.safe_worker_room import open_unique_exact_room, close_room
 ROOT = Path(__file__).resolve().parent.parent
 JOURNAL = ROOT / "data" / "moyi_outbound_journal.jsonl"
 EVENT_LOG = ROOT / "data" / "moyi_events.jsonl"
+POLL_RETRY_SEC = 5
 
 def _config() -> tuple[str, str]:
     load_dotenv(ROOT / ".env")
@@ -20,6 +21,14 @@ def _config() -> tuple[str, str]:
 
 def _headers(secret: str) -> dict[str, str]:
     return {"X-Company-Secret": secret}
+
+def _retryable_request_error(exc: requests.RequestException) -> bool:
+    response = getattr(exc, "response", None)
+    return response is None or response.status_code == 429 or response.status_code >= 500
+
+def _safe_request_error(exc: requests.RequestException) -> str:
+    response = getattr(exc, "response", None)
+    return f"HTTP {response.status_code}" if response is not None else type(exc).__name__
 
 def _journal_key(item: dict) -> str:
     return str(item.get("delivery_key") or hashlib.sha256(f"{item.get('room_binding_id')}:{item.get('id')}".encode()).hexdigest())
@@ -106,8 +115,15 @@ def run() -> int:
     next_inbound_at = 0.0
     print("[MOYI] Kakao connector worker started (fail-closed)")
     while True:
-        response = requests.get(f"{server}/kakao/agent/pending", headers=_headers(secret), params={"limit": 10}, timeout=20)
-        response.raise_for_status()
+        try:
+            response = requests.get(f"{server}/kakao/agent/pending", headers=_headers(secret), params={"limit": 10}, timeout=20)
+            response.raise_for_status()
+        except requests.RequestException as exc:
+            if not _retryable_request_error(exc):
+                raise
+            print(f"[MOYI] pending poll temporarily unavailable ({_safe_request_error(exc)}); retrying")
+            time.sleep(POLL_RETRY_SEC)
+            continue
         for item in response.json().get("items", []):
             _event(item, "leased", "server queue lease acquired")
             try:
@@ -117,7 +133,10 @@ def run() -> int:
                 state = "failed_not_sent" if detail.startswith("not_sent:") or "방 제목" in detail or "exact room" in detail else "unknown_result"
                 print(f"[MOYI] {state} {item.get('id')}: {detail}")
                 _event(item, state, detail)
-                requests.post(f"{server}/kakao/agent/ack/{item['id']}", headers=_headers(secret), json={"ok": False, "outcome": "unknown_result", "lease_token": item.get("lease_token"), "error": str(exc)[:500]}, timeout=20).raise_for_status()
+                try:
+                    requests.post(f"{server}/kakao/agent/ack/{item['id']}", headers=_headers(secret), json={"ok": False, "outcome": "unknown_result", "lease_token": item.get("lease_token"), "error": str(exc)[:500]}, timeout=20).raise_for_status()
+                except requests.RequestException as ack_exc:
+                    print(f"[MOYI] failure ack temporarily unavailable ({_safe_request_error(ack_exc)})")
         if time.monotonic() >= next_inbound_at:
             try:
                 result = poll_inbound_once(server, secret)
