@@ -8,6 +8,23 @@ from core.moyi_inbound import parse_export
 
 
 class MoyiInboundParserTests(unittest.TestCase):
+    def test_real_kakao_attachment_markers_are_recognized(self):
+        self.assertIsNotNone(inbound.PHOTO_MARKER_RE.match("사진"))
+        self.assertEqual(
+            inbound.FILE_MARKER_RE.match("파일: report.xlsx").group("name"),
+            "report.xlsx",
+        )
+
+    def test_local_file_resolution_requires_one_exact_match(self):
+        with TemporaryDirectory() as tmp, patch.object(inbound.Path, "home", return_value=Path(tmp)):
+            desktop = Path(tmp) / "Desktop"
+            desktop.mkdir()
+            expected = desktop / "report.xlsx"
+            expected.write_bytes(b"xlsx")
+            self.assertEqual(inbound._find_local_kakao_file("report.xlsx"), expected.resolve())
+            with self.assertRaises(RuntimeError):
+                inbound._find_local_kakao_file("../report.xlsx")
+
     def test_upload_attachment_posts_multipart_and_returns_reference(self):
         with TemporaryDirectory() as tmp:
             path = Path(tmp) / "sample.png"
