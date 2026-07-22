@@ -6,8 +6,8 @@ import time
 import pyautogui
 import pyperclip
 
-SEARCH_X_RATIO = 0.45
-SEARCH_Y_OFFSET = 37
+SEARCH_X_RATIO = 0.55
+SEARCH_Y_RATIO = 0.11
 
 
 def replace_room_search(window, title: str) -> None:
@@ -16,10 +16,11 @@ def replace_room_search(window, title: str) -> None:
     time.sleep(0.3)
     pyautogui.click(
         window.left + int(window.width * SEARCH_X_RATIO),
-        window.top + SEARCH_Y_OFFSET,
+        window.top + int(window.height * SEARCH_Y_RATIO),
     )
-    pyautogui.hotkey("ctrl", "a")
-    pyautogui.press("backspace")
+    # KakaoTalk reserves Ctrl+A for "add friend" even while the search field
+    # appears focused. Repeated Backspace is slower but cannot open that dialog.
+    pyautogui.press("backspace", presses=255)
     pyperclip.copy(title)
     pyautogui.hotkey("ctrl", "v")
     time.sleep(0.8)
