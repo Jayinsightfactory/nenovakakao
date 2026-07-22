@@ -10,8 +10,9 @@ from pathlib import Path
 
 import requests
 import pyautogui
-import pyperclip
 from dotenv import load_dotenv
+
+from core.kakao_search import replace_room_search
 
 ROOT = Path(__file__).resolve().parent.parent
 
@@ -78,11 +79,7 @@ def _scan_allowlisted_rooms(window, allowlist: tuple[str, ...]) -> list[dict]:
     found: list[dict] = []
     switch_to_chat_tab(window)
     for order, title in enumerate(allowlist, start=1):
-        pyautogui.hotkey("ctrl", "f")
-        time.sleep(0.3)
-        pyperclip.copy(title)
-        pyautogui.hotkey("ctrl", "v")
-        time.sleep(0.8)
+        replace_room_search(window, title)
         image_name = hashlib.sha256(title.encode()).hexdigest()[:16] + ".png"
         image_path = capture_room_list(window, captures / image_name)
         matches = [room for room in scan_rooms_single(image_path) if room.get("name") == title]

@@ -27,6 +27,7 @@ import pyautogui
 import pyperclip
 import requests
 
+from core.kakao_search import replace_room_search
 from core.window_detector import activate_kakaotalk, switch_to_chat_tab
 
 POLL_INTERVAL_SEC = 10
@@ -104,11 +105,8 @@ def open_room_by_name(room_name: str) -> bool:
     """카카오톡 메인 창에서 방 이름 검색으로 방을 연다."""
     window = activate_kakaotalk()
     switch_to_chat_tab(window)
-    pyautogui.hotkey("ctrl", "f")
-    time.sleep(0.6)
-    pyperclip.copy(room_name)
-    pyautogui.hotkey("ctrl", "v")
-    time.sleep(1.2)  # 검색 결과 대기
+    replace_room_search(window, room_name)
+    time.sleep(0.4)  # 검색 결과 안정화
     # Enter only selects the result inside recent KakaoTalk versions. An exact
     # search followed by a double-click opens the one visible result as a
     # separate window, which safe_worker_room verifies before any I/O.

@@ -9,9 +9,9 @@ import time
 from pathlib import Path
 
 import pyautogui
-import pyperclip
 import requests
 
+from core.kakao_search import replace_room_search
 from core.moyi_outbound import open_room_by_name
 from core.safe_worker_room import close_room, open_unique_exact_room
 
@@ -108,11 +108,7 @@ def has_unread_exact_room(title: str) -> bool:
 
     window = activate_kakaotalk()
     switch_to_chat_tab(window)
-    pyautogui.hotkey("ctrl", "f")
-    time.sleep(0.4)
-    pyperclip.copy(title)
-    pyautogui.hotkey("ctrl", "v")
-    time.sleep(0.8)
+    replace_room_search(window, title)
     image_name = hashlib.sha256(title.encode()).hexdigest()[:16] + ".png"
     image_path = capture_room_list(window, ROOT / "captures" / "inbound_unread" / image_name)
     badges = detect_badge_positions(image_path)
