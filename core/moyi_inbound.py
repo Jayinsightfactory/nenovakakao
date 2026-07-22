@@ -9,6 +9,7 @@ import time
 from pathlib import Path
 
 import pyautogui
+import pyperclip
 import requests
 
 from core.moyi_outbound import open_room_by_name
@@ -52,7 +53,7 @@ def parse_export(text: str, binding_id: str) -> list[dict]:
     return events
 
 
-def _load_state() -> dict[str, list[str]]:
+def _load_state() -> dict:
     if not STATE_FILE.exists():
         return {}
     try:
@@ -61,7 +62,7 @@ def _load_state() -> dict[str, list[str]]:
         return {}
 
 
-def _save_state(state: dict[str, list[str]]) -> None:
+def _save_state(state: dict) -> None:
     STATE_FILE.parent.mkdir(parents=True, exist_ok=True)
     temporary = STATE_FILE.with_suffix(".tmp")
     temporary.write_text(json.dumps(state, ensure_ascii=False, indent=2), encoding="utf-8")
@@ -100,6 +101,28 @@ def _txt_files() -> dict[Path, int]:
     return files
 
 
+def has_unread_exact_room(title: str) -> bool:
+    """Check the exact-title search result for an unread badge without opening it."""
+    from core.badge_monitor import detect_badge_positions
+    from core.window_detector import activate_kakaotalk, capture_room_list, switch_to_chat_tab
+
+    window = activate_kakaotalk()
+    switch_to_chat_tab(window)
+    pyautogui.hotkey("ctrl", "f")
+    time.sleep(0.4)
+    pyperclip.copy(title)
+    pyautogui.hotkey("ctrl", "a")
+    pyautogui.hotkey("ctrl", "v")
+    time.sleep(0.8)
+    image_name = hashlib.sha256(title.encode()).hexdigest()[:16] + ".png"
+    image_path = capture_room_list(window, ROOT / "captures" / "inbound_unread" / image_name)
+    badges = detect_badge_positions(image_path)
+    pyautogui.press("esc")
+    if len(badges) > 1:
+        raise RuntimeError(f"unread badge conflict for exact room: {len(badges)} matches")
+    return len(badges) == 1
+
+
 def export_exact_room(title: str) -> str:
     """Open one exact room, export its text, and return the UTF-8 content."""
     open_room_by_name(title)
@@ -128,11 +151,12 @@ def export_exact_room(title: str) -> str:
 
 
 def poll_once(server: str, secret: str) -> dict[str, int]:
-    """Export approved rooms and post only messages newer than the local baseline."""
+    """Open only unread/retry rooms and post messages newer than the baseline."""
     headers = {"X-Company-Secret": secret}
     response = requests.get(f"{server}/kakao/agent/rooms", headers=headers, timeout=20)
     response.raise_for_status()
     state = _load_state()
+    retry_bindings = set(state.get("_needs_rescan", []))
     outbound_hashes = _recent_outbound_hashes()
     sent = 0
     initialized = 0
@@ -141,6 +165,19 @@ def poll_once(server: str, secret: str) -> dict[str, int]:
         title = str(room.get("exact_title") or "").strip()
         if not binding or not title:
             continue
+        needs_initialization = binding not in state
+        has_unread = (
+            has_unread_exact_room(title)
+            if not needs_initialization and binding not in retry_bindings
+            else False
+        )
+        if not needs_initialization and binding not in retry_bindings and not has_unread:
+            continue
+        # Opening a room clears KakaoTalk's unread badge. Persist a retry marker
+        # first so a transient export/API failure cannot silently lose messages.
+        retry_bindings.add(binding)
+        state["_needs_rescan"] = sorted(retry_bindings)
+        _save_state(state)
         text = export_exact_room(title)
         verify = requests.post(
             f"{server}/kakao/agent/verify-room",
@@ -151,10 +188,15 @@ def poll_once(server: str, secret: str) -> dict[str, int]:
         verify.raise_for_status()
         events = parse_export(text, binding)
         known_ids = state.get(binding, [])
+        if not isinstance(known_ids, list):
+            known_ids = []
         known = set(known_ids)
         if binding not in state:
             state[binding] = [event["event_id"] for event in events][-2000:]
             initialized += 1
+            retry_bindings.discard(binding)
+            state["_needs_rescan"] = sorted(retry_bindings)
+            _save_state(state)
             continue
         for event in events:
             if event["event_id"] in known:
@@ -179,5 +221,8 @@ def poll_once(server: str, secret: str) -> dict[str, int]:
             known_ids.append(event["event_id"])
             state[binding] = known_ids[-2000:]
             _save_state(state)
+        retry_bindings.discard(binding)
+        state["_needs_rescan"] = sorted(retry_bindings)
+        _save_state(state)
     _save_state(state)
     return {"sent": sent, "initialized": initialized}
