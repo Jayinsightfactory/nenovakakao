@@ -6,6 +6,7 @@ from urllib.parse import urlparse
 import pyautogui, requests
 from dotenv import load_dotenv
 from core.moyi_control import is_paused
+from core.moyi_outbound import open_room_by_name
 from core.safe_worker_room import open_unique_exact_room, close_room
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -121,6 +122,7 @@ def process_item(server: str, secret: str, item: dict) -> None:
     title, binding = str(item.get("external_room_id") or "").strip(), str(item.get("room_binding_id") or "").strip()
     if not title or not binding:
         raise RuntimeError("방 제목 또는 room_binding_id가 없습니다")
+    open_room_by_name(title)
     hwnd = open_unique_exact_room(title)
     verify = requests.post(
         f"{server}/kakao/agent/verify-room", headers=_headers(secret),
