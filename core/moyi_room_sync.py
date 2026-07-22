@@ -9,6 +9,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 import requests
+import pyautogui
+import pyperclip
 from dotenv import load_dotenv
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -67,15 +69,39 @@ def _filter_rooms(rooms: list[dict], allowlist: tuple[str, ...]) -> list[dict]:
     return filtered
 
 
+def _scan_allowlisted_rooms(window, allowlist: tuple[str, ...]) -> list[dict]:
+    """Search each approved title without opening rooms or clearing unread state."""
+    from core.room_scanner import scan_rooms_single
+    from core.window_detector import capture_room_list, switch_to_chat_tab
+
+    captures = ROOT / "captures" / "room_sync_exact"
+    found: list[dict] = []
+    switch_to_chat_tab(window)
+    for order, title in enumerate(allowlist, start=1):
+        pyautogui.hotkey("ctrl", "f")
+        time.sleep(0.3)
+        pyperclip.copy(title)
+        pyautogui.hotkey("ctrl", "a")
+        pyautogui.hotkey("ctrl", "v")
+        time.sleep(0.8)
+        image_name = hashlib.sha256(title.encode()).hexdigest()[:16] + ".png"
+        image_path = capture_room_list(window, captures / image_name)
+        matches = [room for room in scan_rooms_single(image_path) if room.get("name") == title]
+        pyautogui.press("esc")
+        if len(matches) > 1:
+            raise RuntimeError(f"동일한 제목의 카카오톡 방이 여러 개 감지됐습니다: {title!r}")
+        if matches:
+            found.append({**matches[0], "order": order})
+    return _filter_rooms(found, allowlist)
+
+
 def sync_once() -> dict:
     server, secret, workspace_id, agent_id, allowlist = _config()
-    from core.room_scanner import scan_rooms_full
     from core.window_detector import activate_kakaotalk, switch_to_chat_tab
 
     window = activate_kakaotalk()
     switch_to_chat_tab(window)
-    rooms = scan_rooms_full(window, ROOT / "captures" / "room_sync")
-    rooms = _filter_rooms(rooms, allowlist)
+    rooms = _scan_allowlisted_rooms(window, allowlist)
     stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     room_names = "|".join(room.get("name", "") for room in rooms)
     discovery_id = "disc_" + hashlib.sha256(
