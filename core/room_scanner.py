@@ -18,7 +18,7 @@ from dotenv import load_dotenv
 # .env 로드
 load_dotenv(Path(__file__).parent.parent / ".env")
 
-CLAUDE_MODEL = "claude-sonnet-4-20250514"
+CLAUDE_MODEL = os.getenv("ANTHROPIC_ROOM_OCR_MODEL", "claude-sonnet-4-6")
 
 PROMPT = """이 이미지는 카카오톡 PC 앱의 채팅방 리스트를 캡처한 것입니다.
 

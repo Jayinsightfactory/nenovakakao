@@ -24,10 +24,10 @@ def _headers(secret: str) -> dict[str, str]:
 def _journal_key(item: dict) -> str:
     return str(item.get("delivery_key") or hashlib.sha256(f"{item.get('room_binding_id')}:{item.get('id')}".encode()).hexdigest())
 
-def _append_journal(item: dict, part_id: str, result: str) -> None:
+def _append_journal(item: dict, part_id: str, result: str, text: str = "") -> None:
     JOURNAL.parent.mkdir(parents=True, exist_ok=True)
     with JOURNAL.open("a", encoding="utf-8") as f:
-        f.write(json.dumps({"delivery_key": _journal_key(item), "outbox_id": item.get("id"), "part_id": part_id, "result": result, "at": time.time()}) + "\n")
+        f.write(json.dumps({"delivery_key": _journal_key(item), "outbox_id": item.get("id"), "part_id": part_id, "result": result, "content_hash": hashlib.sha256(text.strip().encode()).hexdigest() if text else "", "at": time.time()}) + "\n")
 
 def _event(item: dict | None, state: str, detail: str = "") -> None:
     EVENT_LOG.parent.mkdir(parents=True, exist_ok=True)
@@ -91,7 +91,7 @@ def process_item(server: str, secret: str, item: dict) -> None:
             _send_text(str(part.get("text") or ""))
             _event(item, "enter_pressed", f"part={part_id}")
             completed.add(part_id)
-            _append_journal(item, part_id, "sent")
+            _append_journal(item, part_id, "sent", str(part.get("text") or ""))
             _event(item, "sent", f"part={part_id}")
             response = requests.post(f"{server}/kakao/agent/ack/{item['id']}", headers=_headers(secret), json={"ok": True, "lease_token": item.get("lease_token"), "completed_part_ids": sorted(completed), "current_part_id": part_id}, timeout=20)
             response.raise_for_status()
@@ -101,6 +101,9 @@ def process_item(server: str, secret: str, item: dict) -> None:
 
 def run() -> int:
     server, secret = _config()
+    from core.moyi_inbound import poll_once as poll_inbound_once
+    inbound_interval = max(15, int(os.getenv("MOYI_INBOUND_SCAN_SEC", "30")))
+    next_inbound_at = 0.0
     print("[MOYI] Kakao connector worker started (fail-closed)")
     while True:
         response = requests.get(f"{server}/kakao/agent/pending", headers=_headers(secret), params={"limit": 10}, timeout=20)
@@ -115,4 +118,12 @@ def run() -> int:
                 print(f"[MOYI] {state} {item.get('id')}: {detail}")
                 _event(item, state, detail)
                 requests.post(f"{server}/kakao/agent/ack/{item['id']}", headers=_headers(secret), json={"ok": False, "outcome": "unknown_result", "lease_token": item.get("lease_token"), "error": str(exc)[:500]}, timeout=20).raise_for_status()
+        if time.monotonic() >= next_inbound_at:
+            try:
+                result = poll_inbound_once(server, secret)
+                if result["sent"] or result["initialized"]:
+                    print(f"[MOYI] inbound: {result['sent']} sent, {result['initialized']} initialized")
+            except Exception as exc:
+                print(f"[MOYI] inbound scan failed: {exc}")
+            next_inbound_at = time.monotonic() + inbound_interval
         time.sleep(5)
