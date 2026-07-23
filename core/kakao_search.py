@@ -12,13 +12,10 @@ SEARCH_Y_RATIO = 0.11
 
 def replace_room_search(window, title: str) -> None:
     """Focus the visible search box, clear it, and paste one exact title."""
-    # The search field is always visible in current KakaoTalk. Keyboard
-    # shortcuts are unsafe here: Ctrl+F toggles state and Esc can hide the
-    # entire main window when search is already closed.
-    pyautogui.click(
-        window.left + int(window.width * SEARCH_X_RATIO),
-        window.top + int(window.height * SEARCH_Y_RATIO),
-    )
+    # Current KakaoTalk reliably focuses room search with Ctrl+F. A coordinate
+    # click can land on the list underneath even though the search box is shown.
+    pyautogui.hotkey("ctrl", "f")
+    time.sleep(0.2)
     # Clicking may place the caret in the middle of the previous query. Move it
     # to the end before clearing; otherwise the suffix remains and exact search
     # silently turns into a different title.
