@@ -19,10 +19,19 @@ def replace_room_search(window, title: str) -> None:
         window.left + int(window.width * SEARCH_X_RATIO),
         window.top + int(window.height * SEARCH_Y_RATIO),
     )
+    # Clicking may place the caret in the middle of the previous query. Move it
+    # to the end before clearing; otherwise the suffix remains and exact search
+    # silently turns into a different title.
+    pyautogui.press("end")
     # KakaoTalk reserves Ctrl+A for "add friend" even while the search field
     # appears focused. Repeated Backspace is slower but cannot open that dialog.
     pyautogui.press("backspace", presses=255)
     pyperclip.copy(title)
     pyautogui.hotkey("ctrl", "v")
     time.sleep(0.8)
+
+
+def clear_room_search(window) -> None:
+    """Clear search without Esc, which can hide KakaoTalk to the tray."""
+    replace_room_search(window, "")
 
