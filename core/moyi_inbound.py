@@ -78,6 +78,20 @@ def _save_state(state: dict) -> None:
     temporary.replace(STATE_FILE)
 
 
+def _events_after_checkpoint(events: list[dict], known_ids: list[str]) -> list[dict]:
+    """Return only events after the newest retained checkpoint.
+
+    The state intentionally retains a bounded tail. Set subtraction would make
+    older history outside that tail look new again in long-running rooms.
+    """
+    known = set(known_ids)
+    newest_known = -1
+    for index, event in enumerate(events):
+        if event["event_id"] in known:
+            newest_known = index
+    return events[newest_known + 1:] if newest_known >= 0 else events
+
+
 def _recent_outbound_hashes(max_age_sec: int = 3600) -> set[str]:
     if not OUTBOUND_JOURNAL.exists():
         return set()
@@ -306,7 +320,7 @@ def poll_once(server: str, secret: str, only_title: str | None = None) -> dict[s
             state["_needs_rescan"] = sorted(retry_bindings)
             _save_state(state)
             continue
-        new_events = [event for event in events if event["event_id"] not in known]
+        new_events = _events_after_checkpoint(events, known_ids)
         photo_events = [event for event in new_events if PHOTO_MARKER_RE.search(event["content"])]
         if photo_events:
             photo_files = _collect_photo_files(title, len(photo_events))
