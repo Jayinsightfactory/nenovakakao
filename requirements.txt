@@ -5,6 +5,7 @@ Pillow==10.4.0
 google-generativeai==0.8.3
 python-dotenv==1.0.1
 requests==2.32.3
+psutil>=7.0
 anthropic==0.93.0
 pywin32==306
 pyperclip==1.9.0

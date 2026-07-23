@@ -5,16 +5,46 @@ The console can pause/resume polling at a safe boundary. It never retries or
 mutates an individual delivery.
 """
 from __future__ import annotations
-import json, time, tkinter as tk
+import json, subprocess, sys, time, tkinter as tk
 from datetime import datetime
 from pathlib import Path
 from tkinter import ttk
+
+import psutil
 
 from core.moyi_control import is_paused, set_paused
 
 ROOT = Path(__file__).parent
 EVENT_LOG = ROOT / "data" / "moyi_events.jsonl"
 JOURNAL = ROOT / "data" / "moyi_outbound_journal.jsonl"
+
+
+def worker_running() -> bool:
+    for process in psutil.process_iter(("cmdline",)):
+        try:
+            command = process.info.get("cmdline") or []
+            if any(str(part).endswith("main.py") for part in command) and "moyi-worker" in command:
+                return True
+        except (psutil.AccessDenied, psutil.NoSuchProcess):
+            continue
+    return False
+
+
+def start_worker_if_needed() -> bool:
+    if worker_running():
+        return False
+    data = ROOT / "data"
+    data.mkdir(parents=True, exist_ok=True)
+    stdout = (data / "moyi_worker_stdout.log").open("a", encoding="utf-8")
+    stderr = (data / "moyi_worker_stderr.log").open("a", encoding="utf-8")
+    flags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+    subprocess.Popen(
+        [sys.executable, "-u", "main.py", "moyi-worker"], cwd=ROOT,
+        stdout=stdout, stderr=stderr, creationflags=flags,
+    )
+    stdout.close()
+    stderr.close()
+    return True
 
 class Console(tk.Tk):
     def __init__(self):
@@ -74,13 +104,19 @@ class Console(tk.Tk):
         self.after(1000, self.refresh)
 
     def toggle_pause(self):
-        set_paused(not is_paused())
+        if is_paused():
+            set_paused(False)
+            start_worker_if_needed()
+        else:
+            set_paused(True)
         self._update_pause_display()
 
     def _update_pause_display(self) -> str:
         paused = is_paused()
         self.pause_text.set("재개" if paused else "일시중지")
-        return "일시중지됨" if paused else "실행 중"
+        if paused:
+            return "일시중지됨"
+        return "실행 중" if worker_running() else "워커 정지"
 
     def open_log_folder(self):
         import os

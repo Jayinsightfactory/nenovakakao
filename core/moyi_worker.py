@@ -212,6 +212,8 @@ def run() -> int:
                 )
                 rooms_response.raise_for_status()
                 for room in rooms_response.json().get("items", []):
+                    if is_paused():
+                        break
                     title = str(room.get("exact_title") or "").strip()
                     if not title:
                         continue
