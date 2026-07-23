@@ -169,6 +169,7 @@ def run() -> int:
     from core.moyi_inbound import poll_once as poll_inbound_once
     inbound_interval = max(15, int(os.getenv("MOYI_INBOUND_SCAN_SEC", "30")))
     next_inbound_at = 0.0
+    inbound_room_index = 0
     pause_announced = False
     print("[MOYI] Kakao connector worker started (fail-closed)")
     while True:
@@ -206,17 +207,20 @@ def run() -> int:
                 except requests.RequestException as ack_exc:
                     print(f"[MOYI] failure ack temporarily unavailable ({_safe_request_error(ack_exc)})")
         if time.monotonic() >= next_inbound_at:
+            rooms = []
             try:
                 rooms_response = requests.get(
                     f"{server}/kakao/agent/rooms", headers=_headers(secret), timeout=20
                 )
                 rooms_response.raise_for_status()
-                for room in rooms_response.json().get("items", []):
-                    if is_paused():
-                        break
+                rooms = [
+                    room for room in rooms_response.json().get("items", [])
+                    if str(room.get("exact_title") or "").strip()
+                ]
+                if rooms and not is_paused():
+                    room = rooms[inbound_room_index % len(rooms)]
+                    inbound_room_index = (inbound_room_index + 1) % len(rooms)
                     title = str(room.get("exact_title") or "").strip()
-                    if not title:
-                        continue
                     try:
                         result = poll_inbound_once(server, secret, only_title=title)
                         if result["sent"] or result["initialized"]:
@@ -227,5 +231,9 @@ def run() -> int:
             except Exception as exc:
                 print(f"[MOYI] inbound scan failed: {exc}")
                 _event(None, "inbound_scan_failed", str(exc)[:500])
-            next_inbound_at = time.monotonic() + inbound_interval
+            # Spread one full-room rotation across the configured interval.
+            # This keeps the outbound queue at the front of every 5-second loop
+            # instead of blocking it behind all room exports and attachments.
+            room_count = len(rooms) if rooms else 1
+            next_inbound_at = time.monotonic() + max(5, inbound_interval / room_count)
         time.sleep(5)
