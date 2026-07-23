@@ -19,6 +19,26 @@ import pygetwindow as gw
 import pyautogui
 from PIL import Image
 
+
+def _restore_hidden_kakaotalk() -> None:
+    """Restore KakaoTalk's hidden main window without minimizing it first."""
+    try:
+        import win32con
+        import win32gui
+    except ImportError:
+        return
+    handles: list[int] = []
+    win32gui.EnumWindows(
+        lambda hwnd, found: found.append(hwnd)
+        if win32gui.GetWindowText(hwnd) == KAKAOTALK_TITLE else None,
+        handles,
+    )
+    for hwnd in handles:
+        if not win32gui.IsWindowVisible(hwnd) or win32gui.IsIconic(hwnd):
+            win32gui.ShowWindow(hwnd, win32con.SW_RESTORE)
+            win32gui.ShowWindow(hwnd, win32con.SW_SHOW)
+            time.sleep(0.3)
+
 # 카카오톡 메인 창 타이틀 (한국어 Windows 기준)
 KAKAOTALK_TITLE = "카카오톡"
 
@@ -110,6 +130,7 @@ def activate_kakaotalk() -> KakaoWindow:
     카카오톡 창을 활성화(포커스)하고 정보를 반환한다.
     최소화되어 있으면 복원한다.
     """
+    _restore_hidden_kakaotalk()
     windows = gw.getWindowsWithTitle(KAKAOTALK_TITLE)
     if not windows:
         raise RuntimeError("카카오톡이 실행 중이지 않습니다.")
@@ -122,12 +143,10 @@ def activate_kakaotalk() -> KakaoWindow:
 
     try:
         main.activate()
-    except Exception:
-        # 일부 Windows 환경에서 activate가 실패할 수 있음 → 재시도
-        main.minimize()
-        time.sleep(0.2)
-        main.restore()
-        time.sleep(0.3)
+    except Exception as exc:
+        # 최소화→복원 재시도는 KakaoTalk을 트레이에 가둬 버릴 수 있다.
+        # 창 상태를 파괴하지 않고 명시적으로 실패시켜 다음 주기에 재시도한다.
+        raise RuntimeError("카카오톡 창을 활성화하지 못했습니다") from exc
 
     time.sleep(0.2)
     return find_kakaotalk_window()

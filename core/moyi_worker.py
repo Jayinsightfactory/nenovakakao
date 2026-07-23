@@ -212,5 +212,6 @@ def run() -> int:
                     print(f"[MOYI] inbound: {result['sent']} sent, {result['initialized']} initialized")
             except Exception as exc:
                 print(f"[MOYI] inbound scan failed: {exc}")
+                _event(None, "inbound_scan_failed", str(exc)[:500])
             next_inbound_at = time.monotonic() + inbound_interval
         time.sleep(5)
