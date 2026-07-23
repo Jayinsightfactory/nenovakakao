@@ -12,6 +12,10 @@ from pathlib import Path
 import pyautogui
 import pygetwindow as gw
 import requests
+import win32api
+import win32con
+import win32gui
+import win32process
 
 from core.kakao_search import clear_room_search, replace_room_search
 from core.moyi_outbound import open_room_by_name
@@ -125,6 +129,52 @@ def _txt_files() -> dict[Path, int]:
     return files
 
 
+def _visible_dialogs_for_process(process_id: int) -> set[int]:
+    dialogs: set[int] = set()
+
+    def collect(hwnd: int, _extra: object) -> None:
+        _, hwnd_process_id = win32process.GetWindowThreadProcessId(hwnd)
+        if (
+            hwnd_process_id == process_id
+            and win32gui.IsWindowVisible(hwnd)
+            and win32gui.GetClassName(hwnd) == "#32770"
+        ):
+            dialogs.add(hwnd)
+
+    win32gui.EnumWindows(collect, None)
+    return dialogs
+
+
+def _save_export_dialog(chat_hwnd: int, dialogs_before: set[int], timeout: float = 8.0) -> None:
+    """Confirm Kakao's Save As dialog and verify it closed before continuing."""
+    _, process_id = win32process.GetWindowThreadProcessId(chat_hwnd)
+    deadline = time.monotonic() + timeout
+    save_dialog = 0
+    while time.monotonic() < deadline:
+        candidates = _visible_dialogs_for_process(process_id) - dialogs_before
+        if len(candidates) == 1:
+            save_dialog = next(iter(candidates))
+            break
+        if len(candidates) > 1:
+            raise RuntimeError(f"Kakao export dialog verification failed: {len(candidates)} dialogs")
+        time.sleep(0.2)
+    if not save_dialog:
+        raise RuntimeError("Kakao Save As dialog was not opened")
+
+    win32gui.ShowWindow(save_dialog, win32con.SW_RESTORE)
+    win32gui.SetForegroundWindow(save_dialog)
+    save_button = win32gui.GetDlgItem(save_dialog, win32con.IDOK)
+    if not save_button:
+        raise RuntimeError("Kakao Save As button was not found")
+    win32api.SendMessage(save_button, win32con.BM_CLICK, 0, 0)
+
+    while time.monotonic() < deadline:
+        if not win32gui.IsWindow(save_dialog) or not win32gui.IsWindowVisible(save_dialog):
+            return
+        time.sleep(0.2)
+    raise RuntimeError("Kakao Save As dialog did not close")
+
+
 def has_unread_exact_room(title: str) -> bool:
     """Check the exact-title search result for an unread badge without opening it."""
     from core.badge_monitor import detect_badge_positions
@@ -148,13 +198,12 @@ def export_exact_room(title: str) -> str:
     open_room_by_name(title)
     hwnd = open_unique_exact_room(title)
     before = _txt_files()
+    _, kakao_process_id = win32process.GetWindowThreadProcessId(hwnd)
+    dialogs_before = _visible_dialogs_for_process(kakao_process_id)
     started = time.time_ns()
     try:
         pyautogui.hotkey("ctrl", "s")
-        time.sleep(2)
-        pyautogui.press("enter")
-        time.sleep(2)
-        pyautogui.press("enter")
+        _save_export_dialog(hwnd, dialogs_before)
         time.sleep(1)
         after = _txt_files()
         candidates = [
