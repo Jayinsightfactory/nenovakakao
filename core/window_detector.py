@@ -144,9 +144,18 @@ def activate_kakaotalk() -> KakaoWindow:
     try:
         main.activate()
     except Exception as exc:
-        # 최소화→복원 재시도는 KakaoTalk을 트레이에 가둬 버릴 수 있다.
-        # 창 상태를 파괴하지 않고 명시적으로 실패시켜 다음 주기에 재시도한다.
-        raise RuntimeError("카카오톡 창을 활성화하지 못했습니다") from exc
+        # Windows may reject foreground changes from a background worker. An
+        # Alt key transition permits SetForegroundWindow without minimizing the
+        # app (the old minimize/restore fallback could strand Kakao in the tray).
+        try:
+            import win32con
+            import win32gui
+            pyautogui.press("alt")
+            win32gui.ShowWindow(main._hWnd, win32con.SW_RESTORE)
+            win32gui.SetForegroundWindow(main._hWnd)
+            time.sleep(0.3)
+        except Exception as fallback_exc:
+            raise RuntimeError("카카오톡 창을 활성화하지 못했습니다") from fallback_exc
 
     time.sleep(0.2)
     return find_kakaotalk_window()
