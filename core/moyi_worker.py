@@ -207,9 +207,21 @@ def run() -> int:
                     print(f"[MOYI] failure ack temporarily unavailable ({_safe_request_error(ack_exc)})")
         if time.monotonic() >= next_inbound_at:
             try:
-                result = poll_inbound_once(server, secret)
-                if result["sent"] or result["initialized"]:
-                    print(f"[MOYI] inbound: {result['sent']} sent, {result['initialized']} initialized")
+                rooms_response = requests.get(
+                    f"{server}/kakao/agent/rooms", headers=_headers(secret), timeout=20
+                )
+                rooms_response.raise_for_status()
+                for room in rooms_response.json().get("items", []):
+                    title = str(room.get("exact_title") or "").strip()
+                    if not title:
+                        continue
+                    try:
+                        result = poll_inbound_once(server, secret, only_title=title)
+                        if result["sent"] or result["initialized"]:
+                            print(f"[MOYI] inbound {title}: {result['sent']} sent, {result['initialized']} initialized")
+                    except Exception as room_exc:
+                        print(f"[MOYI] inbound room failed ({title}): {room_exc}")
+                        _event(None, "inbound_room_failed", f"{title}: {str(room_exc)[:400]}")
             except Exception as exc:
                 print(f"[MOYI] inbound scan failed: {exc}")
                 _event(None, "inbound_scan_failed", str(exc)[:500])
