@@ -3,7 +3,7 @@ from __future__ import annotations
 import hashlib, json, os, struct, time
 from pathlib import Path
 from urllib.parse import urlparse
-import pyautogui, requests
+import pyautogui, requests, win32api
 from dotenv import load_dotenv
 from core.moyi_control import is_paused
 from core.moyi_outbound import open_room_by_name
@@ -14,6 +14,11 @@ JOURNAL = ROOT / "data" / "moyi_outbound_journal.jsonl"
 EVENT_LOG = ROOT / "data" / "moyi_events.jsonl"
 POLL_RETRY_SEC = 5
 MAX_ATTACHMENT_BYTES = 50 * 1024 * 1024
+
+def _restore_safe_cursor() -> None:
+    """Recover after failed UI automation without disabling the fail-safe."""
+    width, height = pyautogui.size()
+    win32api.SetCursorPos((max(1, width // 2), max(1, height // 2)))
 
 def _config() -> tuple[str, str]:
     load_dotenv(ROOT / ".env")
@@ -228,6 +233,7 @@ def run() -> int:
                     except Exception as room_exc:
                         print(f"[MOYI] inbound room failed ({title}): {room_exc}")
                         _event(None, "inbound_room_failed", f"{title}: {str(room_exc)[:400]}")
+                        _restore_safe_cursor()
             except Exception as exc:
                 print(f"[MOYI] inbound scan failed: {exc}")
                 _event(None, "inbound_scan_failed", str(exc)[:500])
