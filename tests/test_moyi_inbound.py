@@ -122,6 +122,59 @@ second line
                     inbound.poll_once("https://example.test", "secret")
             self.assertEqual(inbound._load_state()["_needs_rescan"], ["binding"])
 
+    def test_only_events_after_checkpoint_are_delivered(self):
+        with TemporaryDirectory() as tmp, patch.object(inbound, "STATE_FILE", Path(tmp) / "state.json"), \
+             patch.object(inbound, "OUTBOUND_JOURNAL", Path(tmp) / "journal.jsonl"):
+            inbound._save_state({"binding": ["event-2"]})
+            rooms = Mock()
+            rooms.json.return_value = {"items": [{"room_binding_id": "binding", "exact_title": "room"}]}
+            rooms.raise_for_status.return_value = None
+            ok = Mock()
+            ok.raise_for_status.return_value = None
+            events = [
+                {"event_id": "event-1", "sender_name": "Old", "timestamp": "t1", "content": "old"},
+                {"event_id": "event-2", "sender_name": "Known", "timestamp": "t2", "content": "known"},
+                {"event_id": "event-3", "sender_name": "New", "timestamp": "t3", "content": "new"},
+            ]
+            with patch.object(inbound.requests, "get", return_value=rooms), \
+                 patch.object(inbound.requests, "post", return_value=ok) as post, \
+                 patch.object(inbound, "has_unread_exact_room", return_value=True), \
+                 patch.object(inbound, "export_exact_room", return_value="export"), \
+                 patch.object(inbound, "parse_export", return_value=events):
+                result = inbound.poll_once("https://example.test", "secret")
+            inbound_posts = [
+                call for call in post.call_args_list
+                if call.args[0].endswith("/kakao/agent/inbound")
+            ]
+            self.assertEqual(result["sent"], 1)
+            self.assertEqual(inbound_posts[0].kwargs["json"]["event_id"], "event-3")
+
+    def test_large_checkpoint_gap_is_held_without_delivery(self):
+        with TemporaryDirectory() as tmp, patch.object(inbound, "STATE_FILE", Path(tmp) / "state.json"), \
+             patch.object(inbound, "OUTBOUND_JOURNAL", Path(tmp) / "journal.jsonl"):
+            inbound._save_state({"binding": ["checkpoint"]})
+            rooms = Mock()
+            rooms.json.return_value = {"items": [{"room_binding_id": "binding", "exact_title": "room"}]}
+            rooms.raise_for_status.return_value = None
+            ok = Mock()
+            ok.raise_for_status.return_value = None
+            events = [{"event_id": "checkpoint", "sender_name": "A", "timestamp": "t", "content": "known"}]
+            events.extend({
+                "event_id": f"new-{index}", "sender_name": "A",
+                "timestamp": f"t{index}", "content": f"message-{index}",
+            } for index in range(inbound.MAX_AUTO_INBOUND_EVENTS + 1))
+            with patch.object(inbound.requests, "get", return_value=rooms), \
+                 patch.object(inbound.requests, "post", return_value=ok) as post, \
+                 patch.object(inbound, "has_unread_exact_room", return_value=True), \
+                 patch.object(inbound, "export_exact_room", return_value="export"), \
+                 patch.object(inbound, "parse_export", return_value=events):
+                with self.assertRaisesRegex(RuntimeError, "backlog held"):
+                    inbound.poll_once("https://example.test", "secret")
+            self.assertFalse(any(
+                call.args[0].endswith("/kakao/agent/inbound")
+                for call in post.call_args_list
+            ))
+
 
 if __name__ == "__main__":
     unittest.main()
