@@ -4,7 +4,12 @@ from tempfile import TemporaryDirectory
 from unittest.mock import Mock, patch
 
 import core.moyi_inbound as inbound
-from core.moyi_inbound import parse_export
+from core.moyi_inbound import _events_after_checkpoint, parse_export
+
+
+def test_bounded_state_does_not_reimport_older_history():
+    events = [{"event_id": f"event-{index}"} for index in range(6)]
+    assert _events_after_checkpoint(events, ["event-3", "event-4"]) == [{"event_id": "event-5"}]
 
 
 class MoyiInboundParserTests(unittest.TestCase):
