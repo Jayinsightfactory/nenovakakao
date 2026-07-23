@@ -12,7 +12,7 @@ import requests
 import pyautogui
 from dotenv import load_dotenv
 
-from core.kakao_search import replace_room_search
+from core.kakao_search import clear_room_search, replace_room_search
 
 ROOT = Path(__file__).resolve().parent.parent
 
@@ -83,7 +83,8 @@ def _scan_allowlisted_rooms(window, allowlist: tuple[str, ...]) -> list[dict]:
         image_name = hashlib.sha256(title.encode()).hexdigest()[:16] + ".png"
         image_path = capture_room_list(window, captures / image_name)
         matches = [room for room in scan_rooms_single(image_path) if room.get("name") == title]
-        pyautogui.press("esc")
+        clear_room_search(window)
+        switch_to_chat_tab(window)
         if len(matches) > 1:
             raise RuntimeError(f"동일한 제목의 카카오톡 방이 여러 개 감지됐습니다: {title!r}")
         if matches:

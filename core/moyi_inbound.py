@@ -13,7 +13,7 @@ import pyautogui
 import pygetwindow as gw
 import requests
 
-from core.kakao_search import replace_room_search
+from core.kakao_search import clear_room_search, replace_room_search
 from core.moyi_outbound import open_room_by_name
 from core.safe_worker_room import close_room, open_unique_exact_room
 
@@ -121,7 +121,8 @@ def has_unread_exact_room(title: str) -> bool:
     image_name = hashlib.sha256(title.encode()).hexdigest()[:16] + ".png"
     image_path = capture_room_list(window, ROOT / "captures" / "inbound_unread" / image_name)
     badges = detect_badge_positions(image_path)
-    pyautogui.press("esc")
+    clear_room_search(window)
+    switch_to_chat_tab(window)
     if len(badges) > 1:
         raise RuntimeError(f"unread badge conflict for exact room: {len(badges)} matches")
     return len(badges) == 1
