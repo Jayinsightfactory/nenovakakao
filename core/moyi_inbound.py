@@ -23,6 +23,7 @@ PHOTO_MARKER_RE = re.compile(
 )
 FILE_MARKER_RE = re.compile(r"^(?:파일|File)\s*:\s*(?P<name>.+)$", re.IGNORECASE)
 MAX_ATTACHMENT_BYTES = 50 * 1024 * 1024
+MAX_AUTO_INBOUND_EVENTS = 50
 
 ROOT = Path(__file__).resolve().parent.parent
 STATE_FILE = ROOT / "data" / "moyi_inbound_state.json"
@@ -321,6 +322,12 @@ def poll_once(server: str, secret: str, only_title: str | None = None) -> dict[s
             _save_state(state)
             continue
         new_events = _events_after_checkpoint(events, known_ids)
+        if len(new_events) > MAX_AUTO_INBOUND_EVENTS:
+            raise RuntimeError(
+                "Kakao inbound backlog held: "
+                f"{len(new_events)} events exceeds automatic limit "
+                f"{MAX_AUTO_INBOUND_EVENTS}"
+            )
         photo_events = [event for event in new_events if PHOTO_MARKER_RE.search(event["content"])]
         if photo_events:
             photo_files = _collect_photo_files(title, len(photo_events))
@@ -337,9 +344,7 @@ def poll_once(server: str, secret: str, only_title: str | None = None) -> dict[s
             if file_match:
                 local_file = _find_local_kakao_file(file_match.group("name").strip())
                 event["attachments"] = [_upload_attachment(server, headers, local_file)]
-        for event in events:
-            if event["event_id"] in known:
-                continue
+        for event in new_events:
             content_hash = hashlib.sha256(event["content"].strip().encode()).hexdigest()
             if content_hash not in outbound_hashes:
                 inbound = requests.post(
