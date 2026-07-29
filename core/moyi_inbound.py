@@ -193,10 +193,23 @@ def has_unread_exact_room(title: str) -> bool:
     return len(badges) == 1
 
 
+def _open_or_reuse_exact_room(title: str) -> int:
+    """Reuse one verified room instead of disturbing focus by opening it again."""
+    existing = [
+        window for window in gw.getAllWindows()
+        if window.visible and window.title == title
+        and window.width > 300 and window.height > 300
+    ]
+    if len(existing) > 1:
+        raise RuntimeError(f"exact room verification failed: {len(existing)} matches")
+    if not existing:
+        open_room_by_name(title)
+    return open_unique_exact_room(title)
+
+
 def export_exact_room(title: str) -> str:
     """Open one exact room, export its text, and return the UTF-8 content."""
-    open_room_by_name(title)
-    hwnd = open_unique_exact_room(title)
+    hwnd = _open_or_reuse_exact_room(title)
     before = _txt_files()
     _, kakao_process_id = win32process.GetWindowThreadProcessId(hwnd)
     dialogs_before = _visible_dialogs_for_process(kakao_process_id)
@@ -239,8 +252,7 @@ def _collect_photo_files(title: str, count: int) -> list[Path]:
     """Download the newest photo thumbnails from one exact Kakao room."""
     from core.drawer_handler import extract_photos_from_room
 
-    open_room_by_name(title)
-    hwnd = open_unique_exact_room(title)
+    hwnd = _open_or_reuse_exact_room(title)
     try:
         if count == 1:
             roots = _candidate_export_roots()
