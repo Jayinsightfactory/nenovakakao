@@ -383,9 +383,13 @@ def poll_once(server: str, secret: str, only_title: str | None = None) -> dict[s
                         f"Kakao photo download incomplete: expected {len(photo_events)}, got {len(photo_files)}"
                     )
                 uploaded = [_upload_attachment(server, headers, path) for path in photo_files]
-                # Kakao's drawer is newest-first, as are the downloaded thumbnails.
-                for event, attachment in zip(reversed(photo_events), uploaded):
+                # Kakao's drawer is newest-first. One Kakao photo event can be
+                # an album that downloads multiple image files.
+                newest_first = list(reversed(photo_events))
+                for event, attachment in zip(newest_first, uploaded):
                     event["attachments"] = [attachment]
+                for attachment in uploaded[len(newest_first):]:
+                    newest_first[0].setdefault("attachments", []).append(attachment)
             except Exception as exc:
                 for event in photo_events:
                     held_event_ids.add(event["event_id"])
