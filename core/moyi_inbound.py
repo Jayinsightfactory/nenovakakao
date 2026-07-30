@@ -277,57 +277,18 @@ def _collect_photo_files(title: str, count: int) -> list[Path]:
 
     hwnd = _open_or_reuse_exact_room(title)
     try:
-        if count == 1:
-            roots = _candidate_export_roots()
-            before = {
-                path.resolve(): path.stat().st_mtime_ns
-                for root in roots if root.exists()
-                for path in root.rglob("*") if path.is_file()
-            }
-            existing_hwnds = {window._hWnd for window in gw.getAllWindows()}
-            chat = next(window for window in gw.getAllWindows() if window._hWnd == hwnd)
-            # A new unread photo is the bottom-most media bubble. Kakao opens
-            # it in a separate preview window on double-click.
-            pyautogui.doubleClick(
-                chat.left + int(chat.width * 0.63),
-                chat.top + int(chat.height * 0.58),
-                interval=0.15,
-            )
-            time.sleep(2)
-            previews = [
-                window for window in gw.getAllWindows()
-                if window.visible and window._hWnd not in existing_hwnds
-                and window.width > 500 and window.height > 400
-            ]
-            if len(previews) != 1:
-                raise RuntimeError(f"Kakao photo preview verification failed: {len(previews)} matches")
-            preview = previews[0]
-            preview.activate()
-            pyautogui.click(preview.left + preview.width - 62, preview.top + preview.height - 25)
-            time.sleep(1)
-            save_windows = [window for window in gw.getAllWindows() if window.title == "다른 이름으로 저장"]
-            if len(save_windows) != 1:
-                raise RuntimeError("Kakao photo save dialog was not opened")
-            save_windows[0].activate()
-            pyautogui.press("enter")
-            time.sleep(3)
-            pyautogui.press("left")
-            pyautogui.press("enter")
-            time.sleep(1)
-            after = {
-                path.resolve(): path.stat().st_mtime_ns
-                for root in roots if root.exists()
-                for path in root.rglob("*") if path.is_file()
-            }
-            downloaded = sorted(
-                (path for path, modified in after.items() if before.get(path) != modified),
-                key=lambda path: after[path],
-            )
-            pyautogui.press("escape")
-            if len(downloaded) != 1:
-                raise RuntimeError(f"Kakao photo save verification failed: {len(downloaded)} files")
-            return downloaded
         return extract_photos_from_room(hwnd, photo_count=count)
+    finally:
+        close_room(hwnd)
+
+
+def _collect_file_files(title: str, count: int) -> list[Path]:
+    """Download the newest file cards from one exact Kakao room."""
+    from core.drawer_handler import extract_files_from_room
+
+    hwnd = _open_or_reuse_exact_room(title)
+    try:
+        return extract_files_from_room(hwnd, file_count=count)
     finally:
         close_room(hwnd)
 
@@ -350,9 +311,9 @@ def _find_local_kakao_file(name: str) -> Path:
         except OSError:
             continue
     unique = list(dict.fromkeys(path.resolve() for path in matches))
-    if len(unique) != 1:
-        raise RuntimeError(f"Kakao file resolution requires exactly one local match: {safe_name}")
-    return unique[0]
+    if not unique:
+        raise RuntimeError(f"Kakao file was not downloaded: {safe_name}")
+    return max(unique, key=lambda path: path.stat().st_mtime_ns)
 
 
 def poll_once(server: str, secret: str, only_title: str | None = None) -> dict[str, int]:
@@ -433,18 +394,40 @@ def poll_once(server: str, secret: str, only_title: str | None = None) -> dict[s
                     f"[MOYI] inbound attachments held ({title}): "
                     f"{len(photo_events)} photo events; later text will continue"
                 )
+        missing_file_events: list[tuple[dict, str]] = []
         for event in new_events:
             file_match = FILE_MARKER_RE.match(event["content"].strip())
             if file_match:
+                name = file_match.group("name").strip()
                 try:
-                    local_file = _find_local_kakao_file(file_match.group("name").strip())
+                    local_file = _find_local_kakao_file(name)
                     event["attachments"] = [_upload_attachment(server, headers, local_file)]
+                except RuntimeError as exc:
+                    if str(exc).startswith("Kakao file was not downloaded:"):
+                        missing_file_events.append((event, name))
+                        continue
+                    held_event_ids.add(event["event_id"])
+                    _hold_attachment_event(state, binding, title, event, str(exc))
                 except Exception as exc:
                     held_event_ids.add(event["event_id"])
                     _hold_attachment_event(state, binding, title, event, str(exc))
                     print(
                         f"[MOYI] inbound attachment held ({title}): "
-                        f"{file_match.group('name').strip()}; later text will continue"
+                        f"{name}; later text will continue"
+                    )
+        if missing_file_events:
+            try:
+                _collect_file_files(title, len(missing_file_events))
+                for event, name in missing_file_events:
+                    local_file = _find_local_kakao_file(name)
+                    event["attachments"] = [_upload_attachment(server, headers, local_file)]
+            except Exception as exc:
+                for event, name in missing_file_events:
+                    held_event_ids.add(event["event_id"])
+                    _hold_attachment_event(state, binding, title, event, str(exc))
+                    print(
+                        f"[MOYI] inbound attachment held ({title}): "
+                        f"{name}; later text will continue"
                     )
         for event in new_events:
             if event["event_id"] in held_event_ids:
