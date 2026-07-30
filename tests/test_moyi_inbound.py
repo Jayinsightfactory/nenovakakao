@@ -175,6 +175,40 @@ second line
                 for call in post.call_args_list
             ))
 
+    def test_failed_photo_is_held_while_later_text_is_delivered(self):
+        with TemporaryDirectory() as tmp, patch.object(inbound, "STATE_FILE", Path(tmp) / "state.json"), \
+             patch.object(inbound, "OUTBOUND_JOURNAL", Path(tmp) / "journal.jsonl"):
+            inbound._save_state({"binding": ["checkpoint"]})
+            rooms = Mock()
+            rooms.json.return_value = {"items": [{"room_binding_id": "binding", "exact_title": "room"}]}
+            rooms.raise_for_status.return_value = None
+            ok = Mock()
+            ok.raise_for_status.return_value = None
+            events = [
+                {"event_id": "checkpoint", "sender_name": "A", "timestamp": "t0", "content": "known"},
+                {"event_id": "photo", "sender_name": "A", "timestamp": "t1", "content": "PHOTO"},
+                {"event_id": "text", "sender_name": "A", "timestamp": "t2", "content": "later text"},
+            ]
+            with patch.object(inbound.requests, "get", return_value=rooms), \
+                 patch.object(inbound.requests, "post", return_value=ok) as post, \
+                 patch.object(inbound, "has_unread_exact_room", return_value=True), \
+                 patch.object(inbound, "export_exact_room", return_value="export"), \
+                 patch.object(inbound, "parse_export", return_value=events), \
+                 patch.object(inbound, "PHOTO_MARKER_RE") as photo_marker, \
+                 patch.object(inbound, "_collect_photo_files", side_effect=RuntimeError("drawer failed")):
+                photo_marker.search.side_effect = lambda content: object() if content == "PHOTO" else None
+                result = inbound.poll_once("https://example.test", "secret")
+            inbound_posts = [
+                call for call in post.call_args_list
+                if call.args[0].endswith("/kakao/agent/inbound")
+            ]
+            state = inbound._load_state()
+            self.assertEqual(result["sent"], 1)
+            self.assertEqual(inbound_posts[0].kwargs["json"]["event_id"], "text")
+            self.assertEqual(state["_attachment_holds"][0]["event_id"], "photo")
+            self.assertIn("photo", state["binding"])
+            self.assertIn("text", state["binding"])
+
 
 if __name__ == "__main__":
     unittest.main()
