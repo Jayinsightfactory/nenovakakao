@@ -86,6 +86,11 @@ def _download_selection(drawer: object, count: int, kind: str) -> list[Path]:
     else:
         raise ValueError(f"Unsupported drawer attachment kind: {kind}")
 
+    # Kakao can preserve a prior selection while the drawer window is reused.
+    # Clear it first so Ctrl+click always adds the intended cards.
+    pyautogui.click(drawer.left + 275, drawer.top + drawer.height - 30)
+    time.sleep(0.2)
+
     selected = 0
     pyautogui.keyDown("ctrl")
     try:
