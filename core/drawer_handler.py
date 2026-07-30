@@ -109,6 +109,27 @@ def _download_selection(drawer: object, count: int, kind: str) -> list[Path]:
         drawer.left + drawer.width - DOWNLOAD_X_FROM_RIGHT,
         drawer.top + drawer.height - DOWNLOAD_Y_FROM_BOTTOM,
     )
+    # Files from a non-contact can show a Kakao safety confirmation as a
+    # titleless owned window. Confirm only the uniquely verified owned modal.
+    time.sleep(0.7)
+    owned_modals: list[int] = []
+    win32gui.EnumWindows(
+        lambda hwnd, found: found.append(hwnd)
+        if (
+            win32gui.IsWindowVisible(hwnd)
+            and win32gui.GetParent(hwnd) == drawer._hWnd
+            and win32gui.GetClassName(hwnd) == "EVA_Window_Dblclk"
+        )
+        else None,
+        owned_modals,
+    )
+    if len(owned_modals) > 1:
+        raise RuntimeError(
+            f"Kakao attachment confirmation conflict: {len(owned_modals)} dialogs"
+        )
+    if owned_modals:
+        left, top, right, bottom = win32gui.GetWindowRect(owned_modals[0])
+        pyautogui.click(left + int((right - left) * 0.25), bottom - 24)
     time.sleep(max(3.0, selected * 0.5))
     after = _snapshot_downloads()
     downloaded = sorted(
