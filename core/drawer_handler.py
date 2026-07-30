@@ -87,15 +87,19 @@ def _download_selection(drawer: object, count: int, kind: str) -> list[Path]:
         raise ValueError(f"Unsupported drawer attachment kind: {kind}")
 
     selected = 0
-    for index in range(limit):
-        row, col = divmod(index, columns)
-        x = first_x + col * x_spacing
-        y = first_y + row * y_spacing
-        if y > drawer.top + drawer.height - 80:
-            break
-        pyautogui.click(x, y)
-        selected += 1
-        time.sleep(0.2)
+    pyautogui.keyDown("ctrl")
+    try:
+        for index in range(limit):
+            row, col = divmod(index, columns)
+            x = first_x + col * x_spacing
+            y = first_y + row * y_spacing
+            if y > drawer.top + drawer.height - 80:
+                break
+            pyautogui.click(x, y)
+            selected += 1
+            time.sleep(0.2)
+    finally:
+        pyautogui.keyUp("ctrl")
     if selected != limit:
         raise RuntimeError(
             f"Kakao {kind} selection incomplete: expected {limit}, selected {selected}"
