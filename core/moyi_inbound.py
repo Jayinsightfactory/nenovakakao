@@ -97,6 +97,29 @@ def _events_after_checkpoint(events: list[dict], known_ids: list[str]) -> list[d
     return events[newest_known + 1:] if newest_known >= 0 else events
 
 
+def _hold_attachment_event(
+    state: dict, binding: str, title: str, event: dict, reason: str
+) -> None:
+    """Persist an attachment event without blocking later text messages."""
+    holds = state.setdefault("_attachment_holds", [])
+    if not isinstance(holds, list):
+        holds = []
+        state["_attachment_holds"] = holds
+    event_id = str(event.get("event_id") or "")
+    if not any(str(item.get("event_id") or "") == event_id for item in holds):
+        holds.append({
+            "event_id": event_id,
+            "room_binding_id": binding,
+            "exact_title": title,
+            "sender_name": event.get("sender_name"),
+            "timestamp": event.get("timestamp"),
+            "content": event.get("content"),
+            "reason": reason[:400],
+            "held_at": int(time.time()),
+        })
+        state["_attachment_holds"] = holds[-500:]
+
+
 def _recent_outbound_hashes(max_age_sec: int = 3600) -> set[str]:
     if not OUTBOUND_JOURNAL.exists():
         return set()
@@ -390,22 +413,46 @@ def poll_once(server: str, secret: str, only_title: str | None = None) -> dict[s
                 f"{MAX_AUTO_INBOUND_EVENTS}"
             )
         photo_events = [event for event in new_events if PHOTO_MARKER_RE.search(event["content"])]
+        held_event_ids: set[str] = set()
         if photo_events:
-            photo_files = _collect_photo_files(title, len(photo_events))
-            if len(photo_files) < len(photo_events):
-                raise RuntimeError(
-                    f"Kakao photo download incomplete: expected {len(photo_events)}, got {len(photo_files)}"
+            try:
+                photo_files = _collect_photo_files(title, len(photo_events))
+                if len(photo_files) < len(photo_events):
+                    raise RuntimeError(
+                        f"Kakao photo download incomplete: expected {len(photo_events)}, got {len(photo_files)}"
+                    )
+                uploaded = [_upload_attachment(server, headers, path) for path in photo_files]
+                # Kakao's drawer is newest-first, as are the downloaded thumbnails.
+                for event, attachment in zip(reversed(photo_events), uploaded):
+                    event["attachments"] = [attachment]
+            except Exception as exc:
+                for event in photo_events:
+                    held_event_ids.add(event["event_id"])
+                    _hold_attachment_event(state, binding, title, event, str(exc))
+                print(
+                    f"[MOYI] inbound attachments held ({title}): "
+                    f"{len(photo_events)} photo events; later text will continue"
                 )
-            uploaded = [_upload_attachment(server, headers, path) for path in photo_files]
-            # Kakao's drawer is newest-first, as are the downloaded thumbnails.
-            for event, attachment in zip(reversed(photo_events), uploaded):
-                event["attachments"] = [attachment]
         for event in new_events:
             file_match = FILE_MARKER_RE.match(event["content"].strip())
             if file_match:
-                local_file = _find_local_kakao_file(file_match.group("name").strip())
-                event["attachments"] = [_upload_attachment(server, headers, local_file)]
+                try:
+                    local_file = _find_local_kakao_file(file_match.group("name").strip())
+                    event["attachments"] = [_upload_attachment(server, headers, local_file)]
+                except Exception as exc:
+                    held_event_ids.add(event["event_id"])
+                    _hold_attachment_event(state, binding, title, event, str(exc))
+                    print(
+                        f"[MOYI] inbound attachment held ({title}): "
+                        f"{file_match.group('name').strip()}; later text will continue"
+                    )
         for event in new_events:
+            if event["event_id"] in held_event_ids:
+                known.add(event["event_id"])
+                known_ids.append(event["event_id"])
+                state[binding] = known_ids[-2000:]
+                _save_state(state)
+                continue
             content_hash = hashlib.sha256(event["content"].strip().encode()).hexdigest()
             if content_hash not in outbound_hashes:
                 inbound = requests.post(
