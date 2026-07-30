@@ -141,6 +141,11 @@ def _download_selection(drawer: object, count: int, kind: str) -> list[Path]:
         (path for path, modified in after.items() if before.get(path) != modified),
         key=lambda path: after[path],
     )
+    if kind == "photo":
+        image_suffixes = {".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp"}
+        downloaded = [
+            path for path in downloaded if path.suffix.lower() in image_suffixes
+        ]
     if len(downloaded) != selected:
         raise RuntimeError(
             f"Kakao {kind} download incomplete: expected {selected}, got {len(downloaded)}"
