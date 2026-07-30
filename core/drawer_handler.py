@@ -146,9 +146,9 @@ def _download_selection(drawer: object, count: int, kind: str) -> list[Path]:
         downloaded = [
             path for path in downloaded if path.suffix.lower() in image_suffixes
         ]
-    if len(downloaded) != selected:
+    if len(downloaded) < selected:
         raise RuntimeError(
-            f"Kakao {kind} download incomplete: expected {selected}, got {len(downloaded)}"
+            f"Kakao {kind} download incomplete: expected at least {selected}, got {len(downloaded)}"
         )
     return downloaded
 
