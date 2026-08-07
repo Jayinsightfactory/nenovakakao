@@ -14,6 +14,16 @@ JOURNAL = ROOT / "data" / "moyi_outbound_journal.jsonl"
 EVENT_LOG = ROOT / "data" / "moyi_events.jsonl"
 POLL_RETRY_SEC = 5
 MAX_ATTACHMENT_BYTES = 50 * 1024 * 1024
+SUPPRESSED_SYSTEM_TEXTS = ("말머리 설정 내역",)
+
+def _is_suppressed_system_item(item: dict) -> bool:
+    """Return True for MOYI system notices that should not reach KakaoTalk."""
+    texts = [
+        str(part.get("text") or "").strip()
+        for part in item.get("parts") or []
+        if part.get("type") == "text"
+    ]
+    return any(marker in text for marker in SUPPRESSED_SYSTEM_TEXTS for text in texts)
 
 def _restore_safe_cursor() -> None:
     """Recover after failed UI automation without disabling the fail-safe."""
@@ -124,6 +134,25 @@ def _send_attachment(path: Path) -> None:
     time.sleep(1.0)
 
 def process_item(server: str, secret: str, item: dict) -> None:
+    if _is_suppressed_system_item(item):
+        _event(item, "suppressed", "MOYI system notice: thread-head settings")
+        requests.post(
+            f"{server}/kakao/agent/ack/{item['id']}",
+            headers=_headers(secret),
+            json={
+                "ok": True,
+                "final": True,
+                "outcome": "sent",
+                "lease_token": item.get("lease_token"),
+                "completed_part_ids": [
+                    str(part.get("part_id"))
+                    for part in item.get("parts") or []
+                    if part.get("part_id")
+                ],
+            },
+            timeout=20,
+        ).raise_for_status()
+        return
     title, binding = str(item.get("external_room_id") or "").strip(), str(item.get("room_binding_id") or "").strip()
     if not title or not binding:
         raise RuntimeError("방 제목 또는 room_binding_id가 없습니다")

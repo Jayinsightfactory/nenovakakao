@@ -367,12 +367,13 @@ def poll_once(server: str, secret: str, only_title: str | None = None) -> dict[s
             _save_state(state)
             continue
         new_events = _events_after_checkpoint(events, known_ids)
+        backlog_remaining = len(new_events) > MAX_AUTO_INBOUND_EVENTS
         if len(new_events) > MAX_AUTO_INBOUND_EVENTS:
-            raise RuntimeError(
-                "Kakao inbound backlog held: "
-                f"{len(new_events)} events exceeds automatic limit "
-                f"{MAX_AUTO_INBOUND_EVENTS}"
+            print(
+                f"[MOYI] inbound backlog chunk ({title}): "
+                f"processing oldest {MAX_AUTO_INBOUND_EVENTS} of {len(new_events)} events"
             )
+            new_events = new_events[:MAX_AUTO_INBOUND_EVENTS]
         photo_events = [event for event in new_events if PHOTO_MARKER_RE.search(event["content"])]
         held_event_ids: set[str] = set()
         if photo_events:
@@ -460,7 +461,10 @@ def poll_once(server: str, secret: str, only_title: str | None = None) -> dict[s
             known_ids.append(event["event_id"])
             state[binding] = known_ids[-2000:]
             _save_state(state)
-        retry_bindings.discard(binding)
+        if backlog_remaining:
+            retry_bindings.add(binding)
+        else:
+            retry_bindings.discard(binding)
         state["_needs_rescan"] = sorted(retry_bindings)
         _save_state(state)
     _save_state(state)
