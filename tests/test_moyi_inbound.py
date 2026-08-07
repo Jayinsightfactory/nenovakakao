@@ -149,7 +149,7 @@ second line
             self.assertEqual(result["sent"], 1)
             self.assertEqual(inbound_posts[0].kwargs["json"]["event_id"], "event-3")
 
-    def test_large_checkpoint_gap_is_held_without_delivery(self):
+    def test_large_checkpoint_gap_is_delivered_in_bounded_oldest_chunk(self):
         with TemporaryDirectory() as tmp, patch.object(inbound, "STATE_FILE", Path(tmp) / "state.json"), \
              patch.object(inbound, "OUTBOUND_JOURNAL", Path(tmp) / "journal.jsonl"):
             inbound._save_state({"binding": ["checkpoint"]})
@@ -168,9 +168,20 @@ second line
                  patch.object(inbound, "has_unread_exact_room", return_value=True), \
                  patch.object(inbound, "export_exact_room", return_value="export"), \
                  patch.object(inbound, "parse_export", return_value=events):
-                with self.assertRaisesRegex(RuntimeError, "backlog held"):
-                    inbound.poll_once("https://example.test", "secret")
-            self.assertFalse(any(
+                result = inbound.poll_once("https://example.test", "secret")
+            inbound_posts = [
+                call for call in post.call_args_list
+                if call.args[0].endswith("/kakao/agent/inbound")
+            ]
+            self.assertEqual(result["sent"], inbound.MAX_AUTO_INBOUND_EVENTS)
+            self.assertEqual(len(inbound_posts), inbound.MAX_AUTO_INBOUND_EVENTS)
+            self.assertEqual(inbound_posts[0].kwargs["json"]["event_id"], "new-0")
+            self.assertEqual(
+                inbound_posts[-1].kwargs["json"]["event_id"],
+                f"new-{inbound.MAX_AUTO_INBOUND_EVENTS - 1}",
+            )
+            self.assertEqual(inbound._load_state()["_needs_rescan"], ["binding"])
+            self.assertTrue(any(
                 call.args[0].endswith("/kakao/agent/inbound")
                 for call in post.call_args_list
             ))

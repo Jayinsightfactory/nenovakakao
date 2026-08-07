@@ -3,7 +3,7 @@ from pathlib import Path
 from unittest.mock import Mock, patch
 
 import core.moyi_worker as worker
-from core.moyi_worker import _download_attachment, _retryable_request_error, _safe_attachment_name, _safe_request_error
+from core.moyi_worker import _download_attachment, _is_suppressed_system_item, _retryable_request_error, _safe_attachment_name, _safe_request_error
 
 
 def _http_error(status: int) -> requests.HTTPError:
@@ -25,6 +25,19 @@ def test_authentication_failures_remain_fail_closed():
 
 def test_attachment_name_cannot_escape_cache_directory():
     assert _safe_attachment_name("../../secret.txt") == "secret.txt"
+
+
+def test_thread_head_settings_notice_is_suppressed():
+    item = {"parts": [{"type": "text", "text": "말머리 설정 내역이 변경되었습니다."}]}
+    assert _is_suppressed_system_item(item) is True
+
+
+def test_normal_text_and_attachments_are_not_suppressed():
+    item = {"parts": [
+        {"type": "text", "text": "일반 업무 메시지"},
+        {"type": "file", "name": "report.xlsx"},
+    ]}
+    assert _is_suppressed_system_item(item) is False
 
 
 def test_attachment_download_rejects_untrusted_host():
