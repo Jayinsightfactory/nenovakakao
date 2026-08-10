@@ -318,7 +318,13 @@ def _find_local_kakao_file(name: str) -> Path:
 
 def poll_once(server: str, secret: str, only_title: str | None = None) -> dict[str, int]:
     """Open only unread/retry rooms and post messages newer than the baseline."""
+    from core.mindmap_sink import enqueue_events, flush_pending
+
     headers = {"X-Company-Secret": secret}
+    try:
+        flush_pending()
+    except Exception as exc:
+        print(f"[MOYI] mindmap sink retry pending: {type(exc).__name__}")
     response = requests.get(f"{server}/kakao/agent/rooms", headers=headers, timeout=20)
     response.raise_for_status()
     state = _load_state()
@@ -374,6 +380,13 @@ def poll_once(server: str, secret: str, only_title: str | None = None) -> dict[s
                 f"processing oldest {MAX_AUTO_INBOUND_EVENTS} of {len(new_events)} events"
             )
             new_events = new_events[:MAX_AUTO_INBOUND_EVENTS]
+        enqueue_events(binding, title, new_events)
+        try:
+            flushed = flush_pending()
+            if flushed:
+                print(f"[MOYI] mindmap raw archive: {flushed} messages")
+        except Exception as exc:
+            print(f"[MOYI] mindmap sink queued ({title}): {type(exc).__name__}")
         photo_events = [event for event in new_events if PHOTO_MARKER_RE.search(event["content"])]
         held_event_ids: set[str] = set()
         if photo_events:

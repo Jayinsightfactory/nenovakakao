@@ -17,7 +17,8 @@ def test_replace_room_search_focuses_field_before_clearing_and_pasting():
         replace_room_search(Window(), "현장방")
 
     assert gui.method_calls == [
-        call.click(320, 288),
+        call.hotkey("ctrl", "f"),
+        call.press("end"),
         call.press("backspace", presses=255),
         call.hotkey("ctrl", "v"),
     ]
