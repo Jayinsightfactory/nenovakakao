@@ -8,6 +8,7 @@ Usage:
 """
 from __future__ import annotations
 
+import os
 import sys
 from pathlib import Path
 
@@ -249,6 +250,16 @@ def main(argv: list[str]) -> int:
     elif cmd == "moyi-room-watch":
         from core.moyi_room_sync import watch
         return watch()
+    elif cmd == "mindmap-backfill":
+        from dotenv import load_dotenv
+        from core.mindmap_sink import backfill_exports
+        load_dotenv(Path(__file__).resolve().parent / ".env")
+        server = (os.getenv("MOYI_SERVER") or os.getenv("MOYI_API_BASE") or "").rstrip("/")
+        secret = os.getenv("MOYI_BRIDGE_SECRET", "")
+        if not server or not secret:
+            raise RuntimeError("MOYI server configuration is required")
+        print(backfill_exports(server, secret))
+        return 0
     else:
         print(f"[ERROR] 알 수 없는 명령: {cmd}")
         print(__doc__)
