@@ -1,9 +1,52 @@
 """Existing paste-order master access and fail-closed nenova registration."""
-import os, time
+import os, re, time
 import requests
 
 ORBIT_DEFAULT = 'https://mindmap-viewer-production-adb2.up.railway.app'
 _master_cache = {'at': 0, 'value': None}
+
+PRODUCT_ALIASES = {
+    'washingtonwhite': ['워싱턴 화이트', '워싱턴화이트'],
+    'europalpink': ['유로파 핑크', '유로파핑크', '유로파 라이트핑크'],
+}
+
+
+def _fetch_pages(base, path, headers, page_size=500):
+    items, offset, total = [], 0, None
+    while total is None or offset < total:
+        response = requests.get(base + path, headers=headers,
+                                params={'limit': page_size, 'offset': offset}, timeout=45)
+        response.raise_for_status()
+        value = response.json()
+        page = value.get('items', [])
+        total = int(value.get('total', len(page)))
+        items.extend(page)
+        if not page:
+            break
+        offset += len(page)
+    return items
+
+
+def _product_row(row):
+    name = str(row.get('ProdName') or '').strip()
+    alias_key = re.sub(r'[^a-z]', '', name.lower().replace('[ez]', ''))
+    aliases = next((list(values) for suffix, values in PRODUCT_ALIASES.items()
+                    if alias_key.endswith(suffix)), [])
+    # The farm-prefixed and general products remain separate candidates. Never
+    # silently discard [EZ] because Kakao text does not identify that variant.
+    return {'name': name, 'name_en': name, 'name_alias': aliases,
+            'category': row.get('FlowerName') or row.get('flowerCategory'),
+            'origin': row.get('CounName') or row.get('countryName'),
+            'code': row.get('ProdKey'), 'nenova_key': row.get('ProdKey')}
+
+
+def _customer_row(row):
+    aliases = [row.get('OrderCode'), row.get('CustCode')]
+    descr = str(row.get('Descr') or '')
+    aliases.extend(part.strip() for part in descr.split('/') if part.strip())
+    return {'name': row.get('CustName') or row.get('OrderCode') or '',
+            'name_alias': [a for a in aliases if a], 'code': row.get('OrderCode'),
+            'nenova_key': row.get('CustKey'), 'staff': row.get('Manager') or ''}
 
 
 def master():
@@ -13,11 +56,13 @@ def master():
     headers = {}
     token = os.getenv('ORBIT_TOKEN', '').strip()
     if token: headers['Authorization'] = 'Bearer ' + token
-    response = requests.get(base + '/api/automation/master', headers=headers, timeout=30)
-    response.raise_for_status()
-    value = response.json()
-    if not value.get('products') or not value.get('customers'):
-        raise RuntimeError('붙여넣기 주문등록 마스터 응답 불완전')
+    products = _fetch_pages(base, '/api/nenova/products', headers)
+    customers = _fetch_pages(base, '/api/nenova/customers', headers)
+    if len(products) < 1000 or len(customers) < 500:
+        raise RuntimeError(f'네노바 실마스터 응답 불완전: 품목 {len(products)}, 거래처 {len(customers)}')
+    value = {'products': {'data': [_product_row(row) for row in products]},
+             'customers': {'data': [_customer_row(row) for row in customers]},
+             'source': 'nenova-read-api'}
     _master_cache.update(at=time.time(), value=value)
     return value
 

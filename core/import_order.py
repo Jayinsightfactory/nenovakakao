@@ -102,6 +102,10 @@ def build_draft(event, parsed, master):
             'product': _display_product(product or {}, raw),
             'product_key': (product or {}).get('nenova_key') or (product or {}).get('code'),
             'candidates': [_display_product(c, raw) for c in candidates],
+            'candidate_options': [
+                {'label': _display_product(c, raw),
+                 'product_key': c.get('nenova_key') or c.get('code')}
+                for c in candidates],
         })
     rid = 'ORD-' + hashlib.sha256(event['event_id'].encode()).hexdigest()[:8].upper()
     staff = str(parsed.get('staff') or (customer or {}).get('staff') or '').strip()
@@ -136,14 +140,21 @@ def review_message(draft):
              f"차수: {draft['week'] or '확인 필요'}", '']
     for item in draft['items']:
         name = item['product'] or item['raw_product'] or '매칭 필요'
-        suffix = '' if item['matched'] else f" [후보: {', '.join(item['candidates']) or '없음'}]"
+        options = item.get('candidate_options') or []
+        if item['matched']:
+            suffix = ''
+        elif options:
+            suffix = ' [' + ' / '.join(
+                f"{chr(65 + n)}. {option['label']}" for n, option in enumerate(options[:3])) + ']'
+        else:
+            suffix = f" [후보: {', '.join(item['candidates']) or '없음'}]"
         customer = item.get('customer') or item.get('raw_customer') or '거래처 확인 필요'
         lines.append(f"{item['index']}. {customer} / {name} / {item['quantity'] or '?'}{item['unit'] or ''}{suffix}")
     issues = validate(draft)
     if issues:
         lines += ['', '확인 필요: ' + ' · '.join(issues)]
     lines += ['', "모바일 답장 예시",
-              "3번 노비아", "3번 2박스", "3번 거래처 CL10",
+              "후보 선택: 1A 2B", "3번 노비아", "3번 2박스", "3번 거래처 CL10",
               "차수 35-1", "전체 확인: 확인", "취소: 취소"]
     return '\n'.join(lines)
 
@@ -193,6 +204,9 @@ def parse_command(text, rid, allow_short=True):
         return ('register', None)
     if compact in {'취소', '안함', '안 해', '하지마', '하지 마'}:
         return ('cancel', None)
+    choices = re.findall(r'(\d+)\s*([A-C])', compact.upper())
+    if choices and re.sub(r'[\dA-C\s,]+', '', compact.upper()) == '':
+        return ('candidates', [(int(index), ord(letter) - 65) for index, letter in choices])
     m = re.fullmatch(r'(\d+)번?\s+(?:수량\s*)?(\d+(?:\.\d+)?)\s*(박스|단|스팀|개)', compact)
     if m: return ('quantity', (int(m[1]), float(m[2]), m[3]))
     m = re.fullmatch(r'(\d+)번?\s+거래처\s+(.+)', compact)
@@ -245,6 +259,14 @@ def _apply(row, command, master_value):
         index, quantity, unit = value
         if not 1 <= index <= len(row['items']): raise ValueError('품목 번호 범위 오류')
         row['items'][index-1].update(quantity=quantity, unit=unit)
+    elif action == 'candidates':
+        for index, option_index in value:
+            if not 1 <= index <= len(row['items']): raise ValueError('품목 번호 범위 오류')
+            item = row['items'][index-1]
+            options = item.get('candidate_options') or []
+            if not 0 <= option_index < len(options): raise ValueError(f'{index}번 후보 범위 오류')
+            option = options[option_index]
+            item.update(matched=True, product=option['label'], product_key=option['product_key'])
     elif action == 'product':
         index, term = value
         if not 1 <= index <= len(row['items']): raise ValueError('품목 번호 범위 오류')

@@ -95,6 +95,7 @@ def test_commands_are_request_scoped_and_unambiguous():
     assert order.parse_command('3번 노비아', rid) == ('product', (3, '노비아'))
     assert order.parse_command('3번 2박스', rid) == ('quantity', (3, 2.0, '박스'))
     assert order.parse_command('3번 거래처 CL10', rid) == ('item_customer', (3, 'CL10'))
+    assert order.parse_command('1A 2b', rid) == ('candidates', [(1, 0), (2, 1)])
     assert order.parse_command('차수 35-2', rid) == ('차수', '35-2')
     assert order.parse_command('확인', rid, allow_short=False) is None
 
@@ -144,6 +145,18 @@ def test_multiple_customer_sections_are_kept_per_item(isolated):
     assert 'CL10 / CARNATION RODAS CREAM / 1박스' in message
 
 
+def test_mobile_candidate_letters_select_exact_internal_product(isolated):
+    values = master()
+    values['products']['data'].append({
+        'name': '[EZ] NOVIA', 'name_en': '[EZ] NOVIA', 'category': 'carnation',
+        'nenova_key': 999, 'name_alias': ['novia']})
+    row = order.build_draft(event(), parsed(), values)
+    assert not row['items'][0]['matched']
+    order._apply(row, ('candidates', [(1, 1)]), values)
+    assert row['items'][0]['matched']
+    assert row['items'][0]['product_key'] in {2515, 999}
+
+
 def test_registration_is_disabled_without_explicit_switch(monkeypatch):
     monkeypatch.delenv('NENOVA_ORDER_WRITE_ENABLED', raising=False)
     with pytest.raises(RuntimeError, match='쓰기 비활성'):
@@ -157,6 +170,19 @@ def test_registration_uses_exact_staff_room_credential(monkeypatch):
     with pytest.raises(RuntimeError, match='임재용대리'):
         order_services.register_bulk({'staff': '임재용', 'staff_room': '임재용대리'})
     assert seen == ['임재용대리']
+
+
+def test_nenova_master_rows_include_cl_code_and_korean_product_aliases():
+    customer = order_services._customer_row({
+        'CustKey': 659, 'CustName': '친구플라워', 'OrderCode': 'CL73',
+        'CustCode': '2409300274', 'Descr': '친구5125/카-월/CL73'})
+    assert customer['nenova_key'] == 659
+    assert 'CL73' in customer['name_alias']
+    product = order_services._product_row({
+        'ProdKey': 2829, 'ProdName': '[EZ] Astilbe / Washington White',
+        'FlowerName': '아스틸베', 'CounName': '네덜란드'})
+    assert product['nenova_key'] == 2829
+    assert '워싱턴 화이트' in product['name_alias']
 
 
 def test_llm_missing_key_returns_question(monkeypatch):
