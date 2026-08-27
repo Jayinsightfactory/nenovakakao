@@ -227,7 +227,8 @@ def _open_or_reuse_exact_room(title: str) -> int:
         raise RuntimeError(f"exact room verification failed: {len(existing)} matches")
     if not existing:
         from core.keyword_approval import APPROVER
-        if title == APPROVER:
+        from core.import_order import direct_contacts
+        if title == APPROVER or title in direct_contacts():
             # Chat search also matches participants, so its first result may
             # be an unrelated group. Use the friend directory for approvals;
             # the exact room-title/foreground gate below still must pass.
@@ -408,6 +409,16 @@ def poll_once(server: str, secret: str, only_title: str | None = None) -> dict[s
                 f"processing oldest {MAX_AUTO_INBOUND_EVENTS} of {len(new_events)} events"
             )
             new_events = new_events[:MAX_AUTO_INBOUND_EVENTS]
+        # Import-order review is additive: MOYI archival below remains exactly
+        # as before. Only newly checkpointed 수입방 messages are considered.
+        try:
+            from core import import_order, order_llm, order_services
+            order_cfg = import_order.config()
+            if order_cfg.get('enabled') and title == order_cfg.get('source', '수입방'):
+                for event in new_events:
+                    import_order.capture(event, order_llm.parse, order_services.master)
+        except Exception as order_exc:
+            print(f"[MOYI] import order capture held ({title}): {type(order_exc).__name__}")
         enqueue_events(binding, title, new_events)
         try:
             flushed = flush_pending()

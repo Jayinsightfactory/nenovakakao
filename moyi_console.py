@@ -13,7 +13,7 @@ from tkinter import ttk
 import psutil
 
 from core.moyi_control import is_paused, set_paused
-from core import keyword_forward, keyword_alerts
+from core import keyword_forward, keyword_alerts, import_order
 
 ROOT = Path(__file__).parent
 EVENT_LOG = ROOT / "data" / "moyi_events.jsonl"
@@ -51,7 +51,7 @@ class Console(tk.Tk):
     def __init__(self):
         super().__init__()
         self.title("MOYI Kakao Connector")
-        self.geometry("1080x620")
+        self.geometry("1120x760")
         self.minsize(800, 480)
         self.status = tk.StringVar(value="대기 중")
         self.pause_text = tk.StringVar()
@@ -79,6 +79,15 @@ class Console(tk.Tk):
             self.route_table.heading(col, text=label)
             self.route_table.column(col, width=width)
         self.route_table.pack(fill='x')
+        orders = ttk.LabelFrame(self, text='수입방 → 담당자 확인 → 네노바 주문등록', padding=8)
+        orders.pack(fill='x', padx=12, pady=(6, 0))
+        self.order_summary = tk.StringVar()
+        ttk.Label(orders, textvariable=self.order_summary).pack(anchor='w')
+        ttk.Label(orders, text='기존 붙여넣기 주문등록 마스터 사용 · LLM은 구조화/질문만 · 최종 등록 답변 전 쓰기 금지').pack(anchor='w')
+        self.order_table = ttk.Treeview(orders, columns=('time','status','id','staff','customer','week','items','detail'), show='headings', height=4)
+        for col, label, width in [('time','시간',110),('status','상태',110),('id','요청번호',120),('staff','담당자',100),('customer','거래처',100),('week','차수',70),('items','품목',55),('detail','상세',360)]:
+            self.order_table.heading(col, text=label); self.order_table.column(col, width=width)
+        self.order_table.pack(fill='x')
         cards = ttk.Frame(self, padding=(12, 0)); cards.pack(fill="x")
         self.metrics = {}
         for key, label in (("leased", "처리 중"), ("sent", "전송 확인"), ("unknown_result", "확인 필요"), ("room_verified", "방 검증")):
@@ -124,6 +133,17 @@ class Console(tk.Tk):
                 self.route_table.insert('', 'end', values=(datetime.fromtimestamp(row['at']).strftime('%m-%d %H:%M:%S'), row['status'], row['sender'], ', '.join(row['keywords']), row['preview'] + ' | ' + row['detail']))
         except (OSError, ValueError, KeyError):
             self.route_summary.set('전달 기록 읽기 실패 — 확인 필요')
+        try:
+            order_rows = list(import_order._read(import_order.STATE, {}).values())
+            counts = {}
+            for row in order_rows: counts[row['status']] = counts.get(row['status'], 0) + 1
+            self.order_summary.set(' · '.join(f'{key} {value}건' for key, value in sorted(counts.items())) or '신규 주문 대기 없음')
+            for child in self.order_table.get_children(): self.order_table.delete(child)
+            for row in sorted(order_rows, key=lambda r: r.get('created_at', 0))[-20:]:
+                detail = row.get('error') or ('질문 ' + ' / '.join(row.get('questions', [])) if row.get('questions') else '')
+                self.order_table.insert('', 'end', values=(datetime.fromtimestamp(row.get('created_at',0)).strftime('%m-%d %H:%M'), row['status'], row['id'], row.get('staff',''), row.get('customer',''), row.get('week',''), len(row.get('items',[])), detail))
+        except (OSError, ValueError, KeyError):
+            self.order_summary.set('주문 검토 기록 읽기 실패 — 확인 필요')
         rows = self.read_events(); counts = {key: 0 for key in self.metrics}
         for row in rows:
             if row.get("state") in counts: counts[row["state"]] += 1

@@ -215,6 +215,7 @@ def run() -> int:
     inbound_room_index = 0
     pause_announced = False
     next_approval_at = 0.0
+    next_order_review_at = 0.0
     print("[MOYI] Kakao connector worker started (fail-closed)")
     print("[MOYI] inbound schedule: sales room alternates with other rooms")
     while True:
@@ -247,6 +248,15 @@ def run() -> int:
             except Exception as exc:
                 _event(None, 'approval_check_failed', str(exc)[:200])
             next_approval_at = time.monotonic() + 30
+        if time.monotonic() >= next_order_review_at:
+            try:
+                from core import import_order, keyword_forward, order_services
+                from core.moyi_inbound import export_exact_room
+                import_order.poll(export_exact_room, keyword_forward.send_exact,
+                                  order_services.master, order_services.register_bulk, is_paused)
+            except Exception as exc:
+                _event(None, 'import_order_check_failed', str(exc)[:200])
+            next_order_review_at = time.monotonic() + 30
         try:
             response = requests.get(f"{server}/kakao/agent/pending", headers=_headers(secret), params={"limit": 10}, timeout=20)
             response.raise_for_status()

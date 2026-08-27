@@ -40,6 +40,8 @@ data/keyword_*.json
 data/keyword_*.jsonl
 data/keyword_*.log
 data/keyword_*.md
+data/import_order_*.json
+data/import_order_*.jsonl
 data/approval_*.json
 data/approval_*.png
 data/current_check.png
