@@ -13,6 +13,7 @@ from tkinter import ttk
 import psutil
 
 from core.moyi_control import is_paused, set_paused
+from core import keyword_forward, keyword_alerts
 
 ROOT = Path(__file__).parent
 EVENT_LOG = ROOT / "data" / "moyi_events.jsonl"
@@ -63,6 +64,21 @@ class Console(tk.Tk):
         ttk.Label(top, text="MOYI 카카오 연동 운영 콘솔", font=("Segoe UI", 16, "bold")).pack(side="left")
         ttk.Button(top, textvariable=self.pause_text, command=self.toggle_pause).pack(side="right", padx=(8, 0))
         ttk.Label(top, textvariable=self.status).pack(side="right")
+        routing = ttk.LabelFrame(self, text='키워드 자동 전달 · 영업방 → 현장 추가취소방', padding=8)
+        routing.pack(fill='x', padx=12)
+        self.route_enabled = tk.BooleanVar(value=keyword_forward.config().get('enabled', False))
+        ttk.Checkbutton(routing, text='자동 전달 사용 (전체 일시정지 연동)', variable=self.route_enabled,
+                        command=lambda: keyword_forward.set_enabled(self.route_enabled.get())).pack(anchor='w')
+        cfg = keyword_forward.config()
+        ttk.Label(routing, text=f"키워드: 추가 / 취소 / 변경 · 시작: {cfg.get('start_at', '미설정')} · 동일 본문 생략").pack(anchor='w')
+        ttk.Label(routing, text='완료·견적 → 확인 회차별 묶음 승인 · 답변: 요청번호 제외번호 / 안내된 모두전달·생략 번호').pack(anchor='w')
+        self.route_summary = tk.StringVar()
+        ttk.Label(routing, textvariable=self.route_summary).pack(anchor='w')
+        self.route_table = ttk.Treeview(routing, columns=('time', 'status', 'sender', 'keyword', 'detail'), show='headings', height=5)
+        for col, label, width in [('time', '시간', 130), ('status', '결과', 100), ('sender', '보낸 사람', 100), ('keyword', '감지 단어', 110), ('detail', '본문 / 상세 결과', 480)]:
+            self.route_table.heading(col, text=label)
+            self.route_table.column(col, width=width)
+        self.route_table.pack(fill='x')
         cards = ttk.Frame(self, padding=(12, 0)); cards.pack(fill="x")
         self.metrics = {}
         for key, label in (("leased", "처리 중"), ("sent", "전송 확인"), ("unknown_result", "확인 필요"), ("room_verified", "방 검증")):
@@ -89,6 +105,25 @@ class Console(tk.Tk):
         return rows
 
     def refresh(self):
+        try:
+            routing = list(keyword_forward.read_json(keyword_forward.STATE, {}).values())
+            counts_r = {label: sum(r['status'] == label for r in routing) for label in ('전송 성공', '중복 생략', '승인대기', '승인거절', '확인 필요', '결과 불명', '전송 확인중')}
+            for row in routing:
+                # All items from one scan share a request detail. Alert once
+                # for the batch, while preserving per-item dashboard rows.
+                if keyword_alerts.claim_alert(row):
+                    self.bell()
+                    alert = tk.Toplevel(self)
+                    alert.title('완료·견적 메시지 전달 승인 대기')
+                    members = [r['preview'] for r in routing if r['status'] == '승인대기' and keyword_alerts.alert_key(r) == keyword_alerts.alert_key(row)]
+                    ttk.Label(alert, text=f'{len(members)}건 승인 대기 · 카톡에서 전체 목록 확인\n\n' + members[0] + '\n\n' + row['detail'], wraplength=500, padding=15).pack()
+                    ttk.Button(alert, text='닫기 (승인은 임재용대리 카톡 답변)', command=alert.destroy).pack(pady=10)
+            self.route_summary.set(' · '.join(f'{label} {n}건' for label, n in counts_r.items()))
+            for child in self.route_table.get_children(): self.route_table.delete(child)
+            for row in sorted(routing, key=lambda r: r['at'])[-30:]:
+                self.route_table.insert('', 'end', values=(datetime.fromtimestamp(row['at']).strftime('%m-%d %H:%M:%S'), row['status'], row['sender'], ', '.join(row['keywords']), row['preview'] + ' | ' + row['detail']))
+        except (OSError, ValueError, KeyError):
+            self.route_summary.set('전달 기록 읽기 실패 — 확인 필요')
         rows = self.read_events(); counts = {key: 0 for key in self.metrics}
         for row in rows:
             if row.get("state") in counts: counts[row["state"]] += 1

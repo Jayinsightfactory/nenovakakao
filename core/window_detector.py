@@ -157,6 +157,16 @@ def activate_kakaotalk() -> KakaoWindow:
         except Exception as fallback_exc:
             raise RuntimeError("카카오톡 창을 활성화하지 못했습니다") from fallback_exc
 
+    import win32gui
+    import win32con
+    if win32gui.GetForegroundWindow() != main._hWnd:
+        pyautogui.press('alt')
+        win32gui.SetWindowPos(main._hWnd, win32con.HWND_TOP, 0, 0, 0, 0,
+                             win32con.SWP_NOMOVE | win32con.SWP_NOSIZE)
+        win32gui.SetForegroundWindow(main._hWnd)
+        time.sleep(0.3)
+    if win32gui.GetForegroundWindow() != main._hWnd:
+        raise RuntimeError('카카오톡 메인 창 포커스 확인 실패: 검색 차단')
     time.sleep(0.2)
     return find_kakaotalk_window()
 

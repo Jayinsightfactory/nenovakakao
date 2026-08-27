@@ -16,6 +16,15 @@ POLL_RETRY_SEC = 5
 MAX_ATTACHMENT_BYTES = 50 * 1024 * 1024
 SUPPRESSED_SYSTEM_TEXTS = ("말머리 설정 내역",)
 
+def _inbound_schedule(rooms: list[dict]) -> list[dict]:
+    """Alternate sales with every other room, without starving other rooms."""
+    sales = [r for r in rooms if str(r.get('exact_title') or '').strip() == '영업방']
+    others = [r for r in rooms if str(r.get('exact_title') or '').strip() != '영업방']
+    # Ambiguous bindings must not gain extra scheduling weight.
+    if len(sales) != 1 or not others:
+        return list(rooms)
+    return [room for other in others for room in (sales[0], other)]
+
 def _is_suppressed_system_item(item: dict) -> bool:
     """Return True for MOYI system notices that should not reach KakaoTalk."""
     texts = [
@@ -205,7 +214,9 @@ def run() -> int:
     next_inbound_at = 0.0
     inbound_room_index = 0
     pause_announced = False
+    next_approval_at = 0.0
     print("[MOYI] Kakao connector worker started (fail-closed)")
+    print("[MOYI] inbound schedule: sales room alternates with other rooms")
     while True:
         if is_paused():
             if not pause_announced:
@@ -218,6 +229,24 @@ def run() -> int:
             print("[MOYI] connector resumed from operations console")
             _event(None, "resumed", "operations console")
             pause_announced = False
+        if time.monotonic() >= next_approval_at:
+            try:
+                from core import keyword_approval, keyword_forward
+                from core.moyi_inbound import export_exact_room, _load_state, _save_state
+                def mark_rescan(title):
+                    response = requests.get(f'{server}/kakao/agent/rooms', headers=_headers(secret), timeout=20)
+                    response.raise_for_status()
+                    state = _load_state()
+                    pending = set(state.get('_needs_rescan', []))
+                    for room in response.json().get('items', []):
+                        if room.get('exact_title') == title:
+                            pending.add(str(room['room_binding_id']))
+                    state['_needs_rescan'] = sorted(pending)
+                    _save_state(state)
+                keyword_approval.poll(export_exact_room, keyword_forward.send_exact, is_paused, mark_rescan)
+            except Exception as exc:
+                _event(None, 'approval_check_failed', str(exc)[:200])
+            next_approval_at = time.monotonic() + 30
         try:
             response = requests.get(f"{server}/kakao/agent/pending", headers=_headers(secret), params={"limit": 10}, timeout=20)
             response.raise_for_status()
@@ -252,8 +281,9 @@ def run() -> int:
                     if str(room.get("exact_title") or "").strip()
                 ]
                 if rooms and not is_paused():
-                    room = rooms[inbound_room_index % len(rooms)]
-                    inbound_room_index = (inbound_room_index + 1) % len(rooms)
+                    schedule = _inbound_schedule(rooms)
+                    room = schedule[inbound_room_index % len(schedule)]
+                    inbound_room_index = (inbound_room_index + 1) % len(schedule)
                     title = str(room.get("exact_title") or "").strip()
                     try:
                         result = poll_inbound_once(server, secret, only_title=title)
@@ -266,7 +296,8 @@ def run() -> int:
             except Exception as exc:
                 print(f"[MOYI] inbound scan failed: {exc}")
                 _event(None, "inbound_scan_failed", str(exc)[:500])
-            # Spread one full-room rotation across the configured interval.
+            # Keep the existing per-slot delay. Sales gets alternate slots;
+            # other rooms remain round-robin (their full rotation is longer).
             # This keeps the outbound queue at the front of every 5-second loop
             # instead of blocking it behind all room exports and attachments.
             room_count = len(rooms) if rooms else 1

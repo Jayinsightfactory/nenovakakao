@@ -6,6 +6,27 @@ import core.moyi_worker as worker
 from core.moyi_worker import _download_attachment, _is_suppressed_system_item, _retryable_request_error, _safe_attachment_name, _safe_request_error
 
 
+def test_sales_alternates_without_starving_other_rooms():
+    rooms = [{'exact_title': title} for title in ('현장방', '영업방', '견적방', '스케줄방')]
+    schedule = worker._inbound_schedule(rooms)
+    assert [r['exact_title'] for r in schedule] == [
+        '영업방', '현장방', '영업방', '견적방', '영업방', '스케줄방']
+    assert rooms[0]['exact_title'] == '현장방'
+
+
+def test_sales_schedule_empty_single_missing_and_ambiguous():
+    for titles in ([], ['영업방'], ['현장방', '견적방'], ['영업방', '영업방', '현장방']):
+        rooms = [{'exact_title': title} for title in titles]
+        assert worker._inbound_schedule(rooms) == rooms
+
+
+def test_sales_schedule_after_room_list_changes():
+    rooms = [{'exact_title': title} for title in ('영업방', '현장방', '견적방')]
+    index = 3
+    schedule = worker._inbound_schedule(rooms[:2])
+    assert schedule[index % len(schedule)]['exact_title'] == '현장방'
+
+
 def _http_error(status: int) -> requests.HTTPError:
     response = requests.Response()
     response.status_code = status

@@ -226,7 +226,21 @@ def _open_or_reuse_exact_room(title: str) -> int:
     if len(existing) > 1:
         raise RuntimeError(f"exact room verification failed: {len(existing)} matches")
     if not existing:
-        open_room_by_name(title)
+        from core.keyword_approval import APPROVER
+        if title == APPROVER:
+            # Chat search also matches participants, so its first result may
+            # be an unrelated group. Use the friend directory for approvals;
+            # the exact room-title/foreground gate below still must pass.
+            from core.window_detector import activate_kakaotalk
+            from core.kakao_search import replace_room_search
+            main = activate_kakaotalk()
+            pyautogui.click(main.left + 33, main.top + 57)
+            time.sleep(0.5)
+            replace_room_search(main, title)
+            pyautogui.doubleClick(main.left + 175, main.top + 185, interval=0.12)
+            time.sleep(1)
+        else:
+            open_room_by_name(title)
     return open_unique_exact_room(title)
 
 
@@ -361,6 +375,20 @@ def poll_once(server: str, secret: str, only_title: str | None = None) -> dict[s
         )
         verify.raise_for_status()
         events = parse_export(text, binding)
+        from core import keyword_forward
+        from core.moyi_control import is_paused
+        route_cfg = keyword_forward.config()
+        if route_cfg.get('enabled') and title == route_cfg.get('source'):
+            # Exporting the destination clears its unread badge. Preserve its
+            # MOYI scan marker before any UI operation so existing sync continues.
+            for target_room in response.json().get('items', []):
+                if target_room.get('exact_title') == route_cfg.get('target'):
+                    retry_bindings.add(str(target_room['room_binding_id']))
+            state['_needs_rescan'] = sorted(retry_bindings)
+            _save_state(state)
+            keyword_forward.process_source(
+                title, events, export_exact_room, keyword_forward.send_exact, is_paused
+            )
         known_ids = state.get(binding, [])
         if not isinstance(known_ids, list):
             known_ids = []
