@@ -68,6 +68,20 @@ def test_capture_respects_operational_cutoff(isolated):
     assert order.capture(newer, lambda _: parsed(), master)
 
 
+def test_capture_can_limit_import_test_to_named_staff(isolated):
+    cfg = order.config()
+    cfg['allowed_senders'] = ['정재훈', '정재훈대리']
+    cfg['staff_rooms'].update({'정재훈': '정재훈대리', '정재훈대리': '정재훈대리'})
+    order._save(order.CONFIG, cfg)
+    blocked = event('blocked'); blocked['sender_name'] = '다른담당자'
+    assert order.capture(blocked, lambda _: parsed(), master) is None
+    accepted = event('accepted'); accepted['sender_name'] = '정재훈'
+    assert order.capture(accepted, lambda _: parsed(), master)
+    row = order._read(order.STATE, {})['accepted']
+    assert row['staff'] == '정재훈'
+    assert row['staff_room'] == '정재훈대리'
+
+
 def test_commands_are_request_scoped_and_unambiguous():
     rid = 'ORD-ABC12345'
     assert order.parse_command(f'{rid} 3=CARNATION NOVIA', rid) == ('product', (3, 'CARNATION NOVIA'))

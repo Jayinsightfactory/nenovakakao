@@ -32,7 +32,7 @@ def _save(path, value):
 
 def config():
     return _read(CONFIG, {'enabled': False, 'source': '수입방', 'start_at': None,
-                          'staff_rooms': {}, 'write_enabled': False})
+                          'staff_rooms': {}, 'allowed_senders': [], 'write_enabled': False})
 
 
 def direct_contacts():
@@ -153,12 +153,19 @@ def capture(event, parse, master):
     if event['event_id'] in rows: return rows[event['event_id']]['id']
     cfg = config()
     if not cfg.get('enabled'): return None
+    sender = str(event.get('sender_name') or '').strip()
+    allowed = {normalize(value) for value in cfg.get('allowed_senders', []) if str(value).strip()}
+    if allowed and normalize(sender) not in allowed:
+        return None
     if cfg.get('start_at'):
         from core.keyword_forward import timestamp
         stamp = timestamp(event.get('timestamp', ''))
         if stamp is None or stamp <= datetime.fromisoformat(cfg['start_at']):
             return None
     parsed = parse(event['content'])
+    # The Kakao export is authoritative for who requested the order. LLM text
+    # extraction frequently cannot infer a staff name from the message body.
+    parsed['staff'] = sender
     draft = build_draft(event, parsed, master())
     if not draft['items']:
         draft['status'] = 'ignored'
