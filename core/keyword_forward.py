@@ -184,7 +184,9 @@ def send_exact(title, payload):
             raise RuntimeError('전송 직전 방 제목/포커스 불일치')
         pyperclip.copy(payload)
         pyautogui.hotkey('ctrl', 'v')
-        time.sleep(0.2)
+        # Kakao RichEdit applies multiline clipboard text asynchronously on
+        # some PCs. 0.2s intermittently read the previous/partial value.
+        time.sleep(0.5)
         if is_paused() or not config().get('enabled') or not _foreground_belongs_to(hwnd) or not focused(edit):
             raise RuntimeError('붙여넣기 후 정지/포커스 변경; 확인 필요')
         buffer = ctypes.create_unicode_buffer(len(payload) + 16)
