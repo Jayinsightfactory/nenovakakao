@@ -39,7 +39,10 @@ class KeywordTests(unittest.TestCase):
 
     def test_success_verified_and_replay_suppressed(self):
         after = self.history + '\n[나] [오전 9:07] 직원 - 장미 2박스 추가'
-        self.run_route([self.event()], Mock(side_effect=[self.history, after]))
+        event = self.event()
+        self.run_route([event])
+        a.route_status(event, '승인됨', 'test approval')
+        self.run_route([event], Mock(side_effect=[self.history, after]))
         self.assertEqual(k.read_json(k.STATE, {})['one']['status'], '전송 성공')
         self.run_route([self.event()])
         self.send.assert_called_once()
@@ -51,7 +54,10 @@ class KeywordTests(unittest.TestCase):
 
     def test_uncertain_send_never_retried(self):
         self.send.side_effect = RuntimeError('uncertain')
-        self.run_route([self.event()])
+        event = self.event()
+        self.run_route([event])
+        a.route_status(event, '승인됨', 'test approval')
+        self.run_route([event])
         self.run_route([self.event(), self.event(eid='same-body')])
         self.send.assert_called_once()
         self.assertEqual(k.read_json(k.STATE, {})['one']['status'], '결과 불명')
@@ -68,8 +74,16 @@ class KeywordTests(unittest.TestCase):
         self.assertFalse(k.duplicate('장미 3박스 추가', [{'content': '장미 2박스 추가'}]))
 
     def test_unconfirmed_history_is_not_success(self):
-        self.run_route([self.event()])
+        event = self.event()
+        self.run_route([event])
+        a.route_status(event, '승인됨', 'test approval')
+        self.run_route([event])
         self.assertEqual(k.read_json(k.STATE, {})['one']['status'], '결과 불명')
+
+    def test_plain_keyword_message_requires_approval(self):
+        self.run_route([self.event('장미 2박스 추가')])
+        self.send.assert_not_called()
+        self.assertEqual(k.read_json(k.STATE, {})['one']['status'], '승인대기')
 
     def test_complete_message_requires_approval(self):
         self.run_route([self.event('장미 추가 완료')])
@@ -175,6 +189,8 @@ class KeywordTests(unittest.TestCase):
         self.run_route([self.event('다른 추가 완료', eid='pending')])
         normal = self.event('장미 7박스 추가', eid='normal')
         after = self.history + '\n[나] [오전 9:12] 직원 - 장미 7박스 추가'
+        self.run_route([normal])
+        a.route_status(normal, '승인됨', 'test approval')
         self.run_route([normal], Mock(side_effect=[self.history, after]))
         self.assertEqual(k.read_json(k.STATE, {})['normal']['status'], '전송 성공')
 

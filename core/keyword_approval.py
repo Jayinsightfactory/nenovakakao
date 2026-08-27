@@ -53,7 +53,7 @@ def request_message(row):
         numbered = '\n\n'.join(f"{i}. {e['sender_name']} - {e['content']}" for i, e in enumerate(events, 1))
         n = len(events)
         return (f"[전달 승인 요청 {rid}]\n대상: {k.config()['target']}\n"
-                f"완료·견적 포함 메시지 {n}건입니다. 몇 번을 빼고 보낼까요?\n\n{numbered}\n\n"
+                f"추가·취소·변경 메시지 {n}건입니다. 몇 번을 빼고 보낼까요?\n\n{numbered}\n\n"
                 f"{n+1}. 모두 보낸다\n{n+2}. 모두 안 보낸다\n"
                 f"제외할 번호: {rid} 1 (여러 개는 쉼표로 구분)\n"
                 f"모두 전달: {rid} {n+1}\n모두 생략: {rid} {n+2}\n"

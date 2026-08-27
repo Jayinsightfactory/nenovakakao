@@ -71,7 +71,7 @@ class Console(tk.Tk):
                         command=lambda: keyword_forward.set_enabled(self.route_enabled.get())).pack(anchor='w')
         cfg = keyword_forward.config()
         ttk.Label(routing, text=f"키워드: 추가 / 취소 / 변경 · 시작: {cfg.get('start_at', '미설정')} · 동일 본문 생략").pack(anchor='w')
-        ttk.Label(routing, text='완료·견적 → 확인 회차별 묶음 승인 · 답변: 요청번호 제외번호 / 안내된 모두전달·생략 번호').pack(anchor='w')
+        ttk.Label(routing, text='모든 전달 후보 → 임재용대리 묶음 승인 · 답변: 요청번호 제외번호 / 모두전달·생략 번호').pack(anchor='w')
         self.route_summary = tk.StringVar()
         ttk.Label(routing, textvariable=self.route_summary).pack(anchor='w')
         self.route_table = ttk.Treeview(routing, columns=('time', 'status', 'sender', 'keyword', 'detail'), show='headings', height=5)
@@ -114,7 +114,7 @@ class Console(tk.Tk):
                 if keyword_alerts.claim_alert(row):
                     self.bell()
                     alert = tk.Toplevel(self)
-                    alert.title('완료·견적 메시지 전달 승인 대기')
+                    alert.title('키워드 메시지 전달 승인 대기')
                     members = [r['preview'] for r in routing if r['status'] == '승인대기' and keyword_alerts.alert_key(r) == keyword_alerts.alert_key(row)]
                     ttk.Label(alert, text=f'{len(members)}건 승인 대기 · 카톡에서 전체 목록 확인\n\n' + members[0] + '\n\n' + row['detail'], wraplength=500, padding=15).pack()
                     ttk.Button(alert, text='닫기 (승인은 임재용대리 카톡 답변)', command=alert.destroy).pack(pady=10)

@@ -14,7 +14,7 @@ CONFIG = ROOT / 'data' / 'keyword_forward_config.json'
 STATE = ROOT / 'data' / 'keyword_forward_state.json'
 LOG = ROOT / 'data' / 'keyword_forward_events.jsonl'
 KST = timezone(timedelta(hours=9))
-APPROVAL_WORDS = ('완료', '견적')
+APPROVAL_WORDS = ('추가', '취소', '변경')
 
 
 def read_json(path, default):
@@ -123,7 +123,9 @@ def process_source(title, events, export, send, paused):
             continue
         if paused() or not config().get('enabled'):
             return
-        if any(word in body for word in APPROVAL_WORDS) and not approved:
+        # Every routed message requires explicit approval. Keyword matching is
+        # already enforced above; never allow a non-approved direct send.
+        if not approved:
             from core.keyword_approval import enqueue
             request_id = enqueue(event, batch_id=approval_batch)
             record(event, '승인대기', f'임재용대리 승인 필요 · 요청 {request_id}')
