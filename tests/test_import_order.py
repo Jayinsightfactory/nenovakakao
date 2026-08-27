@@ -77,6 +77,21 @@ def test_commands_are_request_scoped_and_unambiguous():
     assert order.parse_command(f'{rid} 차수=35-1', rid) == ('차수', '35-1')
     assert order.parse_command(f'{rid} 등록', rid) == ('register', None)
     assert order.parse_command('ORD-WRONG 등록', rid) is None
+    assert order.parse_command('확인', rid) == ('register', None)
+    assert order.parse_command('3번 노비아', rid) == ('product', (3, '노비아'))
+    assert order.parse_command('3번 2박스', rid) == ('quantity', (3, 2.0, '박스'))
+    assert order.parse_command('3번 거래처 CL10', rid) == ('item_customer', (3, 'CL10'))
+    assert order.parse_command('차수 35-2', rid) == ('차수', '35-2')
+    assert order.parse_command('확인', rid, allow_short=False) is None
+
+
+def test_only_one_mobile_review_can_wait_per_room(isolated):
+    rows = {
+        'one': {'staff_room': '정재훈대리', 'status': 'waiting'},
+        'two': {'staff_room': '정재훈대리', 'status': 'draft'},
+        'other': {'staff_room': '임재용대리', 'status': 'waiting'},
+    }
+    assert [event_id for event_id, _ in order._waiting_in_room(rows, '정재훈대리')] == ['one']
 
 
 def test_corrections_rematch_existing_master_only(isolated):

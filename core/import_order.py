@@ -132,7 +132,7 @@ def validate(draft):
 
 
 def review_message(draft):
-    lines = [f"[수입 주문 확인 {draft['id']}]", f"담당자: {draft['staff'] or '확인 필요'}",
+    lines = ["[수입 주문 확인]", f"담당자: {draft['staff'] or '확인 필요'}",
              f"차수: {draft['week'] or '확인 필요'}", '']
     for item in draft['items']:
         name = item['product'] or item['raw_product'] or '매칭 필요'
@@ -142,11 +142,9 @@ def review_message(draft):
     issues = validate(draft)
     if issues:
         lines += ['', '확인 필요: ' + ' · '.join(issues)]
-    lines += ['', f"품목 수정: {draft['id']} 3=CARNATION NOVIA",
-              f"수량 수정: {draft['id']} 3수량=2박스",
-              f"거래처 수정: {draft['id']} 3거래처=CL10",
-              f"차수 수정: {draft['id']} 차수=35-1",
-              f"전체 확인 후 등록: {draft['id']} 등록", f"취소: {draft['id']} 취소"]
+    lines += ['', "모바일 답장 예시",
+              "3번 노비아", "3번 2박스", "3번 거래처 CL10",
+              "차수 35-1", "전체 확인: 확인", "취소: 취소"]
     return '\n'.join(lines)
 
 
@@ -169,7 +167,7 @@ def capture(event, parse, master):
     return draft['id']
 
 
-def parse_command(text, rid):
+def parse_command(text, rid, allow_short=True):
     text = text.strip()
     if text == f'{rid} 등록': return ('register', None)
     if text == f'{rid} 취소': return ('cancel', None)
@@ -181,7 +179,27 @@ def parse_command(text, rid):
     if m: return ('item_customer', (int(m[1]), m[2].strip()))
     m = re.fullmatch(re.escape(rid) + r'\s+(거래처|차수)=(.+)', text)
     if m: return (m[1], m[2].strip())
+    if not allow_short:
+        return None
+    compact = re.sub(r'\s+', ' ', text).strip()
+    if compact in {'확인', '확정', '진행', '등록', '네', '맞아요', '맞습니다', 'ㅇㅋ', 'ok', 'OK'}:
+        return ('register', None)
+    if compact in {'취소', '안함', '안 해', '하지마', '하지 마'}:
+        return ('cancel', None)
+    m = re.fullmatch(r'(\d+)번?\s+(?:수량\s*)?(\d+(?:\.\d+)?)\s*(박스|단|스팀|개)', compact)
+    if m: return ('quantity', (int(m[1]), float(m[2]), m[3]))
+    m = re.fullmatch(r'(\d+)번?\s+거래처\s+(.+)', compact)
+    if m: return ('item_customer', (int(m[1]), m[2].strip()))
+    m = re.fullmatch(r'(\d+)번?\s+(?:품목\s+)?(.+)', compact)
+    if m: return ('product', (int(m[1]), m[2].strip()))
+    m = re.fullmatch(r'차수\s+(.+)', compact)
+    if m: return ('차수', m[1].strip())
     return None
+
+
+def _waiting_in_room(rows, room):
+    return [(event_id, row) for event_id, row in rows.items()
+            if row.get('staff_room') == room and row.get('status') in {'waiting', 'request_unknown'}]
 
 
 def append_log(row, action, detail):
@@ -254,17 +272,22 @@ def poll(export, send, master, registrar, paused):
             if row['status'] == 'draft':
                 if not row.get('staff_room'):
                     row['status'] = 'hold'; append_log(row, 'hold', '담당자 방 매핑 없음')
+                elif _waiting_in_room(rows, row['staff_room']):
+                    # A mobile reply such as "확인" must always refer to exactly
+                    # one visible review. Queue later drafts for this person.
+                    continue
                 else:
                     _verified_send(row, review_message(row), export, send, paused)
                     append_log(row, 'review_sent', row['staff_room'])
             elif row['status'] == 'waiting':
+                allow_short = len(_waiting_in_room(rows, row['staff_room'])) == 1
                 replies = _history(export, row['staff_room'])
                 boundary = next((i for i, e in enumerate(replies) if e['event_id'] == row['request_event_id']), None)
                 if boundary is None: continue
                 command_event = None; command = None
                 for reply in replies[boundary+1:]:
                     if reply['sender_name'] != row['staff_room']: continue
-                    command = parse_command(reply['content'], row['id'])
+                    command = parse_command(reply['content'], row['id'], allow_short=allow_short)
                     if command: command_event = reply; break
                 if not command: continue
                 row['decision_event_id'] = command_event['event_id']
