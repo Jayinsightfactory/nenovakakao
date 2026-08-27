@@ -8,6 +8,10 @@ REQUESTS = k.ROOT / 'data' / 'keyword_approval_requests.json'
 APPROVER = '임재용대리'
 
 
+def is_batch(row):
+    return len(row.get('events', [])) > 1
+
+
 def enqueue(event, batch_id=None):
     rows = k.read_json(REQUESTS, {})
     # Recovery must not enqueue a second request for the same source event.
@@ -48,7 +52,7 @@ def batch_selection(content, row):
 
 def request_message(row):
     rid = row['id']
-    if 'events' in row:
+    if is_batch(row):
         events = row['events']
         numbered = '\n\n'.join(f"{i}. {e['sender_name']} - {e['content']}" for i, e in enumerate(events, 1))
         n = len(events)
@@ -93,7 +97,7 @@ def decision(replies, row):
         if event['event_id'] in known or event.get('sender_name') != APPROVER:
             continue
         content = event['content'].strip()
-        if 'events' in row:
+        if is_batch(row):
             selected = batch_selection(content, row)
             if selected is not None:
                 return selected
@@ -154,7 +158,7 @@ def poll(export, send, paused, mark_rescan):
                 continue
         if row['status'] == 'waiting':
             reply = decision(history(), row)
-            if 'events' in row:
+            if is_batch(row):
                 if reply is None:
                     continue
                 row.update(status='approved', selected=reply)
@@ -171,7 +175,7 @@ def poll(export, send, paused, mark_rescan):
                 k.save_json(REQUESTS, rows)
                 route_status(event, '승인됨', f'요청 {rid}: 임재용대리 보내')
         if row['status'] == 'approved':
-            if 'events' in row:
+            if is_batch(row):
                 for i, item in enumerate(events):
                     if paused() or not k.config().get('enabled'):
                         return

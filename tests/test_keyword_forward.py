@@ -132,7 +132,7 @@ class KeywordTests(unittest.TestCase):
         a.poll(histories.__getitem__, send, lambda: False, mark)
         self.assertEqual(sends, [a.APPROVER])
         self.assertEqual(k.read_json(a.REQUESTS, {})[rid]['status'], 'waiting')
-        histories[a.APPROVER] += f'\n[{a.APPROVER}] [오전 9:11] {rid} 2'
+        histories[a.APPROVER] += f'\n[{a.APPROVER}] [오전 9:11] 보내 {rid}'
         a.poll(histories.__getitem__, send, lambda: False, mark)
         self.assertEqual(sends, [a.APPROVER, '현장 추가취소방'])
         self.assertEqual(k.read_json(k.STATE, {})['one']['status'], '전송 성공')
@@ -167,6 +167,13 @@ class KeywordTests(unittest.TestCase):
         self.assertIn('보내 ABC123', message)
         self.assertNotIn('메시지가 삭제되었습니다', message)
         self.assertLess(len(message), 400)
+
+    def test_one_event_batch_uses_compact_single_prompt(self):
+        event = {'sender_name': '정재훈', 'content': '35-1 출고일 변경사항'}
+        row = {'id': 'ABC123', 'event': event, 'events': [event]}
+        message = a.request_message(row)
+        self.assertIn('보내 ABC123 / 보내지마 ABC123', message)
+        self.assertNotIn('몇 번을 빼고', message)
 
     def test_batch_choices_validate_request_and_ranges(self):
         row = dict(id='ABC', events=[{}] * 5)
