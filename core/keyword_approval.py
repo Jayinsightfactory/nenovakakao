@@ -59,17 +59,16 @@ def request_message(row):
                 f"모두 전달: {rid} {n+1}\n모두 생략: {rid} {n+2}\n"
                 "다른 묶음과 혼동되지 않도록 요청번호도 함께 답해주세요.")
     event = row['event']
-    words = ', '.join(word for word in k.APPROVAL_WORDS if word in event['content'])
     # Kakao's RichEdit control can transform or truncate long multiline text.
     # Keep approval prompts compact; the authoritative original stays in 영업방.
     summary = re.sub(r'메시지가 삭제되었습니다\.?', '', event['content'])
     summary = re.sub(r'\s+', ' ', summary).strip()
-    if len(summary) > 180:
-        summary = summary[:177].rstrip() + '...'
-    return (f"[전달 승인 {rid}]\n키워드: {words}\n"
+    if len(summary) > 70:
+        summary = summary[:67].rstrip() + '...'
+    return (f"[전달 승인 {rid}]\n"
             f"{event['sender_name']} - {summary}\n"
-            f"대상: {k.config()['target']}\n\n"
-            f"전달하려면: 보내 {rid}\n생략하려면: 보내지마 {rid}")
+            f"대상: {k.config()['target']}\n"
+            f"보내 {rid} / 보내지마 {rid}")
 
 
 def route_status(event, status, detail):
