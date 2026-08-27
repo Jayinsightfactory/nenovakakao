@@ -74,6 +74,10 @@ def process_source(title, events, export, send, paused):
     cutoff = datetime.fromisoformat(cfg['start_at'])
     target = cfg['target']
     approval_batch = uuid.uuid4().hex[:12].upper()
+    # Approval prompts are operational, not archival. Within a newly detected
+    # group show the most recent Kakao message first.
+    events = sorted(events, key=lambda event: timestamp(event.get('timestamp', '')) or cutoff,
+                    reverse=True)
 
     def record(event, status, detail):
         row = {'at': time.time(), 'status': status, 'event_id': event['event_id'],
@@ -105,6 +109,9 @@ def process_source(title, events, export, send, paused):
             record(event, '확인 필요', '원본 메시지 시각 확인 불가')
             continue
         if stamp <= cutoff:
+            continue
+        if '메시지가 삭제되었습니다' in event['content']:
+            record(event, '삭제 메시지 생략', '카카오에서 삭제된 원문은 승인/전달하지 않음')
             continue
         if paused() or not config().get('enabled'):
             return

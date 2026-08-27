@@ -168,6 +168,12 @@ class KeywordTests(unittest.TestCase):
         self.assertNotIn('메시지가 삭제되었습니다', message)
         self.assertLess(len(message), 400)
 
+    def test_deleted_kakao_message_is_never_queued_for_approval(self):
+        event = self.event('35-1 출고일 변경사항\n메시지가 삭제되었습니다.')
+        self.run_route([event])
+        self.assertEqual(k.read_json(k.STATE, {})[event['event_id']]['status'], '삭제 메시지 생략')
+        self.assertEqual(k.read_json(a.REQUESTS, {}), {})
+
     def test_one_event_batch_uses_compact_single_prompt(self):
         event = {'sender_name': '정재훈', 'content': '35-1 출고일 변경사항'}
         row = {'id': 'ABC123', 'event': event, 'events': [event]}
