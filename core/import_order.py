@@ -84,12 +84,19 @@ def _display_product(row, item):
 def build_draft(event, parsed, master):
     products = master.get('products', {}).get('data', master.get('products', []))
     customers = master.get('customers', {}).get('data', master.get('customers', []))
-    customer, customer_candidates = match_one(parsed.get('customer', ''), customers)
+    default_customer = parsed.get('customer', '')
+    customer, customer_candidates = match_one(default_customer, customers)
     items = []
     for index, raw in enumerate(parsed.get('items') or [], 1):
+        raw_customer = raw.get('customer') or default_customer
+        item_customer, item_customer_candidates = match_one(raw_customer, customers)
         product, candidates = match_one(raw.get('product', ''), products)
         items.append({
             'index': index, 'raw_product': raw.get('product', ''),
+            'raw_customer': raw_customer,
+            'customer': (item_customer or {}).get('name') or raw_customer,
+            'customer_key': (item_customer or {}).get('nenova_key'),
+            'customer_candidates': [c.get('name') for c in item_customer_candidates],
             'quantity': raw.get('quantity'), 'unit': raw.get('unit') or '',
             'category': raw.get('category') or '', 'matched': bool(product),
             'product': _display_product(product or {}, raw),
@@ -102,7 +109,7 @@ def build_draft(event, parsed, master):
     return {
         'id': rid, 'event': event, 'status': 'draft', 'created_at': time.time(),
         'staff': staff, 'staff_room': staff_room,
-        'customer': (customer or {}).get('name') or parsed.get('customer') or '',
+        'customer': (customer or {}).get('name') or default_customer or '',
         'customer_key': (customer or {}).get('nenova_key'),
         'customer_candidates': [c.get('name') for c in customer_candidates],
         'week': str(parsed.get('week') or ''), 'items': items,
@@ -113,10 +120,10 @@ def build_draft(event, parsed, master):
 def validate(draft):
     issues = []
     if not draft.get('staff_room'): issues.append('담당자 카카오톡 방 매핑 필요')
-    if not draft.get('customer_key'): issues.append('거래처 매칭 확인 필요')
     if not draft.get('week'): issues.append('차수 확인 필요')
     if not draft.get('items'): issues.append('품목 없음')
     for item in draft.get('items', []):
+        if not item.get('customer_key'): issues.append(f"{item['index']}번 거래처 확인 필요")
         if not item.get('matched'): issues.append(f"{item['index']}번 품목 확인 필요")
         if not isinstance(item.get('quantity'), (int, float)) or item['quantity'] <= 0:
             issues.append(f"{item['index']}번 수량 확인 필요")
@@ -126,17 +133,18 @@ def validate(draft):
 
 def review_message(draft):
     lines = [f"[수입 주문 확인 {draft['id']}]", f"담당자: {draft['staff'] or '확인 필요'}",
-             f"거래처: {draft['customer'] or '확인 필요'}", f"차수: {draft['week'] or '확인 필요'}", '']
+             f"차수: {draft['week'] or '확인 필요'}", '']
     for item in draft['items']:
         name = item['product'] or item['raw_product'] or '매칭 필요'
         suffix = '' if item['matched'] else f" [후보: {', '.join(item['candidates']) or '없음'}]"
-        lines.append(f"{item['index']}. {name} / {item['quantity'] or '?'}{item['unit'] or ''}{suffix}")
+        customer = item.get('customer') or item.get('raw_customer') or '거래처 확인 필요'
+        lines.append(f"{item['index']}. {customer} / {name} / {item['quantity'] or '?'}{item['unit'] or ''}{suffix}")
     issues = validate(draft)
     if issues:
         lines += ['', '확인 필요: ' + ' · '.join(issues)]
     lines += ['', f"품목 수정: {draft['id']} 3=CARNATION NOVIA",
               f"수량 수정: {draft['id']} 3수량=2박스",
-              f"거래처 수정: {draft['id']} 거래처=주광",
+              f"거래처 수정: {draft['id']} 3거래처=CL10",
               f"차수 수정: {draft['id']} 차수=35-1",
               f"전체 확인 후 등록: {draft['id']} 등록", f"취소: {draft['id']} 취소"]
     return '\n'.join(lines)
@@ -169,6 +177,8 @@ def parse_command(text, rid):
     if m: return ('quantity', (int(m[1]), float(m[2]), m[3]))
     m = re.fullmatch(re.escape(rid) + r'\s+(\d+)=(.+)', text)
     if m: return ('product', (int(m[1]), m[2].strip()))
+    m = re.fullmatch(re.escape(rid) + r'\s+(\d+)거래처=(.+)', text)
+    if m: return ('item_customer', (int(m[1]), m[2].strip()))
     m = re.fullmatch(re.escape(rid) + r'\s+(거래처|차수)=(.+)', text)
     if m: return (m[1], m[2].strip())
     return None
@@ -218,6 +228,14 @@ def _apply(row, command, master_value):
         item.update(raw_product=term, matched=bool(matched), product=_display_product(matched or {}, item),
                     product_key=(matched or {}).get('nenova_key') or (matched or {}).get('code'),
                     candidates=[_display_product(c, item) for c in candidates])
+    elif action == 'item_customer':
+        index, term = value
+        if not 1 <= index <= len(row['items']): raise ValueError('품목 번호 범위 오류')
+        matched, candidates = match_one(term, master_value.get('customers', {}).get('data', []))
+        row['items'][index-1].update(
+            raw_customer=term, customer=(matched or {}).get('name') or term,
+            customer_key=(matched or {}).get('nenova_key'),
+            customer_candidates=[c.get('name') for c in candidates])
     elif action == '거래처':
         matched, candidates = match_one(value, master_value.get('customers', {}).get('data', []))
         row.update(customer=(matched or {}).get('name') or value,
@@ -252,16 +270,21 @@ def poll(export, send, master, registrar, paused):
                 row['decision_event_id'] = command_event['event_id']
                 response = _apply(row, command, master())
                 if row['status'] == 'approved':
-                    issues = validate(row)
-                    if issues:
-                        row['status'] = 'waiting'
-                        response = '등록할 수 없습니다: ' + ' · '.join(issues) + '\n\n' + review_message(row)
+                    if row.get('simulation'):
+                        row.update(status='completed_simulation', completed_at=time.time())
+                        response = (f"[시뮬레이션 완료 {row['id']}]\n"
+                                    "검토 답변을 반영했습니다. 실제 주문등록은 0건입니다.")
                     else:
-                        row['status'] = 'registering'; rows[event_id] = row; _save(STATE, rows)
-                        result = registrar(row)  # registrar must verify the persisted order
-                        row.update(status='completed', registration_result=result, completed_at=time.time())
-                        response = (f"[주문등록 완료 {row['id']}]\n거래처: {row['customer']}\n차수: {row['week']}\n"
-                                    f"품목: {len(row['items'])}개\n네노바 주문 재조회까지 확인했습니다.")
+                        issues = validate(row)
+                        if issues:
+                            row['status'] = 'waiting'
+                            response = '등록할 수 없습니다: ' + ' · '.join(issues) + '\n\n' + review_message(row)
+                        else:
+                            row['status'] = 'registering'; rows[event_id] = row; _save(STATE, rows)
+                            result = registrar(row)  # registrar must verify the persisted order
+                            row.update(status='completed', registration_result=result, completed_at=time.time())
+                            response = (f"[주문등록 완료 {row['id']}]\n차수: {row['week']}\n"
+                                        f"품목: {len(row['items'])}개\n네노바 주문 재조회까지 확인했습니다.")
                 if response:
                     # A reply is itself the new boundary for the next command.
                     row['status_before_reply'] = row['status']

@@ -32,7 +32,7 @@ def master():
 
 def parsed():
     return {'staff': '임재용대리', 'customer': '주광농원', 'week': '35-1',
-            'items': [{'category': 'carnation', 'product': 'novia', 'quantity': 2, 'unit': '박스'}],
+            'items': [{'customer': '주광농원', 'category': 'carnation', 'product': 'novia', 'quantity': 2, 'unit': '박스'}],
             'questions': []}
 
 
@@ -72,6 +72,7 @@ def test_commands_are_request_scoped_and_unambiguous():
     rid = 'ORD-ABC12345'
     assert order.parse_command(f'{rid} 3=CARNATION NOVIA', rid) == ('product', (3, 'CARNATION NOVIA'))
     assert order.parse_command(f'{rid} 3수량=2박스', rid) == ('quantity', (3, 2.0, '박스'))
+    assert order.parse_command(f'{rid} 3거래처=CL10', rid) == ('item_customer', (3, 'CL10'))
     assert order.parse_command(f'{rid} 거래처=주광', rid) == ('거래처', '주광')
     assert order.parse_command(f'{rid} 차수=35-1', rid) == ('차수', '35-1')
     assert order.parse_command(f'{rid} 등록', rid) == ('register', None)
@@ -89,13 +90,29 @@ def test_corrections_rematch_existing_master_only(isolated):
 
 
 def test_validation_blocks_unmatched_or_missing_values(isolated):
-    row = order.build_draft(event(), dict(parsed(), week='', customer='없음'), master())
+    invalid = dict(parsed(), week='', customer='없음', items=[
+        {'customer': '없음', 'product': 'novia', 'quantity': 2, 'unit': '박스'}])
+    row = order.build_draft(event(), invalid, master())
     row['items'][0].update(matched=False, quantity=None, unit='')
     issues = order.validate(row)
     assert any('거래처' in issue for issue in issues)
     assert any('차수' in issue for issue in issues)
     assert any('품목' in issue for issue in issues)
     assert any('수량' in issue for issue in issues)
+
+
+def test_multiple_customer_sections_are_kept_per_item(isolated):
+    values = master()
+    values['customers']['data'].append({'name': 'CL10', 'nenova_key': 11})
+    multi = dict(parsed(), customer='', items=[
+        {'customer': '주광농원', 'product': 'novia', 'quantity': 2, 'unit': '박스'},
+        {'customer': 'CL10', 'product': '로다스', 'quantity': 1, 'unit': '박스'},
+    ])
+    row = order.build_draft(event(), multi, values)
+    assert [item['customer_key'] for item in row['items']] == [10, 11]
+    message = order.review_message(row)
+    assert '주광 / CARNATION NOVIA / 2박스' in message
+    assert 'CL10 / CARNATION RODAS CREAM / 1박스' in message
 
 
 def test_registration_is_disabled_without_explicit_switch(monkeypatch):

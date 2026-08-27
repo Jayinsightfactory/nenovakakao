@@ -193,6 +193,12 @@ def send_exact(title, payload):
         send_message.restype = wintypes.LPARAM
         send_message(edit, win32con.WM_GETTEXT, len(buffer), ctypes.addressof(buffer))
         if normalize(buffer.value) != normalize(payload):
+            # The input was empty before this worker pasted. If Kakao transforms
+            # or truncates that paste, remove only this worker-owned draft so a
+            # later retry cannot append to stale text.
+            if _foreground_belongs_to(hwnd) and focused(edit):
+                pyautogui.hotkey('ctrl', 'a')
+                pyautogui.press('backspace')
             raise RuntimeError('입력란 원문 검증 실패; Enter 전송 차단')
         pyautogui.press('enter')
         time.sleep(0.8)

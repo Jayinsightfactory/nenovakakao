@@ -2,7 +2,9 @@
 import json, os, re
 
 SYSTEM = '''Extract an import flower order from Korean Kakao text. Return JSON only:
-{"staff":"", "customer":"", "week":"", "items":[{"category":"", "product":"", "quantity":1, "unit":"박스"}], "questions":[]}
+{"staff":"", "week":"", "items":[{"customer":"", "category":"", "product":"", "quantity":1, "unit":"박스"}], "questions":[]}
+A customer/section header such as CL63 applies to every following item until the next customer/section header.
+Keep each item's customer even when one message contains multiple customers such as CL63 and CL10.
 Do not invent missing values. Use empty strings/null and add a short Korean question. Never output database keys.'''
 
 
@@ -21,4 +23,3 @@ def parse(text):
     value = json.loads(match.group())
     if not isinstance(value.get('items'), list): raise RuntimeError('LLM items 형식 오류')
     return value
-
