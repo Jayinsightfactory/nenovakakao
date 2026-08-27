@@ -25,9 +25,11 @@ def master():
 def register_bulk(draft):
     if os.getenv('NENOVA_ORDER_WRITE_ENABLED') != '1':
         raise RuntimeError('네노바 주문 쓰기 비활성: NENOVA_ORDER_WRITE_ENABLED=1 필요')
-    user = os.getenv('NENOVA_USER_ID', '').strip()
-    password = os.getenv('NENOVA_PASSWORD', '').strip()
-    if not user or not password: raise RuntimeError('네노바 로그인 정보 미설정')
+    from core.credential_store import load
+    profile = draft.get('staff_room') or draft.get('staff', '')
+    credential = load(profile)
+    if not credential: raise RuntimeError(f"담당자 네노바 로그인 미설정: {profile}")
+    user, password = credential['username'], credential['password']
     base = os.getenv('NENOVA_SERVER', 'https://nenovaweb.com').rstrip('/')
     session = requests.Session()
     login = session.post(base + '/api/auth/login', json={'userId': user, 'password': password}, timeout=20)
@@ -35,7 +37,7 @@ def register_bulk(draft):
     token = login.json().get('token')
     if not token: raise RuntimeError('네노바 로그인 토큰 없음')
     headers = {'Authorization': 'Bearer ' + token, 'Idempotency-Key': draft['id']}
-    payload = {'requestId': draft['id'], 'week': draft['week'], 'customerId': draft['customer_key'],
+    payload = {'requestId': draft['id'], 'approvedBy': draft['staff'], 'week': draft['week'], 'customerId': draft['customer_key'],
                'items': [{'productCode': i['product_key'], 'qty': i['quantity'], 'unit': i['unit']}
                          for i in draft['items']]}
     response = session.post(base + '/api/orders', headers=headers, json=payload, timeout=30)

@@ -8,12 +8,12 @@ from __future__ import annotations
 import json, subprocess, sys, time, tkinter as tk
 from datetime import datetime
 from pathlib import Path
-from tkinter import ttk
+from tkinter import ttk, messagebox
 
 import psutil
 
 from core.moyi_control import is_paused, set_paused
-from core import keyword_forward, keyword_alerts, import_order
+from core import keyword_forward, keyword_alerts, import_order, credential_store
 
 ROOT = Path(__file__).parent
 EVENT_LOG = ROOT / "data" / "moyi_events.jsonl"
@@ -84,6 +84,7 @@ class Console(tk.Tk):
         self.order_summary = tk.StringVar()
         ttk.Label(orders, textvariable=self.order_summary).pack(anchor='w')
         ttk.Label(orders, text='기존 붙여넣기 주문등록 마스터 사용 · LLM은 구조화/질문만 · 최종 등록 답변 전 쓰기 금지').pack(anchor='w')
+        ttk.Button(orders, text='담당자별 네노바 로그인 설정', command=self.setup_nenova_credential).pack(anchor='e')
         self.order_table = ttk.Treeview(orders, columns=('time','status','id','staff','customer','week','items','detail'), show='headings', height=4)
         for col, label, width in [('time','시간',110),('status','상태',110),('id','요청번호',120),('staff','담당자',100),('customer','거래처',100),('week','차수',70),('items','품목',55),('detail','상세',360)]:
             self.order_table.heading(col, text=label); self.order_table.column(col, width=width)
@@ -104,6 +105,24 @@ class Console(tk.Tk):
         bottom = ttk.Frame(self, padding=(12, 0, 12, 12)); bottom.pack(fill="x")
         ttk.Label(bottom, text="확인 필요 항목은 자동 재전송하지 않습니다. 워커 로그와 서버 ACK를 함께 확인하세요.").pack(side="left")
         ttk.Button(bottom, text="로그 폴더 열기", command=self.open_log_folder).pack(side="right")
+
+    def setup_nenova_credential(self):
+        dialog = tk.Toplevel(self); dialog.title('담당자별 네노바 로그인 설정'); dialog.resizable(False, False)
+        values = {key: tk.StringVar() for key in ('staff','username','password')}
+        for row, (key, label) in enumerate((('staff','담당자 카톡 이름'),('username','네노바 아이디'),('password','네노바 비밀번호'))):
+            ttk.Label(dialog, text=label).grid(row=row, column=0, padx=10, pady=6, sticky='e')
+            ttk.Entry(dialog, textvariable=values[key], width=34, show='*' if key == 'password' else '').grid(row=row, column=1, padx=10, pady=6)
+        ttk.Label(dialog, text='비밀번호는 Windows 자격 증명 관리자에 저장되며 LLM·카톡·로그에 전달되지 않습니다.', wraplength=420).grid(row=3,column=0,columnspan=2,padx=10,pady=6)
+        def submit():
+            try:
+                credential_store.save(values['staff'].get(), values['username'].get(), values['password'].get())
+                values['password'].set('')
+                messagebox.showinfo('저장 완료', '담당자별 로그인 정보를 안전하게 저장했습니다.', parent=dialog)
+                dialog.destroy()
+            except Exception as exc:
+                values['password'].set('')
+                messagebox.showerror('저장 실패', str(exc), parent=dialog)
+        ttk.Button(dialog, text='보안 저장', command=submit).grid(row=4,column=0,columnspan=2,pady=10)
 
     def read_events(self):
         if not EVENT_LOG.exists(): return []

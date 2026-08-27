@@ -85,6 +85,11 @@ class KeywordTests(unittest.TestCase):
         self.send.assert_not_called()
         self.assertEqual(k.read_json(k.STATE, {})['one']['status'], '승인대기')
 
+    def test_shipping_date_change_requires_approval(self):
+        self.run_route([self.event('35-1 중국 출고일 변경사항\n목요일 출고로 변경')])
+        self.send.assert_not_called()
+        self.assertEqual(k.read_json(k.STATE, {})['one']['status'], '승인대기')
+
     def test_complete_message_requires_approval(self):
         self.run_route([self.event('장미 추가 완료')])
         self.send.assert_not_called()

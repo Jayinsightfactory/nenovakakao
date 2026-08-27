@@ -104,6 +104,15 @@ def test_registration_is_disabled_without_explicit_switch(monkeypatch):
         order_services.register_bulk({})
 
 
+def test_registration_uses_exact_staff_room_credential(monkeypatch):
+    monkeypatch.setenv('NENOVA_ORDER_WRITE_ENABLED', '1')
+    seen = []
+    monkeypatch.setattr('core.credential_store.load', lambda profile: seen.append(profile) or None)
+    with pytest.raises(RuntimeError, match='임재용대리'):
+        order_services.register_bulk({'staff': '임재용', 'staff_room': '임재용대리'})
+    assert seen == ['임재용대리']
+
+
 def test_llm_missing_key_returns_question(monkeypatch):
     monkeypatch.delenv('ANTHROPIC_API_KEY', raising=False)
     result = order_llm.parse('주광 노비아 2박스')
