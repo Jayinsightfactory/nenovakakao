@@ -159,6 +159,15 @@ class KeywordTests(unittest.TestCase):
         self.run_route([self.event('다른 추가 완료', eid='next-scan')])
         self.assertEqual(len(k.read_json(a.REQUESTS, {})), 2)
 
+    def test_single_approval_prompt_is_compact_and_removes_deleted_marker(self):
+        row = {'id': 'ABC123', 'event': {
+            'sender_name': '정재훈',
+            'content': '35-1 출고일 변경사항\n광주천사\n화이트 1박스\n메시지가 삭제되었습니다.'}}
+        message = a.request_message(row)
+        self.assertIn('보내 ABC123', message)
+        self.assertNotIn('메시지가 삭제되었습니다', message)
+        self.assertLess(len(message), 400)
+
     def test_batch_choices_validate_request_and_ranges(self):
         row = dict(id='ABC', events=[{}] * 5)
         self.assertEqual(a.batch_selection('ABC 2,4', row), [0, 2, 4])
