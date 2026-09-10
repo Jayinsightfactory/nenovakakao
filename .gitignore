@@ -56,3 +56,8 @@ scripts/inspect_keyword_input.py
 scripts/keyword_forward_dry_run.py
 scripts/reconcile_declined_approval.py
 scripts/recover_keyword_delivery.py
+
+# Runtime snapshots, chat exports, credentials and maintenance backups stay local.
+# Existing tracked seed/config files are unaffected by this rule.
+/data/
+.pytest_cache/

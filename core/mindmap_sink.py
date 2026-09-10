@@ -100,7 +100,7 @@ def enqueue_events(binding_id: str, title: str, events: list[dict]) -> int:
     return added
 
 
-def flush_pending(batch_size: int = 100) -> int:
+def flush_pending(batch_size: int = 100, timeout: int = 30) -> int:
     if not configured():
         return 0
     pending = _load_outbox()
@@ -111,7 +111,7 @@ def flush_pending(batch_size: int = 100) -> int:
         f"{_base()}/api/kakao/import",
         headers={"Authorization": f"Bearer {_token()}"},
         json={"messages": batch, "source": "nenovakakao"},
-        timeout=30,
+        timeout=timeout,
     )
     response.raise_for_status()
     result = response.json()

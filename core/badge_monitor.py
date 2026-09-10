@@ -36,7 +36,7 @@ def _is_red(r: int, g: int, b: int) -> bool:
     )
 
 
-def detect_badge_positions(image_path: Path) -> list[int]:
+def detect_badge_positions(image_path: Path, *, y_end_ratio: float = 1.0) -> list[int]:
     """
     방 리스트 캡처 이미지에서 빨간 뱃지의 y좌표 목록을 반환.
 
@@ -56,7 +56,8 @@ def detect_badge_positions(image_path: Path) -> list[int]:
 
     # y좌표별 빨간 픽셀 카운트
     red_counts: dict[int, int] = {}
-    for y in range(height):
+    y_end = max(0, min(height, int(height * y_end_ratio)))
+    for y in range(y_end):
         count = 0
         for x in range(x_start, x_end):
             r, g, b = pixels[x, y]

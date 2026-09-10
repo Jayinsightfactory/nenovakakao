@@ -1,0 +1,105 @@
+# 다른 세션은 이 문서부터 읽으세요
+
+2026-09-10 기준 네노바 카카오 매크로의 실행 코드·운영 상태·남은 작업 인수인계입니다.
+저장소: https://github.com/Jayinsightfactory/nenovakakao (main).
+이 문서의 운영 상태는 기록 시점의 스냅샷입니다. 후속 작업 전 실제 프로세스·로그를 다시 확인하세요.
+
+## 1. 실제 실행 위치
+
+| 역할 | 이 PC의 폴더/실행 경로 |
+|---|---|
+| 현재 카카오 수집·승인·전달 워커 | `C:/Users/USER/Downloads/nenovakakao` |
+| 운영 콘솔 | 위 폴더의 `moyi_console.py` |
+| 워커 | 위 폴더에서 `python -u main.py moyi-worker` |
+| 시작 점검 | `python scripts/start_supervised.py --seconds 180` — 실제 전송 가능한 워커를 재개함 |
+| 별도 30분 시트 동기화 | `C:/Users/USER/nenova_agent/scripts/incremental_sync.py` |
+| Windows 예약 작업 | `NenovaSync30min`, Python312의 `pythonw.exe -X utf8`로 위 스크립트 실행, 작업 폴더 `C:/Users/USER/nenova_agent` |
+| 대화 내보내기 원본 | `C:/Users/USER/Downloads/카톡대화데이터` |
+
+`Documents/nenovakakao` 등 다른 복사본을 실행본으로 오인하지 마세요. 같은 저장소를 가리켜도 폴더별 체크아웃 상태는 다릅니다.
+이번 커밋의 `scripts/incremental_sync.py`와 `tests/test_sync_recovery.py`는 별도 실행 폴더에서 검증한 수정본을 이 저장소에 모은 것입니다.
+후속 시트 코드 배포는 예약 작업이 사용하는 별도 폴더에도 명시적으로 반영해야 합니다. 다른 폴더의 미커밋 변경을 통째로 덮어쓰지 마세요.
+
+최근 수정본은 재시작 후 180초 동안 approval/sales/order 모두 성공을 확인했습니다.
+커밋 준비 시점에는 2026-09-10 14:37:23(KST) Ctrl+Alt+F10 긴급 정지 기록 이후 `paused=True`, 워커 없음으로 확인했습니다. 이번 커밋 작업에서는 재시작하지 않았습니다.
+현재 정지 여부는 `core.moyi_control.is_paused()`와 `worker_processes()`로 다시 확인합니다.
+긴급 정지는 운영 콘솔의 **Ctrl+Alt+F10**입니다. 콘솔을 열어 두어야 작동합니다.
+새 세션에서 이 문서를 읽었다는 이유만으로 워커를 중복 실행하거나 일시정지를 해제하지 마세요. 사용자의 현재 작업 요청에 따라 진행합니다.
+
+## 2. 대화 업로드 구조와 GitHub 경로
+
+1. **원문 보관/분석**: `core/moyi_inbound.py` → `core/mindmap_sink.py` → mindmap-viewer의 `POST /api/kakao/import`.
+   - 기본 서버: `https://mindmap-viewer-production-adb2.up.railway.app`.
+   - 전송 필드: 원문, 방 이름, 작성자, 원문 시각, 고유 메시지 ID.
+   - 서버 저장 테이블: PostgreSQL `kakao_messages`.
+   - 수신 코드: https://github.com/Jayinsightfactory/mindmap-viewer/blob/main/routes/kakao-decrypt.js
+   - 분석 코드: https://github.com/Jayinsightfactory/mindmap-viewer/blob/main/bin/kakao-intel-worker.js
+   - 설계 배경: https://github.com/Jayinsightfactory/mindmap-viewer/blob/main/docs/HANDOFF_KAKAO_FULL_CAPTURE.md (과거 진행 상태는 현행과 다를 수 있음).
+2. **MOYI 대화방 연동**: `core/moyi_inbound.py` → `https://api.nowlink.kr/kakao/agent/inbound` → MOYI 메시지 DB.
+   - 수신 코드: https://github.com/jay-sinsight/talkhub/blob/main/backend/app/api/kakao_connect.py
+   - 첨부파일 업로드와 원문 텍스트 보관은 별도 경로입니다. 일부 첨부는 확보 실패 시 보류하며 후속 텍스트 수집을 계속합니다.
+3. **구글시트 분류 동기화**: `scripts/incremental_sync.py` → 이벤트로그/비즈니스이벤트/의사결정추적/메시지분류 탭.
+   - 현재 시트 용량 오류 때문에 별도 보류 중이며 카카오 워커와는 별개입니다.
+
+실제 대화 데이터는 GitHub 업로드 대상이 아닙니다. 코드와 이 인수인계 문서를 커밋합니다.
+`SOLUTION_LINK.md` 등의 예전 개발 진행 상태보다 현재 코드와 실제 로그를 우선 확인하세요.
+
+## 3. 승인/전달 규칙
+
+- 추가·취소·변경 후보는 임재용대리의 승인 후 현장 추가취소방에 전달합니다.
+- 원문 항목은 가·나·다…로 표시합니다. 답변 예: **가 보내 나 안보내**. 한 건씩 따로 답변해도 됩니다.
+- 미응답 항목은 대기합니다. 부분 답변으로 다른 항목을 자동 승인/거절하지 않습니다.
+- 오래된 요청 또는 다음 질문 이후에는 요청번호를 함께 적어야 합니다. 예: `요청번호 가 안보내`.
+- `안보내` 처리 후 완료 알림, `보내`는 실제 전달 확인 후 완료 알림을 보냅니다. 동일 요청에서 처리된 항목은 묶어 우선 발송합니다.
+- 대상 방 동일 원문을 재확인하며, 전송 결과가 불명확하면 자동 재전송하지 않습니다.
+- 현행 로컬 설정: `approval_current_day_only=true`, `approval_active_hours=[8,19]`. 새 질문은 오늘 원문·08~19시 기준, 이미 온 답변 처리는 시간과 무관합니다. 이는 별도 선호 답변이 없어 적용한 운영 기본값이며 사용자 지시로 변경할 수 있습니다.
+- 과거 요청 31묶음/88항목은 `historical_review`로 보존했습니다. 자동 재질문하지 않으며 ID·항목 순서·기존 답변을 보존합니다. 원문이 섞인 묶음은 재번호 부여 없이 전체 별도 검토로 둡니다.
+- ERP는 내용 확인과 실제 등록 요청을 분리합니다. **실제 등록 어댑터는 검증 미완료로 `core/order_services.py::register_bulk`에서 차단 중입니다.** 추정 API로 등록을 다시 켜지 마세요.
+
+## 4. 이번 수정의 근거와 구현
+
+- 일반 수집 보고가 `sent/unknown`에서 `queued`로 되돌아가 같은 ID로 반복 발송되던 버그 수정. 시간 단위 집계가 끝난 후 한 번 발송.
+- 완료 알림을 같은 요청 최대 14항목씩 묶고 승인 처리 직후 실행. 승인 에이전트를 수집보다 우선 실행.
+- 일부 항목 답변 후에도 미응답 타이머를 진행하고, 완료 항목 상태를 보존하며 늦은 승인/거절 처리 복구.
+- 원문 날짜별 과거 요청 분리, 콘솔의 과거 검토 수 및 새 답변 문구 반영.
+- 예약 작업을 CMD 배치 실행에서 pythonw 직접 실행으로 변경해 화면 포커스 간섭 완화. 예약 작업 설정은 Git이 관리하지 않으므로 다른 PC에서는 별도로 설치/확인해야 함.
+- 시트 저장 실패를 성공으로 기록하던 로그 수정, 오류 종료코드 반환, 고정된 미저장 작업/배치별 체크포인트 저장, 결과 불명 재전송 차단, RAW 값 저장.
+- 동기화 기준 MD5가 사라지면 전체 대화를 재업로드하지 않고 원문 대조를 위해 보류.
+- `overdue_ms` 계측 및 시작 점검을 180초로 확대. 시작 점검은 장시간 안정성 보장을 의미하지 않습니다.
+
+## 5. 남은 작업 — 우선순위
+
+1. **시트 용량 정비**: 기존 시트가 셀 한도 오류를 반환함. 09-10 실제 검증에서 저장 확인 0행, 종료코드 2. 17,557건을 `C:/Users/USER/nenova_agent/data/sync_pending_job.json`에 보존.
+   - `capacity_blocked`는 자동 쓰기를 중단합니다. 파일을 지우거나 상태만 풀지 마세요.
+   - 자료 삭제 없이 저장 목적지 분할/이관 정책을 정하고, 실제 용량 확보를 확인한 뒤 저장된 작업과 체크포인트를 기준으로 재개해야 합니다.
+   - 수입방/견적방은 동기화 기준점을 못 찾은 별도 원문 대조 작업이 남아 있습니다.
+2. **운영 장시간 관찰**: 실제 답변→처리→알림 시간, 반복 알림, 30분 예약 작업과 UI 간섭, 과거 요청 보존, 부분/늦은 답변을 점검.
+3. **실제 ERP 등록**: 검증된 API·권한·단위·중복 방지·저장 후 정확한 재조회가 준비될 때까지 기존 차단 유지.
+
+## 6. 로컬 로그/상태 — Git에 새로 올리지 않음
+
+현재 실행 폴더의 `data/` 아래:
+- `moyi_control_events.jsonl`: 시작/정지/알림 전송 결과
+- `agent_runtime_events.jsonl`, `moyi_events.jsonl`: 처리 시간과 오류
+- `keyword_approval_requests.json`, `keyword_forward_state.json`: 승인·전달 상태
+- `error_notifications.json`: 완료 알림/오류/상황 보고 상태
+- `historical_approval_review.json`: 과거 요청 요약 (원본은 승인 요청 파일에 보존)
+- `mindmap_kakao_outbox.json`, `moyi_inbound_state.json`: 원문 보관 대기/수집 처리 이력
+- `supervised_start_result.json`: 최근 시작 점검 결과
+- `maintenance_backups/20260910_093405/`: 수정 전 주요 소스·상태·예약 작업 XML
+
+별도 동기화 폴더: `data/sync_pending_job.json`, `data/sync_state.json`, `logs/sync.log`.
+토큰은 로컬 `.env`/보안 파일·자격 증명 저장소에서 사용합니다. 값을 출력하거나 커밋하지 마세요.
+이 저장소에는 과거부터 추적된 seed/config 파일이 일부 있습니다. 이번 커밋은 새 운영 데이터·원문·백업을 추가하지 않습니다.
+
+## 7. 검증과 후속 작업 시작
+
+이번 게시 대상 파일을 운영 데이터·토큰이 없는 별도 체크아웃에 복사한 뒤 `python -m pytest tests -q` 실행: **207개 통과**.
+
+1. 이 문서를 읽고 사용자 요청의 대상이 수집/승인/원문 보관/시트 중 무엇인지 확인.
+2. `git status`, 실제 실행 폴더, 프로세스·정지 상태, 최근 로그 확인. 다른 복사본의 변경을 덮어쓰지 않기.
+3. 일반 검증: Windows/Python 환경에서 `python -m pytest tests -q`. 테스트는 API/화면 조작을 모의하고 임시 상태를 사용하며, 깨끗한 체크아웃에서 실행하는 것을 권장.
+4. 사용자에게 실제 시작/재시작이 요청된 경우 운영 콘솔의 정지 단축키 준비를 확인한 뒤 `python scripts/start_supervised.py --seconds 180` 사용.
+5. 원문·상태·토큰 없이 코드와 변경한 인수인계 내용만 커밋.
+
+다른 세션에는 이 GitHub 문서 주소 하나와 원하는 후속 작업을 전달하면 됩니다.

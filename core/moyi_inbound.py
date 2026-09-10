@@ -168,12 +168,30 @@ def _visible_dialogs_for_process(process_id: int) -> set[int]:
     return dialogs
 
 
-def _save_export_dialog(chat_hwnd: int, dialogs_before: set[int], timeout: float = 8.0) -> None:
-    """Confirm Kakao's Save As dialog and verify it closed before continuing."""
+def _child_controls(hwnd: int) -> dict[str, int]:
+    controls = {}
+    def collect(child: int, _extra: object) -> None:
+        text = win32gui.GetWindowText(child).strip()
+        if text:
+            controls.setdefault(text, child)
+    win32gui.EnumChildWindows(hwnd, collect, None)
+    return controls
+
+
+def _save_export_dialog(chat_hwnd: int, title: str, dialogs_before: set[int], timeout: float = 8.0) -> None:
+    """Confirm Kakao's Save As dialog and verify it closed before continuing.
+
+    Safety checks performed before clicking the Save button:
+    - The dialog must be owned by ``chat_hwnd`` (not another KakaoTalk window).
+    - The dialog handle must still be a valid, visible window.
+    - ``chat_hwnd`` must still carry the expected *title* so a room switch
+      between Ctrl+S and this confirmation cannot silently save the wrong room.
+    """
     _, process_id = win32process.GetWindowThreadProcessId(chat_hwnd)
     deadline = time.monotonic() + timeout
     save_dialog = 0
     while time.monotonic() < deadline:
+        _assert_export_running()
         candidates = _visible_dialogs_for_process(process_id) - dialogs_before
         if len(candidates) == 1:
             save_dialog = next(iter(candidates))
@@ -184,11 +202,24 @@ def _save_export_dialog(chat_hwnd: int, dialogs_before: set[int], timeout: float
     if not save_dialog:
         raise RuntimeError("Kakao Save As dialog was not opened")
 
+    # --- pre-click safety gate ---
+    if not win32gui.IsWindow(save_dialog) or not win32gui.IsWindowVisible(save_dialog):
+        raise RuntimeError("Kakao Save As dialog closed unexpectedly before confirmation")
+    owner = win32gui.GetWindow(save_dialog, win32con.GW_OWNER)
+    if owner != chat_hwnd:
+        raise RuntimeError("Kakao Save As dialog belongs to a different chat window")
+    if win32gui.GetWindowText(save_dialog) not in ('다른 이름으로 저장', 'Save As'):
+        raise RuntimeError('Kakao dialog is not a verified Save As dialog')
+    if win32gui.GetWindowText(chat_hwnd) != title:
+        raise RuntimeError("대화 저장 차단: Save 확인 직전 방 제목 변경 감지")
+
+    _assert_export_running()
     win32gui.ShowWindow(save_dialog, win32con.SW_RESTORE)
     win32gui.SetForegroundWindow(save_dialog)
     save_button = win32gui.GetDlgItem(save_dialog, win32con.IDOK)
     if not save_button:
         raise RuntimeError("Kakao Save As button was not found")
+    _assert_export_running()
     win32api.SendMessage(save_button, win32con.BM_CLICK, 0, 0)
 
     while time.monotonic() < deadline:
@@ -196,6 +227,69 @@ def _save_export_dialog(chat_hwnd: int, dialogs_before: set[int], timeout: float
             return
         time.sleep(0.2)
     raise RuntimeError("Kakao Save As dialog did not close")
+
+
+def _dismiss_export_complete_dialog(chat_hwnd: int, title: str,
+                                    dialogs_before: set[int], foreground_before: int = 0,
+                                    timeout: float = 3.0) -> None:
+    """Dismiss only Kakao's verified export-complete dialog for this room."""
+    _, process_id = win32process.GetWindowThreadProcessId(chat_hwnd)
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        _assert_export_running()
+        dialog_handles = _visible_dialogs_for_process(process_id) - dialogs_before
+        foreground = win32gui.GetForegroundWindow()
+        foreground_process = 0
+        if foreground and foreground != chat_hwnd:
+            _, foreground_process = win32process.GetWindowThreadProcessId(foreground)
+            if foreground_process == process_id:
+                dialog_handles.add(foreground)
+        candidates = [dialog for dialog in dialog_handles
+                      if win32gui.GetWindowText(dialog) in ('대화 내보내기', 'Export Conversation')]
+        custom_completion = (not candidates and foreground and foreground != chat_hwnd
+                and foreground != foreground_before
+                and foreground_process == process_id
+                and not win32gui.IsWindowEnabled(chat_hwnd)
+                and win32gui.GetClassName(foreground) == 'EVA_Window_Dblclk')
+        if custom_completion:
+            candidates = [foreground]
+        if len(candidates) > 1:
+            raise RuntimeError('Kakao export completion dialog is ambiguous')
+        if len(candidates) == 1:
+            dialog = candidates[0]
+            if win32gui.GetWindowText(chat_hwnd) != title:
+                raise RuntimeError('대화 저장 완료 확인 전 방 제목 변경 감지')
+            controls = _child_controls(dialog)
+            try:
+                button = win32gui.GetDlgItem(dialog, win32con.IDOK)
+            except Exception:
+                button = 0
+            button = button or controls.get('확인')
+            if button:
+                win32api.SendMessage(button, win32con.BM_CLICK, 0, 0)
+            elif custom_completion:
+                win32gui.SetForegroundWindow(dialog)
+                pyautogui.press('enter')
+            else:
+                raise RuntimeError('Kakao export completion OK button was not found')
+            close_deadline = time.monotonic() + timeout
+            while time.monotonic() < close_deadline:
+                if not win32gui.IsWindow(dialog) or not win32gui.IsWindowVisible(dialog):
+                    return
+                time.sleep(0.1)
+            raise RuntimeError('Kakao export completion dialog did not close')
+        time.sleep(0.1)
+    # Some KakaoTalk builds close the completion notice automatically. The
+    # room becoming enabled again is positive evidence that no modal remains.
+    if win32gui.IsWindowEnabled(chat_hwnd):
+        return
+    foreground = win32gui.GetForegroundWindow()
+    _, foreground_process = win32process.GetWindowThreadProcessId(foreground) if foreground else (0, 0)
+    raise RuntimeError(
+        f'대화 저장 완료 안내 확인 실패: {title}; '
+        f'foreground={win32gui.GetWindowText(foreground) if foreground else "없음"}; '
+        f'class={win32gui.GetClassName(foreground) if foreground else "없음"}; '
+        f'same_process={foreground_process == process_id}')
 
 
 def has_unread_exact_room(title: str) -> bool:
@@ -208,7 +302,8 @@ def has_unread_exact_room(title: str) -> bool:
     replace_room_search(window, title)
     image_name = hashlib.sha256(title.encode()).hexdigest()[:16] + ".png"
     image_path = capture_room_list(window, ROOT / "captures" / "inbound_unread" / image_name)
-    badges = detect_badge_positions(image_path)
+    # Search results live at the top; the bottom Kakao ad also contains red.
+    badges = detect_badge_positions(image_path, y_end_ratio=0.35)
     clear_room_search(window)
     switch_to_chat_tab(window)
     if len(badges) > 1:
@@ -245,16 +340,45 @@ def _open_or_reuse_exact_room(title: str) -> int:
     return open_unique_exact_room(title)
 
 
+def _assert_export_running() -> None:
+    from core.moyi_control import is_paused
+    if is_paused():
+        raise RuntimeError('대화 저장 중단: 프로그램 일시정지')
+
+
+def _assert_export_target(hwnd: int, title: str) -> None:
+    from core.safe_worker_room import _foreground_belongs_to
+    _assert_export_running()
+    if not win32gui.IsWindowEnabled(hwnd):
+        raise RuntimeError('대화 저장 차단: 완료 안내 또는 다른 대화상자가 대상 방을 막고 있음; Ctrl+S 미입력')
+    if win32gui.GetWindowText(hwnd) != title or not _foreground_belongs_to(hwnd):
+        raise RuntimeError('대화 저장 차단: 대상 방 제목/포커스 불일치; Ctrl+S 미입력')
+
+
 def export_exact_room(title: str) -> str:
     """Open one exact room, export its text, and return the UTF-8 content."""
-    hwnd = _open_or_reuse_exact_room(title)
+    _assert_export_running()
+    # Recursive file discovery may take seconds. Do it before taking focus.
     before = _txt_files()
+    _assert_export_running()
+    hwnd = _open_or_reuse_exact_room(title)
     _, kakao_process_id = win32process.GetWindowThreadProcessId(hwnd)
     dialogs_before = _visible_dialogs_for_process(kakao_process_id)
+    foreground_before = win32gui.GetForegroundWindow()
     started = time.time_ns()
+    dialog_confirmed = False
     try:
+        # A verified completion notice from the preceding export can keep this
+        # exact room disabled. Clear only that Kakao-owned notice before the
+        # Ctrl+S safety gate; unrelated dialogs remain blocked.
+        if not win32gui.IsWindowEnabled(hwnd):
+            _dismiss_export_complete_dialog(
+                hwnd, title, set(), foreground_before=hwnd, timeout=1.0
+            )
+        _assert_export_target(hwnd, title)
         pyautogui.hotkey("ctrl", "s")
-        _save_export_dialog(hwnd, dialogs_before)
+        _save_export_dialog(hwnd, title, dialogs_before)
+        dialog_confirmed = True
         time.sleep(1)
         after = _txt_files()
         candidates = [
@@ -265,9 +389,13 @@ def export_exact_room(title: str) -> str:
         if not candidates:
             raise RuntimeError("KakaoTalk export file was not created")
         latest = max(candidates, key=lambda path: after[path])
-        return latest.read_text(encoding="utf-8")
+        content = latest.read_text(encoding="utf-8")
+        _dismiss_export_complete_dialog(hwnd, title, dialogs_before, foreground_before)
+        return content
     finally:
-        close_room(hwnd)
+        from core.moyi_control import is_paused
+        if not is_paused() and dialog_confirmed:
+            close_room(hwnd)
 
 
 def _upload_attachment(server: str, headers: dict[str, str], path: Path) -> dict:
@@ -331,13 +459,15 @@ def _find_local_kakao_file(name: str) -> Path:
     return max(unique, key=lambda path: path.stat().st_mtime_ns)
 
 
-def poll_once(server: str, secret: str, only_title: str | None = None) -> dict[str, int]:
+def poll_once(server: str, secret: str, only_title: str | None = None,
+              defer_archive=False, max_events=MAX_AUTO_INBOUND_EVENTS) -> dict[str, int]:
     """Open only unread/retry rooms and post messages newer than the baseline."""
     from core.mindmap_sink import enqueue_events, flush_pending
 
     headers = {"X-Company-Secret": secret}
     try:
-        flush_pending()
+        if not defer_archive:
+            flush_pending()
     except Exception as exc:
         print(f"[MOYI] mindmap sink retry pending: {type(exc).__name__}")
     response = requests.get(f"{server}/kakao/agent/rooms", headers=headers, timeout=20)
@@ -388,7 +518,8 @@ def poll_once(server: str, secret: str, only_title: str | None = None) -> dict[s
             state['_needs_rescan'] = sorted(retry_bindings)
             _save_state(state)
             keyword_forward.process_source(
-                title, events, export_exact_room, keyword_forward.send_exact, is_paused
+                title, events, export_exact_room, keyword_forward.send_exact, is_paused,
+                max_new_events=max_events
             )
         known_ids = state.get(binding, [])
         if not isinstance(known_ids, list):
@@ -402,13 +533,13 @@ def poll_once(server: str, secret: str, only_title: str | None = None) -> dict[s
             _save_state(state)
             continue
         new_events = _events_after_checkpoint(events, known_ids)
-        backlog_remaining = len(new_events) > MAX_AUTO_INBOUND_EVENTS
-        if len(new_events) > MAX_AUTO_INBOUND_EVENTS:
+        backlog_remaining = len(new_events) > max_events
+        if len(new_events) > max_events:
             print(
                 f"[MOYI] inbound backlog chunk ({title}): "
-                f"processing oldest {MAX_AUTO_INBOUND_EVENTS} of {len(new_events)} events"
+                f"processing oldest {max_events} of {len(new_events)} events"
             )
-            new_events = new_events[:MAX_AUTO_INBOUND_EVENTS]
+            new_events = new_events[:max_events]
         # Import-order review is additive: MOYI archival below remains exactly
         # as before. Only newly checkpointed 수입방 messages are considered.
         try:
@@ -418,10 +549,12 @@ def poll_once(server: str, secret: str, only_title: str | None = None) -> dict[s
                 for event in new_events:
                     import_order.capture(event, order_llm.parse, order_services.master)
         except Exception as order_exc:
+            from core.error_notifications import notify
+            notify('order_capture_failed')
             print(f"[MOYI] import order capture held ({title}): {type(order_exc).__name__}")
         enqueue_events(binding, title, new_events)
         try:
-            flushed = flush_pending()
+            flushed = 0 if defer_archive else flush_pending()
             if flushed:
                 print(f"[MOYI] mindmap raw archive: {flushed} messages")
         except Exception as exc:

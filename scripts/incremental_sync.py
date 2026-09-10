@@ -21,6 +21,7 @@ import re
 import sys
 import time
 import uuid
+import tempfile
 from dataclasses import asdict
 from datetime import datetime
 from pathlib import Path
@@ -38,6 +39,7 @@ CREDS_FILE = "C:/Users/USER/nenova_agent/data/gsheet_credentials.json"
 SHEET_URL = "https://docs.google.com/spreadsheets/d/1pXLVZqiMwWt6Vh0IhWwASBvgLtZqLnbHXMWqOLNwAXU/edit"
 KAKAO_DATA_DIR = Path("C:/Users/USER/Downloads/카톡대화데이터")
 SYNC_STATE_FILE = PROJECT_ROOT / "data" / "sync_state.json"
+PENDING_FILE = PROJECT_ROOT / 'data' / 'sync_pending_job.json'
 PIPELINE_CONFIG_FILE = PROJECT_ROOT / "data" / "pipeline_config.json"
 LOG_DIR = PROJECT_ROOT / "logs"
 LOG_FILE = LOG_DIR / "sync.log"
@@ -101,8 +103,20 @@ def load_sync_state() -> dict:
 def save_sync_state(state: dict) -> None:
     """sync_state.json 저장."""
     state["last_sync"] = datetime.now().isoformat(timespec="seconds")
-    with open(SYNC_STATE_FILE, "w", encoding="utf-8") as f:
-        json.dump(state, f, ensure_ascii=False, indent=2)
+    atomic_save(SYNC_STATE_FILE, state)
+
+
+def atomic_save(path, value):
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd, temporary = tempfile.mkstemp(dir=path.parent, suffix='.tmp')
+    try:
+        with os.fdopen(fd, 'w', encoding='utf-8') as stream:
+            json.dump(value, stream, ensure_ascii=False, indent=2)
+        os.replace(temporary, path)
+    finally:
+        if os.path.exists(temporary):
+            os.unlink(temporary)
 
 
 # ─── 카톡 파일 스캔 ───
@@ -236,9 +250,8 @@ def extract_delta(room: str, files: list[Path], room_state: dict) -> tuple[str, 
             # 마지막 줄이 이전 마지막 -> 새 메시지 없음
             delta_text = ""
         else:
-            # MD5를 찾지 못함 -> 전체를 델타로 (안전 폴백)
-            logger.warning("%s: 이전 MD5를 새 파일에서 찾지 못함 -- 전체 처리", room)
-            delta_text = "".join(lines)
+            # Missing anchors cannot authorize replaying the entire history.
+            raise RuntimeError(f'{room}: 이전 동기화 기준점을 찾지 못함; 원문 보존 후 대조 필요')
     else:
         # 첫 동기화 -> 전체 처리
         delta_text = "".join(lines)
@@ -433,9 +446,64 @@ def append_to_sheet(sh, tab_name: str, rows: list[list[str]]) -> bool:
 # ─── 메인 동기화 로직 ───
 
 
-def run_sync() -> None:
+def deliver_pending(job):
+    """Freeze IDs and checkpoint confirmed batches; never replay uncertain writes."""
+    if job.get('status') == 'unknown':
+        logger.error('이전 전송 결과 불명 -- 자동 재전송 중단; %s', PENDING_FILE)
+        return 3
+    if job.get('status') == 'capacity_blocked':
+        logger.error('시트 용량 부족 -- 미저장 자료 로컬 보존, 목적지 정비 전 자동 쓰기 중단: %s', PENDING_FILE)
+        return 2
+    if job.get('retry_at', 0) > time.time():
+        logger.error('연결 재시도 대기 -- 로컬 작업 보존')
+        return 2
+    try:
+        sh = _get_gspread_client()
+        for tab, rows in job['tabs'].items():
+            offset = job.setdefault('offsets', {}).get(tab, 0)
+            if offset >= len(rows):
+                continue
+            ws = sh.worksheet(tab)
+            while offset < len(rows):
+                batch = rows[offset:offset + BATCH_SIZE]
+                job.update(status='unknown', current_tab=tab, current_offset=offset)
+                atomic_save(PENDING_FILE, job)
+                try:
+                    # Literal chat content must not be evaluated as spreadsheet formulas.
+                    ws.append_rows(batch, value_input_option='RAW')
+                except Exception as exc:
+                    detail = str(exc)
+                    capacity = '10000000' in detail and ('cell' in detail.lower() or '셀' in detail)
+                    job['status'] = 'capacity_blocked' if capacity else 'unknown'
+                    job['error_type'] = 'sheet_cell_limit' if capacity else type(exc).__name__
+                    atomic_save(PENDING_FILE, job)
+                    logger.error('%s 저장 실패 -- 확인된 %d행 이후 보류 (%s)', tab, offset, job['error_type'])
+                    return 2 if capacity else 3
+                offset += len(batch)
+                job['offsets'][tab] = offset
+                job['status'] = 'pending'
+                atomic_save(PENDING_FILE, job)
+                logger.info('%s 저장 확인: 누적 %d/%d행', tab, offset, len(rows))
+                if offset < len(rows):
+                    time.sleep(BATCH_DELAY)
+        save_sync_state(job['next_state'])
+        logger.info('저장 확인 완료: %d건, %d행', job['total_new'], sum(job['offsets'].values()))
+        PENDING_FILE.unlink()
+        return 0
+    except Exception as exc:
+        # A preflight/read failure is retryable; unknown writes remain unknown.
+        if job.get('status') != 'unknown':
+            job.update(retry_at=time.time() + 1800, error_type=type(exc).__name__)
+            atomic_save(PENDING_FILE, job)
+        logger.error('동기화 미완료 -- 로컬 작업 보존 (%s)', type(exc).__name__)
+        return 3
+
+
+def run_sync() -> int:
     """증분 동기화 1회 실행."""
     logger.info("=== 증분 동기화 시작 ===")
+    if PENDING_FILE.exists():
+        return deliver_pending(json.loads(PENDING_FILE.read_text(encoding='utf-8')))
 
     # 1. 상태 로드
     state = load_sync_state()
@@ -445,7 +513,7 @@ def run_sync() -> None:
     if not room_files:
         logger.info("카톡 파일 없음 -- 종료")
         save_sync_state(state)
-        return
+        return 0
 
     # 3. 방별 델타 추출 + 분류
     all_tab_rows: dict[str, list[list[str]]] = {
@@ -456,6 +524,7 @@ def run_sync() -> None:
     }
     room_deltas: dict[str, tuple[int, dict]] = {}  # room -> (delta_count, new_state)
     total_new = 0
+    failed_rooms = []
 
     for room, files in room_files.items():
         room_state = state.get("rooms", {}).get(room, {})
@@ -464,6 +533,7 @@ def run_sync() -> None:
             delta_text, new_state = extract_delta(room, files, room_state)
         except Exception as e:
             logger.error("%s: 파일 읽기 실패 -- 스킵: %s", room, e)
+            failed_rooms.append(room)
             continue
 
         if not delta_text.strip():
@@ -475,6 +545,7 @@ def run_sync() -> None:
             messages = classify_delta(room, delta_text)
         except Exception as e:
             logger.error("%s: 분류 실패 -- 스킵: %s", room, e)
+            failed_rooms.append(room)
             continue
 
         if not messages:
@@ -495,53 +566,23 @@ def run_sync() -> None:
     if total_new == 0:
         logger.info("새 메시지 0건 -- 시트 API 호출 없이 종료")
         save_sync_state(state)
-        return
+        return 2 if failed_rooms else 0
 
     # 5. 구글시트 append
     logger.info("총 %d건 신규 메시지 -> 시트 append 시작", total_new)
 
-    sh = None
-    try:
-        sh = _get_gspread_client()
-    except Exception as e:
-        logger.error("구글시트 연결 실패: %s", e)
-        # state 업데이트하지 않음 (다음 실행에서 재시도)
-        return
-
-    append_ok = True
-    for tab_name, rows in all_tab_rows.items():
-        if not rows:
-            continue
-        success = append_to_sheet(sh, tab_name, rows)
-        if not success:
-            append_ok = False
-            logger.error("%s 탭 append 실패 -- state 업데이트 중단", tab_name)
-            break
-        logger.info("  %s: +%d행", tab_name, len(rows))
-        time.sleep(BATCH_DELAY)
-
-    # 6. state 업데이트 (시트 append 성공 시만)
-    if append_ok:
-        if "rooms" not in state:
-            state["rooms"] = {}
-        for room, (delta_count, new_state) in room_deltas.items():
-            new_state["total_synced"] = new_state.get("total_synced", 0) + delta_count
-            state["rooms"][room] = new_state
-        save_sync_state(state)
-        logger.info("sync_state.json 업데이트 완료")
-    else:
-        logger.warning("시트 append 실패 -> state 미갱신 (다음 실행에서 재시도)")
-
-    # 7. 요약 로그
-    parts = []
-    for room, (count, _) in sorted(room_deltas.items()):
-        parts.append("%s: +%d건" % (room, count))
-    summary = ", ".join(parts)
-    logger.info("총 +%d건 append (%s)", total_new, summary)
-    logger.info("=== 증분 동기화 완료 ===")
+    state.setdefault('rooms', {})
+    for room, (delta_count, new_state) in room_deltas.items():
+        new_state['total_synced'] = new_state.get('total_synced', 0) + delta_count
+        state['rooms'][room] = new_state
+    job = {'status': 'pending', 'tabs': all_tab_rows, 'offsets': {},
+           'next_state': state, 'total_new': total_new, 'created_at': time.time()}
+    atomic_save(PENDING_FILE, job)
+    result = deliver_pending(job)
+    return result or (2 if failed_rooms else 0)
 
 
 # ─── 엔트리포인트 ───
 
 if __name__ == "__main__":
-    run_sync()
+    raise SystemExit(run_sync())

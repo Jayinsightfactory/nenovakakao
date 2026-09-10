@@ -12,18 +12,67 @@ from core.safe_worker_room import open_unique_exact_room, close_room
 ROOT = Path(__file__).resolve().parent.parent
 JOURNAL = ROOT / "data" / "moyi_outbound_journal.jsonl"
 EVENT_LOG = ROOT / "data" / "moyi_events.jsonl"
+AGENT_LOG = ROOT / "data" / "agent_runtime_events.jsonl"
 POLL_RETRY_SEC = 5
 MAX_ATTACHMENT_BYTES = 50 * 1024 * 1024
 SUPPRESSED_SYSTEM_TEXTS = ("말머리 설정 내역",)
+ROOM_FAILURE_LIMIT = 3
+ROOM_CIRCUIT_SEC = 1800
+
+
+class RoomCircuitBreaker:
+    """Quarantine only a repeatedly failing room; other rooms keep running."""
+    def __init__(self):
+        self.failures = {}
+        self.blocked_until = {}
+
+    def available(self, title, now=None):
+        now = time.monotonic() if now is None else now
+        until = self.blocked_until.get(title, 0)
+        if until and now >= until:
+            self.blocked_until.pop(title, None)
+            self.failures[title] = 0
+            return True
+        return now >= until
+
+    def succeeded(self, title):
+        self.failures.pop(title, None)
+        self.blocked_until.pop(title, None)
+
+    def failed(self, title, now=None):
+        now = time.monotonic() if now is None else now
+        count = self.failures.get(title, 0) + 1
+        self.failures[title] = count
+        if count >= ROOM_FAILURE_LIMIT:
+            self.blocked_until[title] = now + ROOM_CIRCUIT_SEC
+            return True
+        return False
 
 def _inbound_schedule(rooms: list[dict]) -> list[dict]:
     """Alternate sales with every other room, without starving other rooms."""
     sales = [r for r in rooms if str(r.get('exact_title') or '').strip() == '영업방']
     others = [r for r in rooms if str(r.get('exact_title') or '').strip() != '영업방']
+    imports = [r for r in others if str(r.get('exact_title') or '').strip() == '수입방']
+    if len(sales) == 1 and len(imports) == 1:
+        background = [r for r in others if r not in imports]
+        return [r for other in background for r in (sales[0], imports[0], other)] if background else [sales[0], imports[0]]
     # Ambiguous bindings must not gain extra scheduling weight.
     if len(sales) != 1 or not others:
         return list(rooms)
     return [room for other in others for room in (sales[0], other)]
+
+
+def _timed(stage, operation, *args, **kwargs):
+    started = time.monotonic()
+    outcome = 'ok'
+    try:
+        return operation(*args, **kwargs)
+    except Exception:
+        outcome = 'error'
+        raise
+    finally:
+        elapsed = time.monotonic() - started
+        _event(None, 'stage_timing', f'{stage}: {elapsed:.3f}s {outcome}')
 
 def _is_suppressed_system_item(item: dict) -> bool:
     """Return True for MOYI system notices that should not reach KakaoTalk."""
@@ -58,6 +107,39 @@ def _safe_request_error(exc: requests.RequestException) -> str:
     response = getattr(exc, "response", None)
     return f"HTTP {response.status_code}" if response is not None else type(exc).__name__
 
+
+class PendingPoller:
+    """Back off the failing endpoint, without blocking approvals or scanning."""
+    def __init__(self):
+        self.failures = 0
+        self.next_at = 0.0
+
+    def fetch(self, server, secret):
+        if time.monotonic() < self.next_at: return []
+        try:
+            response = requests.get(f'{server}/kakao/agent/pending',
+                headers=_headers(secret), params={'limit': 1}, timeout=20)
+            response.raise_for_status()
+            items = response.json().get('items', [])
+        except requests.RequestException as exc:
+            if not _retryable_request_error(exc):
+                _event(None, 'pending_unavailable', _safe_request_error(exc))
+                raise
+            self.failures += 1
+            delay = min(60, 5 * 2 ** min(self.failures - 1, 4))
+            self.next_at = time.monotonic() + delay
+            if self.failures == 1:
+                _event(None, 'pending_unavailable', _safe_request_error(exc))
+            _event(None, 'pending_retry_scheduled', f'failures={self.failures}; delay={delay}s')
+            return []
+        if self.failures:
+            _event(None, 'pending_recovered', f'조회 복구; preceding_failures={self.failures}')
+            from core.error_notifications import report
+            report('server_recovered')
+        self.failures = 0
+        self.next_at = time.monotonic() + 5
+        return items
+
 def _journal_key(item: dict) -> str:
     return str(item.get("delivery_key") or hashlib.sha256(f"{item.get('room_binding_id')}:{item.get('id')}".encode()).hexdigest())
 
@@ -73,6 +155,20 @@ def _event(item: dict | None, state: str, detail: str = "") -> None:
         record.update({"outbox_id": item.get("id"), "delivery_key": item.get("delivery_key"), "room": item.get("external_room_id"), "part_id": item.get("current_part_id")})
     with EVENT_LOG.open("a", encoding="utf-8") as f:
         f.write(json.dumps(record, ensure_ascii=False) + "\n")
+    if state.endswith('_failed') or state in ('unknown_result', 'failed_not_sent', 'archive_deferred', 'pending_unavailable'):
+        from core.error_notifications import notify
+        context = {'stage': state, 'cause': detail,
+                   'automatic_action': '결과를 확정하지 못한 작업은 완료 처리하거나 자동 재전송하지 않음'}
+        if item:
+            context.update(source_room=item.get('external_room_id', ''),
+                           target_room=item.get('external_room_id', ''))
+        elif state == 'inbound_room_failed' and ':' in detail:
+            room, cause = detail.split(':', 1)
+            context.update(source_room=room.strip(), cause=cause.strip())
+        notify(state, (item or {}).get('id', ''), context)
+    elif state == 'sent':
+        from core.error_notifications import report
+        report('outbound_sent', (item or {}).get('id', ''))
 
 def _load_journal() -> dict[tuple[str, str], str]:
     sent = {}
@@ -209,15 +305,75 @@ def process_item(server: str, secret: str, item: dict) -> None:
 
 def run() -> int:
     server, secret = _config()
+    pending_poller = PendingPoller()
+    room_breaker = RoomCircuitBreaker()
     from core.moyi_inbound import poll_once as poll_inbound_once
+    from core.agent_runtime import AgentCoordinator
+    from core.error_notifications import report
     inbound_interval = max(15, int(os.getenv("MOYI_INBOUND_SCAN_SEC", "30")))
     next_inbound_at = 0.0
     inbound_room_index = 0
     pause_announced = False
-    next_approval_at = 0.0
-    next_order_review_at = 0.0
+    next_archive_at = 0.0
+    from core import import_order, keyword_approval, keyword_forward, order_services
+    from core.moyi_inbound import export_exact_room, _load_state, _save_state
+
+    def mark_rescan(title):
+        response = requests.get(f'{server}/kakao/agent/rooms', headers=_headers(secret), timeout=20)
+        response.raise_for_status()
+        state = _load_state()
+        pending = set(state.get('_needs_rescan', []))
+        for room in response.json().get('items', []):
+            if room.get('exact_title') == title:
+                pending.add(str(room['room_binding_id']))
+        state['_needs_rescan'] = sorted(pending)
+        _save_state(state)
+
+    def sales_agent():
+        if is_paused(): return None
+        result = _timed('agent:sales', poll_inbound_once, server, secret,
+                        only_title='영업방', defer_archive=True, max_events=5)
+        if result['sent'] or result['initialized']:
+            report('inbound_processed')
+        from core.error_notifications import resolve_all
+        resolve_all('inbound_room_failed')
+        return result
+
+    def approval_agent():
+        if is_paused(): return None
+        result = _timed('agent:approval', keyword_approval.poll, export_exact_room,
+                        keyword_forward.send_exact, is_paused, mark_rescan)
+        from core.error_notifications import poll as poll_notices
+        _timed('approval:receipts', poll_notices, export_exact_room,
+               keyword_forward.send_exact, is_paused, receipts_only=True)
+        from core.error_notifications import resolve_all
+        resolve_all('approval_check_failed')
+        return result
+
+    def order_agent():
+        if is_paused(): return None
+        return _timed('agent:order', import_order.poll, export_exact_room,
+                      keyword_forward.send_exact, order_services.master,
+                      order_services.register_bulk, is_paused)
+
+    error_states = {'sales': 'inbound_room_failed', 'approval': 'approval_check_failed',
+                    'order': 'import_order_check_failed'}
+    def agent_error(agent, exc):
+        _event(None, error_states[agent.name], str(exc)[:200])
+        _restore_safe_cursor()
+
+    coordinator = AgentCoordinator(AGENT_LOG, clock=time.monotonic,
+                                   wall_clock=time.time, on_error=agent_error)
+    coordinator.add('approval', 0, 5, approval_agent)
+    coordinator.add('sales', 10, 5, sales_agent)
+    coordinator.add('order', 30, 5, order_agent)
+
+    def priority_poll():
+        if not is_paused():
+            coordinator.run_due()
     print("[MOYI] Kakao connector worker started (fail-closed)")
-    print("[MOYI] inbound schedule: sales room alternates with other rooms")
+    report('worker_started')
+    print("[MOYI] agents: approval replies and receipts, sales additions/cancellations, orders, then background")
     while True:
         if is_paused():
             if not pause_announced:
@@ -230,46 +386,20 @@ def run() -> int:
             print("[MOYI] connector resumed from operations console")
             _event(None, "resumed", "operations console")
             pause_announced = False
-        if time.monotonic() >= next_approval_at:
+        priority_poll()
+        if not is_paused():
+            from core import error_notifications, keyword_forward
+            from core.moyi_inbound import export_exact_room
             try:
-                from core import keyword_approval, keyword_forward
-                from core.moyi_inbound import export_exact_room, _load_state, _save_state
-                def mark_rescan(title):
-                    response = requests.get(f'{server}/kakao/agent/rooms', headers=_headers(secret), timeout=20)
-                    response.raise_for_status()
-                    state = _load_state()
-                    pending = set(state.get('_needs_rescan', []))
-                    for room in response.json().get('items', []):
-                        if room.get('exact_title') == title:
-                            pending.add(str(room['room_binding_id']))
-                    state['_needs_rescan'] = sorted(pending)
-                    _save_state(state)
-                keyword_approval.poll(export_exact_room, keyword_forward.send_exact, is_paused, mark_rescan)
-            except Exception as exc:
-                _event(None, 'approval_check_failed', str(exc)[:200])
-            next_approval_at = time.monotonic() + 30
-        if time.monotonic() >= next_order_review_at:
-            try:
-                from core import import_order, keyword_forward, order_services
-                from core.moyi_inbound import export_exact_room
-                import_order.poll(export_exact_room, keyword_forward.send_exact,
-                                  order_services.master, order_services.register_bulk, is_paused)
-            except Exception as exc:
-                _event(None, 'import_order_check_failed', str(exc)[:200])
-            next_order_review_at = time.monotonic() + 30
-        try:
-            response = requests.get(f"{server}/kakao/agent/pending", headers=_headers(secret), params={"limit": 10}, timeout=20)
-            response.raise_for_status()
-        except requests.RequestException as exc:
-            if not _retryable_request_error(exc):
-                raise
-            print(f"[MOYI] pending poll temporarily unavailable ({_safe_request_error(exc)}); retrying")
-            time.sleep(POLL_RETRY_SEC)
-            continue
-        for item in response.json().get("items", []):
+                error_notifications.poll(export_exact_room,
+                    lambda room, text: keyword_forward.send_exact(room, text, require_forward_enabled=False), is_paused)
+            except Exception:
+                from core.moyi_control import audit
+                audit('error_notice_poll_failed', '오류 알림 처리 실패 · 프로그램 확인 필요')
+        for item in pending_poller.fetch(server, secret):
             _event(item, "leased", "server queue lease acquired")
             try:
-                process_item(server, secret, item)
+                _timed('outbound', process_item, server, secret, item)
             except Exception as exc:
                 detail = str(exc)
                 state = "failed_not_sent" if detail.startswith("not_sent:") or "방 제목" in detail or "exact room" in detail else "unknown_result"
@@ -279,6 +409,7 @@ def run() -> int:
                     requests.post(f"{server}/kakao/agent/ack/{item['id']}", headers=_headers(secret), json={"ok": False, "outcome": "unknown_result", "lease_token": item.get("lease_token"), "error": str(exc)[:500]}, timeout=20).raise_for_status()
                 except requests.RequestException as ack_exc:
                     print(f"[MOYI] failure ack temporarily unavailable ({_safe_request_error(ack_exc)})")
+        priority_poll()
         if time.monotonic() >= next_inbound_at:
             rooms = []
             try:
@@ -286,30 +417,44 @@ def run() -> int:
                     f"{server}/kakao/agent/rooms", headers=_headers(secret), timeout=20
                 )
                 rooms_response.raise_for_status()
+                from core.error_notifications import resolve_all
+                resolve_all('inbound_scan_failed')
                 rooms = [
                     room for room in rooms_response.json().get("items", [])
                     if str(room.get("exact_title") or "").strip()
+                    and str(room.get("exact_title") or "").strip() != '영업방'
                 ]
                 if rooms and not is_paused():
                     schedule = _inbound_schedule(rooms)
                     room = schedule[inbound_room_index % len(schedule)]
                     inbound_room_index = (inbound_room_index + 1) % len(schedule)
                     title = str(room.get("exact_title") or "").strip()
-                    try:
-                        result = poll_inbound_once(server, secret, only_title=title)
-                        if result["sent"] or result["initialized"]:
-                            print(f"[MOYI] inbound {title}: {result['sent']} sent, {result['initialized']} initialized")
-                    except Exception as room_exc:
-                        print(f"[MOYI] inbound room failed ({title}): {room_exc}")
-                        _event(None, "inbound_room_failed", f"{title}: {str(room_exc)[:400]}")
-                        _restore_safe_cursor()
+                    if room_breaker.available(title):
+                        try:
+                            result = _timed('inbound:' + title, poll_inbound_once, server, secret, only_title=title, defer_archive=True, max_events=5)
+                            if result["sent"] or result["initialized"]:
+                                report('inbound_processed')
+                                print(f"[MOYI] inbound {title}: {result['sent']} sent, {result['initialized']} initialized")
+                            room_breaker.succeeded(title)
+                        except Exception as room_exc:
+                            print(f"[MOYI] inbound room failed ({title}): {room_exc}")
+                            _event(None, "inbound_room_failed", f"{title}: {str(room_exc)[:400]}")
+                            if room_breaker.failed(title):
+                                _event(None, 'room_circuit_open', f'{title}: 3회 연속 실패; 30분 격리')
+                            _restore_safe_cursor()
             except Exception as exc:
                 print(f"[MOYI] inbound scan failed: {exc}")
                 _event(None, "inbound_scan_failed", str(exc)[:500])
-            # Keep the existing per-slot delay. Sales gets alternate slots;
-            # other rooms remain round-robin (their full rotation is longer).
-            # This keeps the outbound queue at the front of every 5-second loop
-            # instead of blocking it behind all room exports and attachments.
+            # Bounded room chunks yield back to replies before the next room.
             room_count = len(rooms) if rooms else 1
             next_inbound_at = time.monotonic() + max(5, inbound_interval / room_count)
-        time.sleep(5)
+        priority_poll()
+        if not is_paused() and time.monotonic() >= next_archive_at:
+            try:
+                from core.mindmap_sink import flush_pending
+                archived = _timed('archive', flush_pending, batch_size=50, timeout=10)
+                if archived: report('archive_completed')
+            except Exception as exc:
+                _event(None, 'archive_deferred', type(exc).__name__)
+            next_archive_at = time.monotonic() + 60
+        time.sleep(1)

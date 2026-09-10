@@ -42,6 +42,23 @@ def _restore_hidden_kakaotalk() -> None:
 # 카카오톡 메인 창 타이틀 (한국어 Windows 기준)
 KAKAOTALK_TITLE = "카카오톡"
 
+
+def _exact_main_window():
+    windows = [w for w in gw.getWindowsWithTitle(KAKAOTALK_TITLE)
+               if w.title == KAKAOTALK_TITLE and w.width > 0 and w.height > 0]
+    if len(windows) != 1:
+        raise RuntimeError(f'카카오톡 메인 창을 유일하게 확인할 수 없음: {len(windows)}개')
+    return windows[0]
+
+
+def _wait_for_foreground(hwnd, timeout=0.8):
+    import win32gui
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        if win32gui.GetForegroundWindow() == hwnd: return True
+        time.sleep(0.05)
+    return win32gui.GetForegroundWindow() == hwnd
+
 # 방 리스트 영역 비율 (창 크기 대비)
 # 카카오톡 PC 기본 레이아웃 기준:
 # - 좌측 탭바: 약 60px
@@ -103,7 +120,7 @@ def find_kakaotalk_window() -> KakaoWindow:
         )
 
     # 여러 창 중 가장 큰 창을 메인 창으로 간주 (채팅방 창은 작음)
-    main = max(windows, key=lambda w: w.width * w.height)
+    main = _exact_main_window()
 
     if main.isMinimized:
         raise RuntimeError(
@@ -135,7 +152,7 @@ def activate_kakaotalk() -> KakaoWindow:
     if not windows:
         raise RuntimeError("카카오톡이 실행 중이지 않습니다.")
 
-    main = max(windows, key=lambda w: w.width * w.height)
+    main = _exact_main_window()
 
     if main.isMinimized:
         main.restore()
@@ -159,13 +176,13 @@ def activate_kakaotalk() -> KakaoWindow:
 
     import win32gui
     import win32con
-    if win32gui.GetForegroundWindow() != main._hWnd:
+    if not _wait_for_foreground(main._hWnd):
         pyautogui.press('alt')
         win32gui.SetWindowPos(main._hWnd, win32con.HWND_TOP, 0, 0, 0, 0,
                              win32con.SWP_NOMOVE | win32con.SWP_NOSIZE)
         win32gui.SetForegroundWindow(main._hWnd)
         time.sleep(0.3)
-    if win32gui.GetForegroundWindow() != main._hWnd:
+    if not _wait_for_foreground(main._hWnd):
         raise RuntimeError('카카오톡 메인 창 포커스 확인 실패: 검색 차단')
     time.sleep(0.2)
     return find_kakaotalk_window()
