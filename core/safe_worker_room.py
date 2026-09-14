@@ -30,12 +30,12 @@ def _activate_verified(window) -> None:
     win32gui.SetForegroundWindow(window._hWnd)
     time.sleep(0.3)
 
-def open_unique_exact_room(title: str) -> int:
+def open_unique_exact_room(title: str, *, allow_main_activation=True, require_foreground=False) -> int:
     candidates = [w for w in gw.getAllWindows() if w.visible and w.title == title and w.width > 300 and w.height > 300]
     # Reusing an already-open exact room must not depend on foregrounding the
     # Kakao main window. Windows can reject that unrelated foreground switch,
     # which previously made a healthy room look unavailable.
-    if not candidates:
+    if not candidates and allow_main_activation:
         main = activate_kakaotalk()
         switch_to_chat_tab(main)
         candidates = [w for w in gw.getAllWindows()
@@ -43,7 +43,8 @@ def open_unique_exact_room(title: str) -> int:
     if len(candidates) != 1:
         raise RuntimeError(f"exact room verification failed: {len(candidates)} matches")
     window = candidates[0]
-    _activate_verified(window)
+    if not require_foreground:
+        _activate_verified(window)
     hwnd = window._hWnd
     if not _foreground_belongs_to(hwnd) or win32gui.GetWindowText(hwnd) != title:
         raise RuntimeError("room title/focus verification failed")

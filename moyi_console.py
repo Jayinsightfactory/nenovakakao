@@ -73,7 +73,7 @@ class Console(tk.Tk):
         ttk.Button(operator, text='담당자 저장', command=self.save_operator).pack(side='left')
         self.operator_status = tk.StringVar(value=f'현재 대상: {operator_name()}')
         ttk.Label(operator, textvariable=self.operator_status).pack(side='left', padx=8)
-        ttk.Label(self, text='완료·오류·상황 보고와 신규 승인 요청에 적용 · 변경 시 일시정지 · 기존 담당자 요청은 별도 검토').pack(anchor='w', padx=12)
+        ttk.Label(self, text='친구 목록에서 정확한 이름으로 1:1 열기 · 완료·오류·상황 보고와 신규 승인 요청에 적용 · 변경 시 일시정지').pack(anchor='w', padx=12)
         ttk.Button(top, text='긴급 정지', command=self.stop_now).pack(side='right')
         routing = ttk.LabelFrame(self, text='키워드 자동 전달 · 영업방 → 현장 추가취소방', padding=8)
         routing.pack(fill='x', padx=12)
