@@ -90,11 +90,12 @@ class Console(tk.Tk):
             self.route_table.heading(col, text=label)
             self.route_table.column(col, width=width)
         self.route_table.pack(fill='x')
-        orders = ttk.LabelFrame(self, text='수입방 → 담당자 확인 → 네노바 주문등록', padding=8)
+        orders = ttk.LabelFrame(self, text='3순위 · 수입방 수집 → 주문·담당자 매칭 → 검토 시트', padding=8)
         orders.pack(fill='x', padx=12, pady=(6, 0))
         self.order_summary = tk.StringVar()
         ttk.Label(orders, textvariable=self.order_summary).pack(anchor='w')
-        ttk.Label(orders, text='내용 확인/테스트 가능 · 실제 등록 미연결: 계정·API·중복방지·결과 재조회 검증 필요').pack(anchor='w')
+        ttk.Label(orders, text='최우선: 영업방 수집 → 승인·완료 알림 반복 · 수입방 약 1분 · 기타 작업 30분').pack(anchor='w')
+        ttk.Button(orders, text='주문 검토 시트 열기', command=self.open_order_review).pack(anchor='e')
         ttk.Button(orders, text='담당자별 네노바 로그인 설정', command=self.setup_nenova_credential).pack(anchor='e')
         self.order_table = ttk.Treeview(orders, columns=('time','status','id','staff','customer','week','items','detail'), show='headings', height=4)
         for col, label, width in [('time','시간',110),('status','상태',110),('id','요청번호',120),('staff','담당자',100),('customer','거래처',100),('week','차수',70),('items','품목',55),('detail','상세',360)]:
@@ -116,6 +117,14 @@ class Console(tk.Tk):
         bottom = ttk.Frame(self, padding=(12, 0, 12, 12)); bottom.pack(fill="x")
         ttk.Label(bottom, text="확인 필요 항목은 자동 재전송하지 않습니다. 워커 로그와 서버 ACK를 함께 확인하세요.").pack(side="left")
         ttk.Button(bottom, text="로그 폴더 열기", command=self.open_log_folder).pack(side="right")
+
+    def open_order_review(self):
+        import webbrowser
+        path = ROOT / 'data' / 'order_review_sync_status.json'
+        if path.exists():
+            webbrowser.open(json.loads(path.read_text(encoding='utf-8'))['url'])
+        else:
+            messagebox.showinfo('검토 시트', '첫 시트 저장이 완료되면 열 수 있습니다.', parent=self)
 
     def save_operator(self):
         from core.operator_settings import configure

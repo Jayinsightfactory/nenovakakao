@@ -98,8 +98,12 @@ def test_stage_timing_records_failure_without_payload(monkeypatch):
     assert 'private payload' not in emit.call_args.args[2]
 
 
-def test_worker_checks_replies_between_lower_priority_stages(monkeypatch, tmp_path):
+@pytest.mark.parametrize('review_only', [False, True])
+def test_worker_checks_replies_between_lower_priority_stages(monkeypatch, tmp_path, review_only):
     from core import import_order, moyi_inbound, mindmap_sink, error_notifications
+    from core import workflow_settings, order_review
+    settings = workflow_settings.config()
+    monkeypatch.setattr(workflow_settings, 'config', lambda: dict(settings, order_review_only=review_only))
     stages = []
     clock = [100.0]
     monkeypatch.setattr(worker, '_config', lambda: ('https://example.test', 'test'))
@@ -127,6 +131,6 @@ def test_worker_checks_replies_between_lower_priority_stages(monkeypatch, tmp_pa
     class EndCycle(Exception): pass
     monkeypatch.setattr(worker.time, 'sleep', Mock(side_effect=EndCycle))
     with pytest.raises(EndCycle): worker.run()
-    assert stages == ['approval', 'receipts', 'sales', 'order', 'pending',
-                      'approval', 'receipts', 'sales', 'order', 'inbound',
-                      'approval', 'receipts', 'sales', 'order', 'archive']
+    assert stages == ['sales', 'approval', 'receipts', 'inbound'] + ([] if review_only else ['order']) + [
+        'pending', 'sales', 'approval', 'receipts', 'archive']
+    order_review.start_sync.assert_called_once()

@@ -311,6 +311,10 @@ def run() -> int:
     from core.agent_runtime import AgentCoordinator
     from core.error_notifications import report
     inbound_interval = max(15, int(os.getenv("MOYI_INBOUND_SCAN_SEC", "30")))
+    from core.workflow_settings import config as workflow_config, register_agents
+    workflow = workflow_config()
+    background_interval = workflow['background_interval_sec']
+    next_report_at = next_outbound_at = next_primary_at = 0.0
     next_inbound_at = 0.0
     inbound_room_index = 0
     pause_announced = False
@@ -352,6 +356,12 @@ def run() -> int:
 
     def order_agent():
         if is_paused(): return None
+        result = _timed('agent:import_collection', poll_inbound_once, server, secret,
+                        only_title='수입방', defer_archive=True, max_events=5)
+        from core.order_review import start_sync
+        start_sync()
+        if workflow_config()['order_review_only']:
+            return result
         return _timed('agent:order', import_order.poll, export_exact_room,
                       keyword_forward.send_exact, order_services.master,
                       order_services.register_bulk, is_paused)
@@ -364,16 +374,16 @@ def run() -> int:
 
     coordinator = AgentCoordinator(AGENT_LOG, clock=time.monotonic,
                                    wall_clock=time.time, on_error=agent_error)
-    coordinator.add('approval', 0, 5, approval_agent)
-    coordinator.add('sales', 10, 5, sales_agent)
-    coordinator.add('order', 30, 5, order_agent)
+    register_agents(coordinator, sales_agent, approval_agent, order_agent)
 
     def priority_poll():
-        if not is_paused():
+        nonlocal next_primary_at
+        if not is_paused() and time.monotonic() >= next_primary_at:
             coordinator.run_due()
+            next_primary_at = time.monotonic() + workflow['primary_interval_sec']
     print("[MOYI] Kakao connector worker started (fail-closed)")
     report('worker_started')
-    print("[MOYI] agents: approval replies and receipts, sales additions/cancellations, orders, then background")
+    print("[MOYI] agents: sales then approvals/receipts, import review, 30-minute background")
     while True:
         if is_paused():
             if not pause_announced:
@@ -387,7 +397,8 @@ def run() -> int:
             _event(None, "resumed", "operations console")
             pause_announced = False
         priority_poll()
-        if not is_paused():
+        if not is_paused() and time.monotonic() >= next_report_at:
+            next_report_at = time.monotonic() + background_interval
             from core import error_notifications, keyword_forward
             from core.moyi_inbound import export_exact_room
             try:
@@ -399,7 +410,11 @@ def run() -> int:
                     audit('notice_paused', '사용자 일시정지; 알림 처리 기록 유지')
                 else:
                     audit('error_notice_poll_failed', '오류 알림 처리 실패 · 프로그램 확인 필요')
-        for item in pending_poller.fetch(server, secret):
+        outbound_items = []
+        if not is_paused() and time.monotonic() >= next_outbound_at:
+            next_outbound_at = time.monotonic() + background_interval
+            outbound_items = pending_poller.fetch(server, secret)
+        for item in outbound_items:
             _event(item, "leased", "server queue lease acquired")
             try:
                 _timed('outbound', process_item, server, secret, item)
@@ -413,7 +428,7 @@ def run() -> int:
                 except requests.RequestException as ack_exc:
                     print(f"[MOYI] failure ack temporarily unavailable ({_safe_request_error(ack_exc)})")
         priority_poll()
-        if time.monotonic() >= next_inbound_at:
+        if not is_paused() and time.monotonic() >= next_inbound_at:
             rooms = []
             try:
                 rooms_response = requests.get(
@@ -425,32 +440,33 @@ def run() -> int:
                 rooms = [
                     room for room in rooms_response.json().get("items", [])
                     if str(room.get("exact_title") or "").strip()
-                    and str(room.get("exact_title") or "").strip() != '영업방'
+                    and str(room.get("exact_title") or "").strip() not in ('영업방', '수입방')
                 ]
                 if rooms and not is_paused():
-                    schedule = _inbound_schedule(rooms)
-                    room = schedule[inbound_room_index % len(schedule)]
-                    inbound_room_index = (inbound_room_index + 1) % len(schedule)
-                    title = str(room.get("exact_title") or "").strip()
-                    if room_breaker.available(title):
-                        try:
-                            result = _timed('inbound:' + title, poll_inbound_once, server, secret, only_title=title, defer_archive=True, max_events=5)
-                            if result["sent"] or result["initialized"]:
-                                report('inbound_processed')
-                                print(f"[MOYI] inbound {title}: {result['sent']} sent, {result['initialized']} initialized")
-                            room_breaker.succeeded(title)
-                        except Exception as room_exc:
-                            print(f"[MOYI] inbound room failed ({title}): {room_exc}")
-                            _event(None, "inbound_room_failed", f"{title}: {str(room_exc)[:400]}")
-                            if room_breaker.failed(title):
-                                _event(None, 'room_circuit_open', f'{title}: 3회 연속 실패; 30분 격리')
-                            _restore_safe_cursor()
+                    for room in _inbound_schedule(rooms):
+                        if is_paused(): break
+                        priority_poll()
+                        title = str(room.get("exact_title") or "").strip()
+                        if room_breaker.available(title):
+                            try:
+                                result = _timed('inbound:' + title, poll_inbound_once, server, secret, only_title=title, defer_archive=True, max_events=5)
+                                if result["sent"] or result["initialized"]:
+                                    report('inbound_processed')
+                                    print(f"[MOYI] inbound {title}: {result['sent']} sent, {result['initialized']} initialized")
+                                room_breaker.succeeded(title)
+                            except Exception as room_exc:
+                                print(f"[MOYI] inbound room failed ({title}): {room_exc}")
+                                _event(None, "inbound_room_failed", f"{title}: {str(room_exc)[:400]}")
+                                if room_breaker.failed(title):
+                                    _event(None, 'room_circuit_open', f'{title}: 3회 연속 실패; 30분 격리')
+                                _restore_safe_cursor()
+
             except Exception as exc:
                 print(f"[MOYI] inbound scan failed: {exc}")
                 _event(None, "inbound_scan_failed", str(exc)[:500])
             # Bounded room chunks yield back to replies before the next room.
             room_count = len(rooms) if rooms else 1
-            next_inbound_at = time.monotonic() + max(5, inbound_interval / room_count)
+            next_inbound_at = time.monotonic() + background_interval
         priority_poll()
         if not is_paused() and time.monotonic() >= next_archive_at:
             try:
@@ -459,5 +475,5 @@ def run() -> int:
                 if archived: report('archive_completed')
             except Exception as exc:
                 _event(None, 'archive_deferred', type(exc).__name__)
-            next_archive_at = time.monotonic() + 60
+            next_archive_at = time.monotonic() + background_interval
         time.sleep(1)

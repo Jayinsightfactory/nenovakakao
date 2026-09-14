@@ -264,20 +264,31 @@ def capture(event, parse, master):
     if not cfg.get('enabled'): return None
     sender = str(event.get('sender_name') or '').strip()
     allowed = {normalize(value) for value in cfg.get('allowed_senders', []) if str(value).strip()}
-    if allowed and normalize(sender) not in allowed:
+    from core.workflow_settings import config as workflow_config
+    review_only = workflow_config()['order_review_only']
+    if not review_only and allowed and normalize(sender) not in allowed:
         return None
     if cfg.get('start_at'):
         from core.keyword_forward import timestamp
         stamp = timestamp(event.get('timestamp', ''))
         if stamp is None or stamp <= datetime.fromisoformat(cfg['start_at']):
             return None
-    parsed = parse(event['content'])
-    # The Kakao export is authoritative for who requested the order. LLM text
-    # extraction frequently cannot infer a staff name from the message body.
-    parsed['staff'] = sender
-    draft = build_draft(event, parsed, master())
+    try:
+        parsed = parse(event['content'])
+        # The Kakao export is authoritative for who requested the order. LLM text
+        # extraction frequently cannot infer a staff name from the message body.
+        parsed['staff'] = sender
+        draft = build_draft(event, parsed, master())
+    except Exception as exc:
+        from core.moyi_control import OperationPaused
+        if isinstance(exc, OperationPaused): raise
+        if not review_only: raise
+        draft = {'id': 'ORD-' + hashlib.sha256(event['event_id'].encode()).hexdigest()[:8].upper(),
+                 'event': event, 'status': 'analysis_error', 'created_at': time.time(),
+                 'staff': sender, 'staff_room': cfg.get('staff_rooms', {}).get(sender, ''),
+                 'items': [], 'error': str(exc)[:300], 'questions': ['분석 실패; 원문 직접 검토 필요']}
     draft['simulation'] = not cfg.get('write_enabled', False)
-    if not draft['items']:
+    if not draft['items'] and draft.get('status') != 'analysis_error':
         draft['status'] = 'ignored'
     rows[event['event_id']] = draft
     _save(STATE, rows)

@@ -520,7 +520,7 @@ def poll_once(server: str, secret: str, only_title: str | None = None,
             state['_needs_rescan'] = sorted(retry_bindings)
             _save_state(state)
             keyword_forward.process_source(
-                title, events, export_exact_room, keyword_forward.send_exact, is_paused,
+                title, list(reversed(events)), export_exact_room, keyword_forward.send_exact, is_paused,
                 max_new_events=max_events
             )
         known_ids = state.get(binding, [])

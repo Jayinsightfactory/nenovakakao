@@ -13,3 +13,9 @@ def isolated_error_notice_queue(tmp_path, monkeypatch):
     monkeypatch.setattr(moyi_control, 'PAUSE_FILE', tmp_path / 'worker.pause')
     from core import operator_settings
     monkeypatch.setattr(operator_settings, 'CONFIG', tmp_path / 'operator.json')
+
+    from core import workflow_settings
+    monkeypatch.setattr(workflow_settings, "CONFIG", tmp_path / "workflow.json")
+    from core import order_review
+    from unittest.mock import Mock
+    monkeypatch.setattr(order_review, 'start_sync', Mock())

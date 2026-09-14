@@ -291,6 +291,11 @@ def hold_previous_operator_requests(rows, current):
     return changed
 
 
+def queued_priority_at(row):
+    stamp = k.timestamp(row.get('event', {}).get('timestamp', ''))
+    return stamp.timestamp() if stamp is not None else row.get('created_at', 0)
+
+
 def poll(export, send, paused, mark_rescan):
     if paused() or not k.config().get('enabled'):
         return
@@ -311,7 +316,7 @@ def poll(export, send, paused, mark_rescan):
     # is currently waiting, dispatch the newest queued request first. Older
     # rows remain durable and are not silently approved or discarded.
     active.sort(key=lambda r: (rank[r['status']],
-        -r.get('created_at', 0) if r['status'] == 'queued' else r.get('created_at', 0)))
+        -queued_priority_at(r) if r['status'] == 'queued' else r.get('created_at', 0)))
     if not active:
         return
     from core.moyi_inbound import parse_export
