@@ -53,6 +53,21 @@ class KeywordTests(unittest.TestCase):
         self.run_route([self.event(minute='04'), self.event(minute='05', eid='two'), self.event('안녕하세요', eid='three')])
         self.send.assert_not_called()
 
+    def test_dispatch_dedup_avoids_second_export_and_never_asks_existing(self):
+        cfg = k.config()
+        cfg['approval_dedup_at_dispatch_only'] = True
+        k.save_json(k.CONFIG, cfg)
+        export = Mock(side_effect=AssertionError('source only queues locally'))
+        self.run_route([self.event()], export)
+        export.assert_not_called()
+        target = self.history + '\n[직원] [오전 9:06] 장미 2박스 추가'
+        def dispatch_export(room):
+            self.assertEqual(room, cfg['target'])
+            return target
+        a.poll(dispatch_export, self.send, lambda: False, Mock())
+        self.send.assert_not_called()
+        self.assertEqual(next(iter(k.read_json(a.REQUESTS, {}).values()))['status'], 'resolved_existing')
+
     def test_kakao_hint_is_not_a_draft(self):
         self.assertFalse(k.has_draft('메시지 입력'))
         self.assertFalse(k.has_draft(''))

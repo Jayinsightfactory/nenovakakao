@@ -359,6 +359,8 @@ def run() -> int:
         result = _timed('agent:import_collection', poll_inbound_once, server, secret,
                         only_title='수입방', defer_archive=True, max_events=5)
         from core.order_review import start_sync
+        from core.order_analysis_queue import start as start_analysis
+        start_analysis()
         start_sync()
         if workflow_config()['order_review_only']:
             return result
@@ -379,8 +381,9 @@ def run() -> int:
     def priority_poll():
         nonlocal next_primary_at
         if not is_paused() and time.monotonic() >= next_primary_at:
-            coordinator.run_due()
+            # Interval is measured from the start, not added to UI processing.
             next_primary_at = time.monotonic() + workflow['primary_interval_sec']
+            coordinator.run_due()
     print("[MOYI] Kakao connector worker started (fail-closed)")
     report('worker_started')
     print("[MOYI] agents: sales then approvals/receipts, import review, 30-minute background")

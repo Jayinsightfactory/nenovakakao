@@ -132,5 +132,5 @@ def test_worker_checks_replies_between_lower_priority_stages(monkeypatch, tmp_pa
     monkeypatch.setattr(worker.time, 'sleep', Mock(side_effect=EndCycle))
     with pytest.raises(EndCycle): worker.run()
     assert stages == ['sales', 'approval', 'receipts', 'inbound'] + ([] if review_only else ['order']) + [
-        'pending', 'sales', 'approval', 'receipts', 'archive']
+        'pending', 'sales', 'approval', 'receipts', 'sales', 'approval', 'receipts', 'archive']
     order_review.start_sync.assert_called_once()

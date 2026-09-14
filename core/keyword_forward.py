@@ -176,6 +176,14 @@ def process_source(title, events, export, send, paused, max_new_events=5):
         if any(row.get('content_hash') == digest and row['status'] in ('전송 성공', '전송 확인중', '결과 불명') for row in state.values()):
             record(event, '중복 생략', '기존 전달/확인중 기록과 동일 본문')
             continue
+        if not approved and cfg.get('approval_dedup_at_dispatch_only'):
+            # Queue locally only. Approval.poll MUST export/deduplicate the
+            # target before it sends any operator prompt. Avoid exporting the
+            # same room twice in succession; approved forwarding still rechecks.
+            from core.keyword_approval import enqueue
+            request_id = enqueue(event, batch_id=approval_batch)
+            record(event, '승인요청 전송대기', f'대상 방 대조 대기 · 요청 {request_id}')
+            continue
         try:
             before = history()
             if duplicate(body, before):

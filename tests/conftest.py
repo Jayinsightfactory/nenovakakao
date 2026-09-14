@@ -19,3 +19,6 @@ def isolated_error_notice_queue(tmp_path, monkeypatch):
     from core import order_review
     from unittest.mock import Mock
     monkeypatch.setattr(order_review, 'start_sync', Mock())
+    from core import order_analysis_queue
+    monkeypatch.setattr(order_analysis_queue, 'QUEUE', tmp_path / 'order_analysis_queue')
+    monkeypatch.setattr(order_analysis_queue, 'start', Mock())

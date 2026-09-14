@@ -27,6 +27,28 @@ def test_operator_uses_friends_even_if_same_title_window_exists(monkeypatch):
     chat.assert_not_called()
 
 
+def test_friend_navigation_retry_is_bounded(monkeypatch):
+    operator_settings.configure('강현우')
+    from core.window_detector import KakaoWindow
+    monkeypatch.setattr('core.window_detector._exact_main_window', lambda: SimpleNamespace(_hWnd=1))
+    monkeypatch.setattr('core.window_detector.activate_kakaotalk', lambda: KakaoWindow('카카오톡', 0, 0, 500, 800))
+    monkeypatch.setattr(rooms, '_foreground_belongs_to', lambda hwnd: True)
+    monkeypatch.setattr(inbound, '_assert_export_running', Mock())
+    monkeypatch.setattr(inbound.time, 'sleep', Mock())
+    monkeypatch.setattr(inbound.pyautogui, 'click', Mock())
+    monkeypatch.setattr(inbound.pyautogui, 'doubleClick', Mock())
+    monkeypatch.setattr(inbound, 'replace_room_search', Mock())
+    verify = Mock(side_effect=[RuntimeError('0 matches'), 99])
+    monkeypatch.setattr(inbound, 'open_unique_exact_room', verify)
+    assert inbound._open_or_reuse_exact_room('강현우') == 99
+    assert verify.call_count == 2
+    verify.side_effect = RuntimeError('0 matches')
+    verify.reset_mock()
+    with pytest.raises(RuntimeError):
+        inbound._open_or_reuse_exact_room('강현우')
+    assert verify.call_count == 2
+
+
 @pytest.mark.parametrize('existing', [False, True])
 def test_failed_friend_open_never_activates_group_or_chat_tab(monkeypatch, existing):
     window = SimpleNamespace(visible=True, title='강현우', width=500, height=600, _hWnd=99)

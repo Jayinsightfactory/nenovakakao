@@ -311,7 +311,7 @@ def has_unread_exact_room(title: str) -> bool:
     return len(badges) == 1
 
 
-def _open_or_reuse_exact_room(title: str) -> int:
+def _open_or_reuse_exact_room(title: str, _friend_retry=False) -> int:
     """Operator/staff DMs must originate from Friends, never chat search."""
     from core.operator_settings import operator_name
     from core.import_order import direct_contacts
@@ -325,13 +325,23 @@ def _open_or_reuse_exact_room(title: str) -> int:
         pyautogui.click(main.left + 33, main.top + 57)
         time.sleep(0.5)
         replace_room_search(main, title)
+        if _friend_retry:
+            time.sleep(1.2)  # Search results can render after the input debounce.
         if not _foreground_belongs_to(main_hwnd):
             raise RuntimeError('친구 목록 검색 중 포커스 변경; 대화 열기 차단')
         pyautogui.doubleClick(main.left + 175, main.top + 185, interval=0.12)
         time.sleep(1)
         # A failed friend lookup must not activate an unrelated, already-open
         # group with the same title, or switch to the chat-list search.
-        return open_unique_exact_room(title, allow_main_activation=False, require_foreground=True)
+        try:
+            return open_unique_exact_room(title, allow_main_activation=False, require_foreground=True)
+        except RuntimeError:
+            # This function has not typed a message or pressed Send. Retry only
+            # friend navigation, never a chat-list fallback or message replay.
+            _assert_export_running()
+            if _friend_retry:
+                raise
+            return _open_or_reuse_exact_room(title, _friend_retry=True)
     existing = [window for window in gw.getAllWindows()
                 if window.visible and window.title == title
                 and window.width > 300 and window.height > 300]
@@ -550,11 +560,18 @@ def poll_once(server: str, secret: str, only_title: str | None = None,
             order_cfg = import_order.config()
             if order_cfg.get('enabled') and title == order_cfg.get('source', '수입방'):
                 for event in new_events:
-                    import_order.capture(event, order_llm.parse, order_services.master)
+                    from core.workflow_settings import config as workflow_config
+                    if workflow_config()['order_review_only']:
+                        from core.order_analysis_queue import enqueue
+                        enqueue(event)
+                    else:
+                        import_order.capture(event, order_llm.parse, order_services.master)
         except Exception as order_exc:
             from core.error_notifications import notify
             notify('order_capture_failed')
             print(f"[MOYI] import order capture held ({title}): {type(order_exc).__name__}")
+            # Do not advance the source checkpoint if durable enqueue failed.
+            raise
         enqueue_events(binding, title, new_events)
         try:
             flushed = 0 if defer_archive else flush_pending()
