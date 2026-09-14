@@ -260,18 +260,21 @@ def decision(replies, row, allow_short=False):
             elif not short_context and not (row.get('item_labels') and
                     row.get('status') in ('waiting', 'awaiting_late_reply') and not row.get('recovered_at')):
                 continue
-            matches = list(re.finditer(r'([가-하]+)\s+(안\s*보내|보내)', content))
-            residue = re.sub(r'([가-하]+)\s+(안\s*보내|보내)', '', content)
+            pattern = r'([가-하]+(?:\s*[,，]\s*[가-하]+)*)\s+(안\s*보내|보내)'
+            groups = list(re.finditer(pattern, content))
+            matches = [(label.strip(), match[2]) for match in groups
+                       for label in re.split('[,，]', match[1])]
+            residue = re.sub(pattern, '', content)
             labels = {item_label(row, i): i for i in range(len(row.get('events') or [row['event']]))}
-            if (not matches or residue.strip(' ,\n\t') or
-                    (not row.get('item_labels') and any(m[1] not in labels for m in matches)) or
-                    len({m[1] for m in matches}) != len(matches)):
+            if (not matches or residue.strip(' ,，\n\t') or
+                    (not row.get('item_labels') and any(label not in labels for label, _ in matches)) or
+                    len({label for label, _ in matches}) != len(matches)):
                 continue
-            for m in matches:
-                if m[1] not in labels:
+            for label, action in matches:
+                if label not in labels:
                     continue
                 # The first explicit decision is immutable after processing.
-                item_answers.setdefault(labels[m[1]], 'approve' if m[2] == '보내' else 'reject')
+                item_answers.setdefault(labels[label], 'approve' if action == '보내' else 'reject')
             continue
         if is_batch(row):
             selected = batch_selection(content, row)

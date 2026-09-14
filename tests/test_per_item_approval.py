@@ -1,4 +1,23 @@
 from core import keyword_approval as a
+import pytest
+
+
+@pytest.mark.parametrize('content,expected', [
+    ('가나, 가다 보내', {0:'approve',1:'approve'}),
+    ('가나,가다 안보내', {0:'reject',1:'reject'}),
+    ('가나， 가다 보내', {0:'approve',1:'approve'}),
+    ('가나 보내, 가다 안보내', {0:'approve',1:'reject'}),
+    ('가나, 가다 보내 가라 안 보내', {0:'approve',1:'approve',2:'reject'}),
+    ('가나, 가다 보내지마', None),
+    ('가나, 가다 보내 가나 안보내', None),
+    ('가나 말고 가다 보내', None),
+])
+def test_grouped_item_answers(content, expected):
+    row = dict(id='ABC', status='waiting', choice_format='per_item',
+        item_labels=['가나','가다','가라'], events=[{}, {}, {}], request_event_id='prompt', baseline=[])
+    history = [dict(event_id='prompt', sender_name='봇', content='[전달 승인 요청 ABC]'),
+               dict(event_id='answer', sender_name=a.APPROVER, content=content)]
+    assert a.decision(history,row,True) == expected
 
 
 def test_split_answers_keep_unanswered_pending_and_ignore_other_people():
