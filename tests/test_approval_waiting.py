@@ -144,6 +144,29 @@ def test_reminder_once_then_hold_without_auto_approval(pipeline, monkeypatch):
     assert send.call_count == 1
 
 
+@pytest.mark.parametrize('newer,recovered,expected', [(False,False,True),(True,False,False),(False,True,False)])
+def test_late_latest_item_reply_runs_forwarding(pipeline, monkeypatch, tmp_path, newer, recovered, expected):
+    messages, export, send = pipeline
+    monkeypatch.setattr(k, 'STATE', tmp_path / 'forward.json')
+    monkeypatch.setattr(k, 'config', lambda: {'enabled': True, 'source': '영업방', 'target': '현장방'})
+    pending = row('AAA111', 'awaiting_late_reply')
+    pending.update(choice_format='per_item', request_event_id='prompt', baseline=[], sent_at=100)
+    if recovered: pending['recovered_at'] = 200
+    messages.append({'event_id': 'prompt', 'sender_name': '네노바', 'content': '[전달 승인 요청 AAA111]'})
+    if newer:
+        messages.append({'event_id': 'new', 'sender_name': '네노바', 'content': '[전달 승인 요청 BBB222]'})
+    messages.append({'event_id': 'answer', 'sender_name': a.APPROVER, 'content': '가 보내'})
+    k.save_json(a.REQUESTS, {'AAA111': pending})
+    k.save_json(k.STATE, {'AAA111': {'status': '미응답 보류'}})
+    forward = Mock()
+    monkeypatch.setattr(k, 'process_source', forward)
+    monkeypatch.setattr(a, 'notify_results', Mock())
+    a.poll(export, send, lambda: False, Mock())
+    assert forward.call_count == int(expected)
+    saved = k.read_json(a.REQUESTS, {})['AAA111']
+    assert saved.get('item_answers', {}) == ({'0': 'approve'} if expected else {})
+
+
 def test_default_skips_five_minute_reminder_and_preserves_unanswered(pipeline, monkeypatch):
     messages, export, send = pipeline
     pending = row('AAA111', 'waiting')

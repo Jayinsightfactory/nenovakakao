@@ -455,7 +455,11 @@ def poll(export, send, paused, mark_rescan):
             # A fresh poll gets a fresh UI/history preflight.
             return
         if row['status'] in ('waiting', 'awaiting_late_reply', 'historical_review'):
-            reply = decision(history(), row, allow_short=row['status'] == 'waiting')
+            # The unanswered timer does not change which prompt a reply follows.
+            # decision() closes bare-reply context at every intervening prompt.
+            # Recovered/legacy history still requires an explicit request ID.
+            allow_short = row['status'] in ('waiting', 'awaiting_late_reply') and not row.get('recovered_at')
+            reply = decision(history(), row, allow_short=allow_short)
             if row.get('choice_format') == 'per_item':
                 saved = row.get('item_answers', {})
                 fresh = {i: value for i, value in (reply or {}).items() if str(i) not in saved}
@@ -479,7 +483,7 @@ def poll(export, send, paused, mark_rescan):
                         'cause': '승인 질문 전송 확인 후 15분 동안 답변 없음',
                         'automatic_action': '현장방으로 보내지 않고 늦은 답변 대기 상태로 보류',
                     })
-                    report('미응답 보류', f'요청 {rid}: 15분 미응답; 자동 승인 없음; 요청번호 포함 답변 필요')
+                    report('미응답 보류', f'요청 {rid}: 15분 미응답; 답변 계속 대기; 이후 새 질문이 있으면 요청번호 필요')
                 elif action == 'remind' and k.config().get('approval_individual_reminders', False):
                     row['reminder_attempted_at'] = time.time()
                     k.save_json(REQUESTS, rows)
