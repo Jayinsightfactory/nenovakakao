@@ -182,6 +182,9 @@ def process_source(title, events, export, send, paused, max_new_events=5):
                 record(event, '중복 생략', '대상 방에 동일 본문 존재')
                 continue
         except Exception as exc:
+            from core.moyi_control import OperationPaused
+            if isinstance(exc, OperationPaused):
+                raise
             record(event, '검증 재시도', str(exc)[:200])
             return
         if paused() or not config().get('enabled'):
@@ -203,6 +206,9 @@ def process_source(title, events, export, send, paused, max_new_events=5):
                 raise RuntimeError('대상 방 재조회에서 전송 결과 확인 불가')
             record(event, '전송 성공', '대상 방 원문 재조회 확인')
         except Exception as exc:
+            from core.moyi_control import OperationPaused
+            if isinstance(exc, OperationPaused):
+                raise
             record(event, '결과 불명', str(exc)[:200])
 
 
@@ -213,7 +219,7 @@ def send_exact(title, payload, require_forward_enabled=True):
     import pyperclip
     import win32gui
     import win32con
-    from core.moyi_control import is_paused
+    from core.moyi_control import is_paused, OperationPaused
     from core.moyi_inbound import _open_or_reuse_exact_room
     from core.safe_worker_room import close_room, _foreground_belongs_to
     class GuiInfo(ctypes.Structure):
@@ -242,7 +248,7 @@ def send_exact(title, payload, require_forward_enabled=True):
         left, top, right, bottom = win32gui.GetWindowRect(edit)
         pyautogui.click((left + right)//2, (top + bottom)//2)
         if is_paused() or (require_forward_enabled and not config().get('enabled')):
-            raise RuntimeError('일시정지로 전송 차단')
+            raise OperationPaused('일시정지로 전송 차단')
         if not _foreground_belongs_to(hwnd) or win32gui.GetWindowText(hwnd) != title or not focused(edit):
             raise RuntimeError('전송 직전 방 제목/포커스 불일치')
         pyperclip.copy(payload)
@@ -250,7 +256,9 @@ def send_exact(title, payload, require_forward_enabled=True):
         # Kakao RichEdit applies multiline clipboard text asynchronously on
         # some PCs. 0.2s intermittently read the previous/partial value.
         time.sleep(0.5)
-        if is_paused() or (require_forward_enabled and not config().get('enabled')) or not _foreground_belongs_to(hwnd) or not focused(edit):
+        if is_paused() or (require_forward_enabled and not config().get('enabled')):
+            raise OperationPaused('일시정지로 전송 차단')
+        if not _foreground_belongs_to(hwnd) or not focused(edit):
             raise RuntimeError('붙여넣기 후 정지/포커스 변경; 확인 필요')
         capacity = max(paste_buffer_capacity(payload),
                        send_message(edit, win32con.WM_GETTEXTLENGTH, 0, 0) + 1)
@@ -263,7 +271,9 @@ def send_exact(title, payload, require_forward_enabled=True):
         # never paste again or press Enter while contents differ.
         deadline = time.monotonic() + 2
         while normalize(buffer.value) != normalize(payload) and time.monotonic() < deadline:
-            if is_paused() or not _foreground_belongs_to(hwnd) or not focused(edit):
+            if is_paused():
+                raise OperationPaused('일시정지로 전송 차단')
+            if not _foreground_belongs_to(hwnd) or not focused(edit):
                 raise RuntimeError('붙여넣기 확인 중 정지/포커스 변경; 전송 차단')
             time.sleep(0.1)
             actual_capacity = send_message(edit, win32con.WM_GETTEXTLENGTH, 0, 0) + 1
@@ -280,7 +290,9 @@ def send_exact(title, payload, require_forward_enabled=True):
                 pyautogui.hotkey('ctrl', 'a')
                 pyautogui.press('backspace')
             raise RuntimeError('입력란 원문 검증 실패; Enter 전송 차단')
-        if is_paused() or (require_forward_enabled and not config().get('enabled')) or not _foreground_belongs_to(hwnd) or not focused(edit):
+        if is_paused() or (require_forward_enabled and not config().get('enabled')):
+            raise OperationPaused('일시정지로 전송 차단')
+        if not _foreground_belongs_to(hwnd) or not focused(edit):
             raise RuntimeError('Enter 직전 정지/포커스 변경; 전송 차단')
         pyautogui.press('enter')
         time.sleep(0.8)

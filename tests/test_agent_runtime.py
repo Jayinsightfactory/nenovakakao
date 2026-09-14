@@ -45,3 +45,13 @@ def test_duplicate_agent_names_are_rejected(tmp_path):
         pass
     else:
         raise AssertionError('duplicate agent accepted')
+
+
+def test_user_pause_is_logged_without_failure_or_error_callback(tmp_path):
+    from core.moyi_control import OperationPaused
+    errors = Mock()
+    runtime = AgentCoordinator(tmp_path / 'agents.jsonl', on_error=errors)
+    agent = runtime.add('approval', 0, 5, Mock(side_effect=OperationPaused('일시정지')))
+    assert runtime.run_due() == [('approval', 'paused', None)]
+    assert agent.failures == 0
+    errors.assert_not_called()

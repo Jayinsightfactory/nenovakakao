@@ -128,6 +128,7 @@ def test_existing_target_message_skips_approval_prompt(pipeline, monkeypatch):
 
 
 def test_reminder_once_then_hold_without_auto_approval(pipeline, monkeypatch):
+    monkeypatch.setattr(k, 'config', lambda: {'enabled': True, 'target': '현장방', 'approval_individual_reminders': True})
     messages, export, send = pipeline
     pending = row('AAA111', 'waiting')
     pending.update(request_event_id='prompt', sent_at=100)
@@ -143,6 +144,43 @@ def test_reminder_once_then_hold_without_auto_approval(pipeline, monkeypatch):
     assert send.call_count == 1
 
 
+def test_default_skips_five_minute_reminder_and_preserves_unanswered(pipeline, monkeypatch):
+    messages, export, send = pipeline
+    pending = row('AAA111', 'waiting')
+    pending.update(request_event_id='prompt', sent_at=100)
+    messages.append({'event_id': 'prompt', 'sender_name': '네노바', 'content': '질문'})
+    k.save_json(a.REQUESTS, {'AAA111': pending})
+    monkeypatch.setattr(a.time, 'time', lambda: 401)
+    a.poll(export, send, lambda: False, Mock())
+    send.assert_not_called()
+    monkeypatch.setattr(a.time, 'time', lambda: 1001)
+    a.poll(export, send, lambda: False, Mock())
+    send.assert_not_called()
+    assert k.read_json(a.REQUESTS, {})['AAA111']['status'] == 'awaiting_late_reply'
+
+
+def test_pause_during_preflight_does_not_hold_or_notify(pipeline, monkeypatch):
+    from core.moyi_control import OperationPaused
+    _, export, send = pipeline
+    k.save_json(a.REQUESTS, {'AAA111': row('AAA111')})
+    export.side_effect = OperationPaused('일시정지')
+    with pytest.raises(OperationPaused):
+        a.poll(export, send, lambda: False, Mock())
+    assert k.read_json(a.REQUESTS, {})['AAA111']['status'] == 'queued'
+    assert not notices._rows()
+    send.assert_not_called()
+
+
+def test_historical_snapshot_tracks_authoritative_rows():
+    old = row('AAA111', 'historical_review')
+    old['events'] = [old['event'], dict(old['event'], event_id='second')]
+    a.refresh_historical_review({'AAA111': old})
+    path = a.REQUESTS.with_name('historical_approval_review.json')
+    snapshot = k.read_json(path, [])
+    assert len(snapshot) == 1 and snapshot[0]['items'] == 2
+    old['status'] = 'resolved'
+    a.refresh_historical_review({'AAA111': old})
+    assert k.read_json(path, None) == []
 def test_reports_wait_behind_question_but_errors_do_not(pipeline):
     _, export, send = pipeline
     k.save_json(a.REQUESTS, {'AAA111': row('AAA111')})

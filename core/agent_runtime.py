@@ -11,6 +11,7 @@ import time
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable
+from core.moyi_control import OperationPaused
 
 
 @dataclass
@@ -60,6 +61,8 @@ class AgentCoordinator:
                 outcome, error_type, value = 'ok', '', None
                 try:
                     value = agent.operation()
+                except OperationPaused:
+                    outcome = 'paused'
                 except Exception as exc:
                     outcome, error_type = 'error', type(exc).__name__
                     agent.failures += 1

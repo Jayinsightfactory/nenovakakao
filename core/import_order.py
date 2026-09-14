@@ -373,7 +373,12 @@ def append_log(row, action, detail):
         report(report_action[action], row['id'])
     if action == 'error':
         from core.error_notifications import notify
-        notify('order_error', row['id'])
+        notify('order_error', row['id'], {
+            'source_room': config().get('source', '수입방'),
+            'target_room': row.get('staff_room', ''),
+            'stage': row.get('status', ''), 'cause': detail,
+            'automatic_action': '현재 처리 기록 보존; 불명확한 전송·등록 자동 반복 중지',
+        })
     LOG.parent.mkdir(parents=True, exist_ok=True)
     with LOG.open('a', encoding='utf-8') as stream:
         stream.write(json.dumps({'at': time.time(), 'id': row['id'], 'action': action,
@@ -389,11 +394,13 @@ def _history(export, room):
 
 
 def _verified_send(row, message, export, send, paused):
+    from core.moyi_control import OperationPaused
     before = _history(export, row['staff_room'])
+    if paused(): raise OperationPaused('일시정지')
     baseline = [e['event_id'] for e in before]
     row.update(status='request_unknown', baseline=baseline)
     rows = _read(STATE, {}); rows[row['event']['event_id']] = row; _save(STATE, rows)
-    if paused(): raise RuntimeError('일시정지')
+    if paused(): raise OperationPaused('일시정지')
     send(row['staff_room'], message)
     after = _history(export, row['staff_room'])
     new = [e for e in after if e['event_id'] not in baseline and normalize(e['content']) == normalize(message)]
@@ -606,6 +613,14 @@ def poll(export, send, master, registrar, paused):
                         row['request_event_id'] = command_event['event_id']
                     append_log(row, command[0], '담당자 답변 적용')
         except Exception as exc:
+            from core.moyi_control import OperationPaused
+            if isinstance(exc, OperationPaused):
+                if row.get('status') == 'registering':
+                    row['status'] = 'registration_unknown'
+                append_log(row, 'paused', str(exc))
+                rows[event_id] = row
+                _save(STATE, rows)
+                return
             # No automatic retry after a possible external write.
             if row.get('status') == 'registering': row['status'] = 'registration_unknown'
             elif row.get('status') == 'request_unknown': pass

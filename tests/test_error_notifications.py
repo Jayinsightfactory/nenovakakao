@@ -2,6 +2,56 @@ from unittest.mock import Mock
 from core import error_notifications as notices
 
 
+def test_unanswered_group_is_throttled_and_receipts_keep_priority(monkeypatch):
+    from core import keyword_approval as a, keyword_forward as k
+    monkeypatch.setattr('core.moyi_control.audit', Mock())
+    monkeypatch.setattr(k, 'config', lambda: {'approval_active_hours': [0, 24]})
+    now = [10000]
+    monkeypatch.setattr(notices.time, 'time', lambda: now[0])
+    sent = []
+    monkeypatch.setattr('core.moyi_inbound.parse_export', lambda *args: [
+        {'event_id': str(i), 'content': text} for i, text in enumerate(sent)])
+    requests = {rid: {'id': rid, 'status': 'awaiting_late_reply', 'event': {'event_id': rid}}
+                for rid in ('AAA111', 'BBB222', 'CCC333')}
+    requests['DDD444'] = {'status': 'historical_review'}
+    k.save_json(a.REQUESTS, requests)
+    for rid in ('AAA111', 'BBB222', 'DDD444'):
+        notices.enqueue('approval_unanswered', rid)
+    export = Mock(return_value='임재용대리 님과 카카오톡 대화\n')
+    send = lambda room, payload: sent.append(payload)
+    notices.poll(export, send, lambda: False)
+    assert len(sent) == 1 and '대기 모음' in sent[0]
+    assert 'AAA111' in sent[0] and 'BBB222' in sent[0] and 'DDD444' not in sent[0]
+    notices.enqueue('approval_unanswered', 'CCC333')
+    now[0] += 10
+    notices.poll(export, send, lambda: False)
+    assert len(sent) == 1
+    notices.approval_result('AAA111', 'item-a', '가', '승인거절')
+    notices.poll(export, send, lambda: False)
+    assert len(sent) == 2 and '처리했습니다' in sent[-1]
+    now[0] += 3600
+    notices.poll(export, send, lambda: False)
+    assert len(sent) == 3 and 'CCC333' in sent[-1]
+    notices.poll(export, send, lambda: False)
+    assert len(sent) == 3
+
+
+def test_unknown_group_is_not_replayed_and_throttles_followups(monkeypatch):
+    from core import keyword_approval as a, keyword_forward as k
+    monkeypatch.setattr('core.moyi_control.audit', Mock())
+    monkeypatch.setattr(k, 'config', lambda: {'approval_active_hours': [0, 24]})
+    monkeypatch.setattr('core.moyi_inbound.parse_export', lambda *args: [])
+    k.save_json(a.REQUESTS, {rid: {'status': 'awaiting_late_reply', 'event': {}}
+                            for rid in ('AAA111', 'BBB222')})
+    notices.enqueue('approval_unanswered', 'AAA111')
+    send = Mock(side_effect=TimeoutError())
+    export = Mock(return_value='임재용대리 님과 카카오톡 대화\n')
+    notices.poll(export, send, lambda: False)
+    notices.enqueue('approval_unanswered', 'BBB222')
+    notices.poll(export, send, lambda: False)
+    assert send.call_count == 1
+
+
 def test_item_receipts_send_during_approval_wait_and_do_not_repeat(monkeypatch):
     monkeypatch.setattr('core.moyi_control.audit', Mock())
     monkeypatch.setattr('core.keyword_approval.has_pending_question', lambda: True)

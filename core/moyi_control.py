@@ -9,6 +9,10 @@ ROOT = Path(__file__).resolve().parent.parent
 PAUSE_FILE = ROOT / "data" / "moyi_worker.pause"
 
 
+class OperationPaused(RuntimeError):
+    """A user pause interrupted work; possible writes still need reconciliation."""
+
+
 def audit(state, detail=''):
     path = PAUSE_FILE.parent / 'moyi_control_events.jsonl'
     path.parent.mkdir(parents=True, exist_ok=True)

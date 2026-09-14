@@ -393,9 +393,12 @@ def run() -> int:
             try:
                 error_notifications.poll(export_exact_room,
                     lambda room, text: keyword_forward.send_exact(room, text, require_forward_enabled=False), is_paused)
-            except Exception:
-                from core.moyi_control import audit
-                audit('error_notice_poll_failed', '오류 알림 처리 실패 · 프로그램 확인 필요')
+            except Exception as exc:
+                from core.moyi_control import audit, OperationPaused
+                if isinstance(exc, OperationPaused):
+                    audit('notice_paused', '사용자 일시정지; 알림 처리 기록 유지')
+                else:
+                    audit('error_notice_poll_failed', '오류 알림 처리 실패 · 프로그램 확인 필요')
         for item in pending_poller.fetch(server, secret):
             _event(item, "leased", "server queue lease acquired")
             try:

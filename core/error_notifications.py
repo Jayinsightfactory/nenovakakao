@@ -293,11 +293,28 @@ def poll(export, send, paused, receipts_only=False):
     if not receipts_only:
         collect_reports()
     rows = _rows()
+    from core.keyword_approval import REQUESTS, question_hours_open
+    from core import keyword_forward as k
+    requests = k.read_json(REQUESTS, {})
+    changed = False
+    for entry in rows.values():
+        if entry.get('category') == 'approval_unanswered' and entry['status'] == 'queued':
+            request = requests.get(entry.get('request_id'), {})
+            if request.get('status') not in ('waiting', 'awaiting_late_reply'):
+                entry.update(status='resolved', updated_at=time.time())
+                changed = True
+    if changed:
+        save(STATE, rows)
+    last_reminder = max((r.get('reminder_attempted_at', 0) for r in rows.values()
+                         if r.get('category') == 'approval_unanswered'), default=0)
+    reminder_ready = question_hours_open(k.config()) and time.time() - last_reminder >= 3600
     ordered = sorted(rows.values(), key=lambda r: (
-        0 if r.get('kind') == 'receipt' else 2 if r.get('kind') == 'report' else 1,
+        0 if r.get('kind') == 'receipt' else 3 if r.get('kind') == 'report'
+        else 2 if r.get('category') == 'approval_unanswered' else 1,
         r['created_at']))
     row = next((r for r in ordered if r['status'] == 'queued'
                 and (not receipts_only or r.get('kind') == 'receipt')
+                and (r.get('category') != 'approval_unanswered' or reminder_ready)
                 and r.get('retry_at', 0) <= time.time()), None)
     if not row: return
     if row.get('kind') == 'report':
@@ -311,7 +328,10 @@ def poll(export, send, paused, receipts_only=False):
         return parse_export(text, 'error-notice')
     try:
         before = {e['event_id'] for e in history()}
-    except Exception:
+    except Exception as exc:
+        from core.moyi_control import OperationPaused
+        if isinstance(exc, OperationPaused):
+            raise
         row['retry_at'] = time.time() + 60
         save(STATE, rows)
         audit('error_notice_preflight_failed', '임재용대리 오류 알림 대기 · 60초 후 조회 재시도')
@@ -325,10 +345,26 @@ def poll(export, send, paused, receipts_only=False):
     elif row.get('kind') == 'report':
         batch = [r for r in ordered if r.get('kind') == 'report' and r['status'] == 'queued'
                  and r.get('retry_at', 0) <= time.time()][:5]
+    elif row.get('category') == 'approval_unanswered':
+        batch = [r for r in ordered if r.get('category') == 'approval_unanswered'
+                 and r['status'] == 'queued' and r.get('retry_at', 0) <= time.time()][:14]
     payload = (f"[답변 처리 완료 {row['request_id']}]\n" + '\n'.join(r['result_text'] for r in batch)
                if row.get('kind') == 'receipt' else '\n\n'.join(message(r) for r in batch))
+    if row.get('category') == 'approval_unanswered':
+        lines = []
+        for entry in batch:
+            request = requests[entry['request_id']]
+            events = request.get('events') or [request['event']]
+            unanswered = len(events) - len(request.get('item_answers', {}))
+            lines.append(f"{entry['request_id']}: 미응답 {max(0, unanswered)}건")
+        payload = ('[승인 답변 대기 모음]\n' + '\n'.join(lines) + '\n\n'
+                   '각 요청번호와 항목을 함께 답해주세요.\n'
+                   f"예: {batch[0]['request_id']} 가 보내 / {batch[0]['request_id']} 가 안보내\n"
+                   '답하지 않은 항목은 계속 대기하며 자동 전달하지 않습니다.')
     for entry in batch:
         entry.update(status='unknown', updated_at=time.time())
+        if entry.get('category') == 'approval_unanswered':
+            entry['reminder_attempted_at'] = time.time()
     save(STATE, rows)  # crash or uncertain send must never replay
     try:
         send(RECIPIENT, payload)
@@ -341,5 +377,8 @@ def poll(export, send, paused, receipts_only=False):
             entry.update(status='sent', updated_at=time.time(), sent_event_id=matches[0]['event_id'])
         save(STATE, rows)
         audit('error_notice_sent', f"임재용대리 · 알림 {row['id']}")
-    except Exception:
+    except Exception as exc:
+        from core.moyi_control import OperationPaused
+        if isinstance(exc, OperationPaused):
+            raise
         audit('error_notice_unknown', f"알림 {row['id']} 결과 미확인 · 자동 재전송 금지")

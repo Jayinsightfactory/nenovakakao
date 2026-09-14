@@ -41,6 +41,25 @@ def event(eid='kakao-one'):
             'content': '35-1 주광 노비아 2박스'}
 
 
+@pytest.mark.parametrize('after_send', [False, True])
+def test_pause_keeps_draft_or_uncertain_write_without_error_notice(isolated, monkeypatch, after_send):
+    from core.moyi_control import OperationPaused
+    order.capture(event(), lambda _: parsed(), master)
+    sent = Mock()
+    history = Mock(side_effect=[[], OperationPaused('일시정지')] if after_send
+                   else OperationPaused('일시정지'))
+    monkeypatch.setattr(order, '_history', history)
+    notify = Mock()
+    monkeypatch.setattr('core.error_notifications.notify', notify)
+    order.poll(Mock(), sent, master, Mock(), lambda: False)
+    saved = order._read(order.STATE, {})[event()['event_id']]
+    assert saved['status'] == ('request_unknown' if after_send else 'draft')
+    assert sent.call_count == int(after_send)
+    assert 'error' not in saved
+    notify.assert_not_called()
+    assert json.loads(order.LOG.read_text(encoding='utf-8').splitlines()[-1])['action'] == 'paused'
+
+
 def test_draft_uses_human_product_names_and_internal_keys(isolated):
     rid = order.capture(event(), lambda _: parsed(), master)
     row = order._read(order.STATE, {})[event()['event_id']]

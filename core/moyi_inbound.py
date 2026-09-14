@@ -343,7 +343,8 @@ def _open_or_reuse_exact_room(title: str) -> int:
 def _assert_export_running() -> None:
     from core.moyi_control import is_paused
     if is_paused():
-        raise RuntimeError('대화 저장 중단: 프로그램 일시정지')
+        from core.moyi_control import OperationPaused
+        raise OperationPaused('대화 저장 중단: 프로그램 일시정지')
 
 
 def _assert_export_target(hwnd: int, title: str) -> None:

@@ -4,6 +4,7 @@ import re
 import time
 from datetime import datetime
 from . import keyword_forward as k
+from core.moyi_control import OperationPaused
 
 REQUESTS = k.ROOT / 'data' / 'keyword_approval_requests.json'
 APPROVER = '임재용대리'
@@ -115,6 +116,17 @@ def question_hours_open(cfg, now=None):
     hour = (now or datetime.now(k.KST)).hour
     start, end = hours
     return start <= hour < end if start <= end else hour >= start or hour < end
+
+
+def refresh_historical_review(rows):
+    """Derived counts only; approval requests remain the authoritative record."""
+    path = REQUESTS.with_name('historical_approval_review.json')
+    snapshot = [{'id': row['id'], 'status': row['status'],
+                 'previous_status': row.get('previous_status', ''),
+                 'items': len(row.get('events') or [row['event']])}
+                for row in rows.values() if row.get('status') == 'historical_review']
+    if k.read_json(path, None) != snapshot:
+        k.save_json(path, snapshot)
 
 
 def batch_selection(content, row):
@@ -273,6 +285,7 @@ def poll(export, send, paused, mark_rescan):
     changed = hold_old_requests(rows, k.config()) or changed
     if changed:
         k.save_json(REQUESTS, rows)
+    refresh_historical_review(rows)
     active = [r for r in rows.values() if r['status'] in ('queued', 'waiting', 'awaiting_late_reply', 'approved', 'request_unknown')
               or (r['status'] == 'historical_review' and r.get('request_event_id'))]
     rank = {'approved': 0, 'waiting': 1, 'awaiting_late_reply': 1,
@@ -358,6 +371,8 @@ def poll(export, send, paused, mark_rescan):
                     k.save_json(REQUESTS, rows)
                 from core.error_notifications import resolve
                 resolve('approval_error', rid)
+            except OperationPaused:
+                raise
             except Exception as exc:
                 row['precheck_retry_at'] = time.time() + PRECHECK_RETRY_SEC
                 k.save_json(REQUESTS, rows)
@@ -365,6 +380,8 @@ def poll(export, send, paused, mark_rescan):
                 return
             try:
                 before = history()
+            except OperationPaused:
+                raise
             except Exception as exc:
                 row['status'] = 'hold'
                 k.save_json(REQUESTS, rows)
@@ -376,7 +393,7 @@ def poll(export, send, paused, mark_rescan):
             k.save_json(REQUESTS, rows)  # persist before any Enter; never auto resend
             try:
                 if paused() or not k.config().get('enabled'):
-                    raise RuntimeError('일시정지')
+                    raise OperationPaused('일시정지')
                 send(APPROVER, message)
                 after = history(refresh=True)
                 verified = verified_request(after, row)
@@ -385,6 +402,8 @@ def poll(export, send, paused, mark_rescan):
                 row.update(status='waiting', request_event_id=verified['event_id'], sent_at=time.time())
                 k.save_json(REQUESTS, rows)
                 report('승인대기', f'요청 {rid} 전송 확인 · 임재용대리 답변 대기')
+            except OperationPaused:
+                raise
             except Exception as exc:
                 report('확인 필요', f'요청 {rid} 결과 불명: {exc}; 자동 재전송 금지')
             # Never cascade into another queued approval in the same poll.
@@ -416,7 +435,7 @@ def poll(export, send, paused, mark_rescan):
                         'automatic_action': '현장방으로 보내지 않고 늦은 답변 대기 상태로 보류',
                     })
                     report('미응답 보류', f'요청 {rid}: 15분 미응답; 자동 승인 없음; 요청번호 포함 답변 필요')
-                elif action == 'remind':
+                elif action == 'remind' and k.config().get('approval_individual_reminders', False):
                     row['reminder_attempted_at'] = time.time()
                     k.save_json(REQUESTS, rows)
                     count = sum(r['status'] == 'queued' for r in rows.values())
@@ -430,6 +449,8 @@ def poll(export, send, paused, mark_rescan):
                         matched = [e for e in history(refresh=True) if e['event_id'] not in before
                                    and k.normalize(e['content']) == k.normalize(payload)]
                         row['reminder_status'] = 'sent' if len(matched) == 1 else 'unknown'
+                    except OperationPaused:
+                        raise
                     except Exception:
                         row['reminder_status'] = 'unknown'
                     k.save_json(REQUESTS, rows)
