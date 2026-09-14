@@ -18,10 +18,31 @@ NEW_QUESTION_GAP_SEC = 60
 # newer verified prompt remains unambiguous.
 BLOCKING = {'approved'}
 LABELS = '가나다라마바사아자차카타파하'
+COMPLETED_ITEMS = {'전송 성공', '중복 생략', '승인거절'}
+HELD_ITEMS = {'결과 불명', '전송 확인중', '확인 필요'}
 
 
 def choice_label(index):
     return LABELS[index] if index < len(LABELS) else choice_label(index // len(LABELS) - 1) + LABELS[index % len(LABELS)]
+
+
+def item_label(row, index):
+    return row['item_labels'][index] if row.get('item_labels') else choice_label(index)
+
+
+def assign_item_labels(row, rows):
+    """Never reuse a printed label, including labels on legacy requests."""
+    if row.get('item_labels'):
+        return
+    used = {label for old in rows.values() for label in
+            (old.get('item_labels') or [choice_label(i) for i in range(len(old.get('events') or [old['event']]))])}
+    labels, index = [], 0
+    for _ in row.get('events') or [row['event']]:
+        while choice_label(index) in used:
+            index += 1
+        labels.append(choice_label(index))
+        used.add(labels[-1])
+    row['item_labels'] = labels
 
 
 def has_pending_question():
@@ -104,6 +125,8 @@ def hold_old_requests(rows, cfg, now=None):
     for row in rows.values():
         if row.get('status') not in ('queued', 'waiting', 'awaiting_late_reply'):
             continue
+        if row.get('request_event_id') and row['status'] in ('waiting', 'awaiting_late_reply'):
+            continue  # A verified question keeps waiting across midnight too.
         events = row.get('events') or [row['event']]
         dates = [k.timestamp(e.get('timestamp', '')) for e in events]
         if any(stamp is None or stamp.date() != today for stamp in dates):
@@ -170,8 +193,13 @@ def request_message(row):
     row['choice_format'] = 'per_item'
     events = row.get('events') or [row['event']]
     originals = '\n\n'.join(
-        f"{choice_label(i)} — {e['sender_name']}\n{e['content']}"
+        f"{item_label(row, i)} — {e['sender_name']} · {e.get('timestamp', '')}\n{e['content']}"
         for i, e in enumerate(events))
+    if row.get('item_labels'):
+        return (f"[전달 승인 요청 {row['id']}]\n대상: {k.config()['target']}\n\n{originals}\n\n"
+                f"답변 예시: {item_label(row, 0)} 보내 / {item_label(row, 0)} 안보내\n"
+                "표시는 다른 요청과 겹치지 않습니다. 한 건씩 또는 여러 건을 함께 답해주세요.\n"
+                "답하지 않은 건은 계속 대기합니다.")
     return (f"[전달 승인 요청 {row['id']}]\n대상: {k.config()['target']}\n\n{originals}\n\n"
             "답변 예시: 가 보내" + (" 나 안보내" if len(events) > 1 else " / 가 안보내") + "\n"
             "한 건씩 따로 답해도 됩니다. 답하지 않은 건은 대기합니다.\n"
@@ -229,16 +257,19 @@ def decision(replies, row, allow_short=False):
             parts = content.split(maxsplit=1)
             if parts and parts[0].upper() == row['id']:
                 content = parts[1] if len(parts) == 2 else ''
-            elif not short_context:
+            elif not short_context and not (row.get('item_labels') and
+                    row.get('status') in ('waiting', 'awaiting_late_reply') and not row.get('recovered_at')):
                 continue
             matches = list(re.finditer(r'([가-하]+)\s+(안\s*보내|보내)', content))
             residue = re.sub(r'([가-하]+)\s+(안\s*보내|보내)', '', content)
-            labels = {choice_label(i): i for i in range(len(row.get('events') or [row['event']]))}
+            labels = {item_label(row, i): i for i in range(len(row.get('events') or [row['event']]))}
             if (not matches or residue.strip(' ,\n\t') or
-                    any(m[1] not in labels for m in matches) or
+                    (not row.get('item_labels') and any(m[1] not in labels for m in matches)) or
                     len({m[1] for m in matches}) != len(matches)):
                 continue
             for m in matches:
+                if m[1] not in labels:
+                    continue
                 # The first explicit decision is immutable after processing.
                 item_answers.setdefault(labels[m[1]], 'approve' if m[2] == '보내' else 'reject')
             continue
@@ -279,7 +310,7 @@ def notify_results(row):
     from core.error_notifications import approval_result
     state = k.read_json(k.STATE, {})
     for index, event in enumerate(row.get('events') or [row['event']]):
-        approval_result(row['id'], event['event_id'], choice_label(index),
+        approval_result(row['id'], event['event_id'], item_label(row, index),
                         state.get(event['event_id'], {}).get('status'))
 
 
@@ -425,10 +456,12 @@ def poll(export, send, paused, mark_rescan):
             except OperationPaused:
                 raise
             except Exception as exc:
-                row['status'] = 'hold'
+                row['precheck_retry_at'] = time.time() + PRECHECK_RETRY_SEC
                 k.save_json(REQUESTS, rows)
                 report('확인 필요', f'승인요청 방 확인 실패: {exc}')
                 continue
+            if k.config().get('approval_unique_labels'):
+                assign_item_labels(row, rows)
             message = request_message(row)
             if hold_stale_questions({rid: row}, k.config()):
                 k.save_json(REQUESTS, rows)
@@ -533,9 +566,11 @@ def poll(export, send, paused, mark_rescan):
                 state = k.read_json(k.STATE, {})
                 notify_results(row)
                 if len(answers) == len(events) and all(
-                        state.get(item['event_id'], {}).get('status') not in
-                        ('승인요청 전송대기', '승인대기', '미응답 보류', '승인됨') for item in events):
+                        state.get(item['event_id'], {}).get('status') in COMPLETED_ITEMS for item in events):
                     row['status'] = 'resolved'
+                elif len(answers) == len(events) and any(
+                        state.get(item['event_id'], {}).get('status') in HELD_ITEMS for item in events):
+                    row['status'] = 'delivery_held'
                 k.save_json(REQUESTS, rows)
                 continue
             if is_batch(row):
@@ -572,8 +607,11 @@ def poll(export, send, paused, mark_rescan):
                     k.process_source(cfg['source'], [item], export, send, paused)
                 remaining = k.read_json(k.STATE, {})
                 notify_results(row)
-                if all(remaining.get(e['event_id'], {}).get('status') not in ('승인요청 전송대기', '승인대기', '미응답 보류', '승인됨') for e in events):
+                if all(remaining.get(e['event_id'], {}).get('status') in COMPLETED_ITEMS for e in events):
                     row['status'] = 'resolved'
+                    k.save_json(REQUESTS, rows)
+                elif any(remaining.get(e['event_id'], {}).get('status') in HELD_ITEMS for e in events):
+                    row['status'] = 'delivery_held'
                     k.save_json(REQUESTS, rows)
                 continue
             current = k.read_json(k.STATE, {}).get(event['event_id'], {}).get('status')
@@ -584,6 +622,9 @@ def poll(export, send, paused, mark_rescan):
             k.process_source(cfg['source'], [event], export, send, paused)
             result = k.read_json(k.STATE, {}).get(event['event_id'], {}).get('status')
             notify_results(row)
-            if result != '승인됨':
+            if result in COMPLETED_ITEMS:
                 row['status'] = 'resolved'
+                k.save_json(REQUESTS, rows)
+            elif result in HELD_ITEMS:
+                row['status'] = 'delivery_held'
                 k.save_json(REQUESTS, rows)

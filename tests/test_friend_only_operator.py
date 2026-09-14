@@ -6,6 +6,7 @@ from core import moyi_inbound as inbound, safe_worker_room as rooms, operator_se
 
 def test_operator_uses_friends_even_if_same_title_window_exists(monkeypatch):
     operator_settings.configure('강현우')
+    monkeypatch.setattr(inbound, '_assert_export_running', Mock())
     from core.window_detector import KakaoWindow
     main = KakaoWindow('카카오톡', 0, 0, 500, 800)
     monkeypatch.setattr('core.window_detector._exact_main_window', lambda: SimpleNamespace(_hWnd=1))
@@ -47,6 +48,16 @@ def test_friend_navigation_retry_is_bounded(monkeypatch):
     with pytest.raises(RuntimeError):
         inbound._open_or_reuse_exact_room('강현우')
     assert verify.call_count == 2
+
+
+def test_focus_failure_before_open_is_retried_without_sending(monkeypatch):
+    operator_settings.configure('강현우')
+    monkeypatch.setattr(inbound, '_assert_export_running', Mock())
+    once = Mock(side_effect=[RuntimeError('검색 중 포커스 변경'), 99])
+    monkeypatch.setattr(inbound, '_open_friend_once', once)
+    assert inbound._open_or_reuse_exact_room('강현우') == 99
+    assert once.call_args_list[0].kwargs == {'retry': False}
+    assert once.call_args_list[1].kwargs == {'retry': True}
 
 
 @pytest.mark.parametrize('existing', [False, True])

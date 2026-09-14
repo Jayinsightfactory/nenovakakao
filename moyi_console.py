@@ -86,7 +86,7 @@ class Console(tk.Tk):
         self.route_summary = tk.StringVar()
         ttk.Label(routing, textvariable=self.route_summary).pack(anchor='w')
         self.route_table = ttk.Treeview(routing, columns=('time', 'status', 'sender', 'keyword', 'detail'), show='headings', height=5)
-        for col, label, width in [('time', '시간', 130), ('status', '결과', 100), ('sender', '보낸 사람', 100), ('keyword', '감지 단어', 110), ('detail', '본문 / 상세 결과', 480)]:
+        for col, label, width in [('time', '원문 시각', 160), ('status', '처리 단계', 120), ('sender', '보낸 사람', 100), ('keyword', '항목 표시', 70), ('detail', '본문 / 전달 / 완료 알림', 480)]:
             self.route_table.heading(col, text=label)
             self.route_table.column(col, width=width)
         self.route_table.pack(fill='x')
@@ -185,19 +185,15 @@ class Console(tk.Tk):
 
     def refresh(self):
         try:
-            routing = list(keyword_forward.read_json(keyword_forward.STATE, {}).values())
-            counts_r = {label: sum(r['status'] == label for r in routing) for label in ('전송 성공', '중복 생략', '승인요청 전송대기', '승인대기', '승인거절', '확인 필요', '결과 불명', '전송 확인중')}
-            from core import keyword_approval
-            approvals = keyword_forward.read_json(keyword_approval.REQUESTS, {}).values()
-            request_counts = {status: 0 for status in ('queued', 'waiting', 'awaiting_late_reply', 'request_unknown', 'historical_review', 'operator_changed_review', 'stale_review')}
-            for request in approvals:
-                if request['status'] in request_counts: request_counts[request['status']] += 1
-            self.route_summary.set(' · '.join(f'{label} {n}건' for label, n in counts_r.items()) + '\n' +
-                f"시간초과 별도검토 {request_counts['stale_review']}묶음 · 이전 담당자 별도검토 {request_counts['operator_changed_review']}묶음 · 질문 전송대기 {request_counts['queued']}묶음 · 답변 대기 {request_counts['waiting']}묶음 · "
-                f"15분 미응답 {request_counts['awaiting_late_reply']}묶음 · 과거 별도검토 {request_counts['historical_review']}묶음 · 전송결과 확인 필요 {request_counts['request_unknown']}묶음")
+            from core.approval_progress import snapshot
+            progress = snapshot()
+            from collections import Counter
+            current = [r for r in progress if r['stage'] != '별도 검토']
+            self.route_summary.set('항목별 진행: ' + ' · '.join(f'{stage} {count}건' for stage, count in Counter(r['stage'] for r in current).items()))
             for child in self.route_table.get_children(): self.route_table.delete(child)
-            for row in sorted(routing, key=lambda r: r['at'])[-30:]:
-                self.route_table.insert('', 'end', values=(datetime.fromtimestamp(row['at']).strftime('%m-%d %H:%M:%S'), row['status'], row['sender'], ', '.join(row['keywords']), row['preview'] + ' | ' + row['detail']))
+            for row in sorted(progress, key=lambda r: r['created_at'])[-30:]:
+                self.route_table.insert('', 'end', values=(row['source_time'], row['stage'], row['sender'],
+                    row['label'], f"{row['request_id']} | {row['preview']} | 전달: {row['delivery']} | 알림: {row['receipt']} | {row['detail']}"))
         except (OSError, ValueError, KeyError):
             self.route_summary.set('전달 기록 읽기 실패 — 확인 필요')
         try:

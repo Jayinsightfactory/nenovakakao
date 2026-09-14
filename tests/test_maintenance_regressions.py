@@ -50,8 +50,8 @@ def test_old_requests_are_preserved_without_relabeling():
     rows = {'A': {'id': 'A', 'status': 'waiting', 'event': old, 'events': [old, today],
                   'request_event_id': 'boundary', 'item_answers': {'0': 'reject'}},
             'B': {'id': 'B', 'status': 'queued', 'event': today}}
-    assert a.hold_old_requests(rows, {'approval_current_day_only': True}, datetime(2026, 9, 10))
-    assert rows['A']['status'] == 'historical_review'
+    assert not a.hold_old_requests(rows, {'approval_current_day_only': True}, datetime(2026, 9, 10))
+    assert rows['A']['status'] == 'waiting'
     assert rows['A']['events'] == [old, today] and rows['A']['item_answers'] == {'0': 'reject'}
     assert rows['B']['status'] == 'queued'
     assert a.pending_action(rows['A'], 999999) is None
