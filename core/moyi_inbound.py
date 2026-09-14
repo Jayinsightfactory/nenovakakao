@@ -647,6 +647,15 @@ def poll_once(server: str, secret: str, only_title: str | None = None,
                 _save_state(state)
                 continue
             content_hash = hashlib.sha256(event["content"].strip().encode()).hexdigest()
+            if defer_archive and content_hash not in outbound_hashes:
+                from core.inbound_archive_queue import enqueue
+                enqueue({**event, 'room_binding_id': binding, 'external_room_id': title,
+                         'origin': 'kakao', 'attachments': event.get('attachments', [])})
+                known.add(event['event_id'])
+                known_ids.append(event['event_id'])
+                state[binding] = known_ids[-2000:]
+                _save_state(state)
+                continue
             if content_hash not in outbound_hashes:
                 inbound = requests.post(
                     f"{server}/kakao/agent/inbound",

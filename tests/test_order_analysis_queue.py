@@ -51,6 +51,10 @@ def test_collection_queues_before_checkpoint_and_retains_on_disk_error(tmp_path,
     inbound.poll_once('https://example.test', 'test', only_title='수입방', defer_archive=True)
     assert list(queue.QUEUE.glob('*.json'))
     assert 'new' in inbound._load_state()['b']
+    from core import inbound_archive_queue
+    assert list(inbound_archive_queue.QUEUE.glob('*.json'))
+    assert not any(call.args[0].endswith('/kakao/agent/inbound')
+                   for call in inbound.requests.post.call_args_list)
     inbound._save_state({'b': ['old']})
     monkeypatch.setattr(queue, 'enqueue', Mock(side_effect=OSError('disk full')))
     with pytest.raises(OSError):

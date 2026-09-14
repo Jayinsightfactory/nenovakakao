@@ -22,3 +22,6 @@ def isolated_error_notice_queue(tmp_path, monkeypatch):
     from core import order_analysis_queue
     monkeypatch.setattr(order_analysis_queue, 'QUEUE', tmp_path / 'order_analysis_queue')
     monkeypatch.setattr(order_analysis_queue, 'start', Mock())
+    from core import inbound_archive_queue
+    monkeypatch.setattr(inbound_archive_queue, 'QUEUE', tmp_path / 'inbound_archive_queue')
+    monkeypatch.setattr(inbound_archive_queue, 'start', Mock())

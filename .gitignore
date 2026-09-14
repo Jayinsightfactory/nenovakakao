@@ -1,6 +1,8 @@
 .env
 data/order_analysis_queue/
 data/order_analysis.log
+data/inbound_archive_queue/
+data/inbound_archive.log
 captures/
 logs/
 __pycache__/

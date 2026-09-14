@@ -384,6 +384,8 @@ def run() -> int:
             # Interval is measured from the start, not added to UI processing.
             next_primary_at = time.monotonic() + workflow['primary_interval_sec']
             coordinator.run_due()
+            from core.inbound_archive_queue import start as start_archive
+            start_archive()
     print("[MOYI] Kakao connector worker started (fail-closed)")
     report('worker_started')
     print("[MOYI] agents: sales then approvals/receipts, import review, 30-minute background")
