@@ -35,7 +35,10 @@ def blocks_new_question(row, now):
     if row.get('status') != 'waiting':
         return False
     if row.get('choice_format') == 'per_item':
-        return True
+        limit = k.config().get('approval_question_gap_sec')
+        if limit is None:
+            return True
+        return row.get('sent_at') is None or now - row['sent_at'] < limit
     sent_at = row.get('sent_at')
     return sent_at is None or now - sent_at < NEW_QUESTION_GAP_SEC
 
@@ -296,6 +299,21 @@ def queued_priority_at(row):
     return stamp.timestamp() if stamp is not None else row.get('created_at', 0)
 
 
+def hold_stale_questions(rows, cfg, now=None):
+    limit = cfg.get('approval_max_source_age_sec', 0)
+    if not limit: return False
+    now = time.time() if now is None else now
+    changed = False
+    for row in rows.values():
+        if row.get('status') != 'queued': continue
+        stamps = [k.timestamp(event.get('timestamp', '')) for event in row.get('events') or [row['event']]]
+        if any(stamp is None or now - stamp.timestamp() > limit for stamp in stamps):
+            row.update(status='stale_review', held_at=now,
+                       hold_reason='신규 승인 질문 허용 시간 초과; 자동 질문 없이 별도 검토')
+            changed = True
+    return changed
+
+
 def poll(export, send, paused, mark_rescan):
     if paused() or not k.config().get('enabled'):
         return
@@ -304,6 +322,7 @@ def poll(export, send, paused, mark_rescan):
     changed = hold_previous_operator_requests(rows, approver)
     changed = filter_queued_requests(rows) or changed
     changed = hold_old_requests(rows, k.config()) or changed
+    changed = hold_stale_questions(rows, k.config()) or changed
     if changed:
         k.save_json(REQUESTS, rows)
     refresh_historical_review(rows)
@@ -376,6 +395,8 @@ def poll(export, send, paused, mark_rescan):
                 if target not in '\n'.join(target_text.splitlines()[:3]):
                     raise RuntimeError('대상 방 내보내기 제목 불일치')
                 target_events = parse_export(target_text, 'keyword-target-preapproval')
+                if cfg.get('require_target_history') and not target_events:
+                    raise RuntimeError('추가취소방 대화 확인 불가; 승인 질문 보류')
                 remaining = [item for item in events
                              if not k.duplicate(item['content'], target_events)]
                 for item in events:
@@ -409,6 +430,9 @@ def poll(export, send, paused, mark_rescan):
                 report('확인 필요', f'승인요청 방 확인 실패: {exc}')
                 continue
             message = request_message(row)
+            if hold_stale_questions({rid: row}, k.config()):
+                k.save_json(REQUESTS, rows)
+                continue
             row.update(status='request_unknown', approver_name=approver, baseline=[e['event_id'] for e in before],
                        request_payload=message, request_attempted_at=time.time())
             k.save_json(REQUESTS, rows)  # persist before any Enter; never auto resend

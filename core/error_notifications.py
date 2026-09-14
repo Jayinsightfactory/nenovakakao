@@ -296,6 +296,12 @@ def poll(export, send, paused, receipts_only=False):
         collect_reports()
     rows = _rows()
     from core.keyword_approval import REQUESTS, question_hours_open
+    from core.workflow_settings import config as workflow_config
+    if not workflow_config().get('operator_reports_enabled', True):
+        for entry in rows.values():
+            if entry.get('kind') != 'receipt' and entry.get('status') == 'queued':
+                entry.update(status='local_only', updated_at=time.time())
+        save(STATE, rows)
     from core import keyword_forward as k
     requests = k.read_json(REQUESTS, {})
     changed = False
