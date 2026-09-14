@@ -194,7 +194,7 @@ def process_source(title, events, export, send, paused, max_new_events=5):
         if not approved:
             from core.keyword_approval import enqueue
             request_id = enqueue(event, batch_id=approval_batch)
-            record(event, '승인요청 전송대기', f'임재용대리에게 아직 미전송 · 요청 {request_id}')
+            record(event, '승인요청 전송대기', f'승인 담당자에게 아직 미전송 · 요청 {request_id}')
             continue
         payload = f"{event['sender_name']} - {body}"
         record(event, '전송 확인중', '전송 시작 전 기록; 자동 재전송 금지')

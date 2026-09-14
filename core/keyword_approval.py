@@ -7,7 +7,8 @@ from . import keyword_forward as k
 from core.moyi_control import OperationPaused
 
 REQUESTS = k.ROOT / 'data' / 'keyword_approval_requests.json'
-APPROVER = '임재용대리'
+from core.operator_settings import operator_name, LEGACY_NAME
+APPROVER = LEGACY_NAME  # Legacy request ownership and compatibility.
 REMINDER_SEC = 300
 HOLD_SEC = 900
 PRECHECK_RETRY_SEC = 15
@@ -203,6 +204,7 @@ def route_status(event, status, detail):
 
 
 def decision(replies, row, allow_short=False):
+    approver = row.get('approver_name', LEGACY_NAME)
     known = set(row.get('baseline', []))
     boundary = row.get('request_event_id')
     if not boundary:
@@ -215,9 +217,9 @@ def decision(replies, row, allow_short=False):
     for event in replies[index + 1:]:
         # An intervening approval prompt makes bare replies refer to that
         # newer prompt, never an older pending request.
-        if event.get('sender_name') != APPROVER and re.match(r'\[전달 승인', event.get('content', '')):
+        if event.get('sender_name') != approver and re.match(r'\[전달 승인', event.get('content', '')):
             short_context = False
-        if event['event_id'] in known or event.get('sender_name') != APPROVER:
+        if event['event_id'] in known or event.get('sender_name') != approver:
             continue
         content = event['content'].strip()
         if row.get('choice_format') == 'per_item':
@@ -258,13 +260,14 @@ def decision(replies, row, allow_short=False):
 
 def verified_request(replies, row):
     """Positive evidence only; absence never authorizes a resend."""
+    approver = row.get('approver_name', LEGACY_NAME)
     message = row.get('request_payload')
     if not message or 'baseline' not in row:
         return None  # Legacy attempts need manual reconciliation.
     baseline = set(row['baseline'])
     matches = [e for e in replies
                if e['event_id'] not in baseline
-               and e.get('sender_name') != APPROVER
+               and e.get('sender_name') != approver
                and k.normalize(e['content']) == k.normalize(message)]
     return matches[0] if len(matches) == 1 else None
 
@@ -277,11 +280,24 @@ def notify_results(row):
                         state.get(event['event_id'], {}).get('status'))
 
 
+def hold_previous_operator_requests(rows, current):
+    changed = False
+    for row in rows.values():
+        if row.get('status') in ('waiting', 'awaiting_late_reply', 'approved', 'request_unknown', 'historical_review') and row.get('approver_name', LEGACY_NAME) != current:
+            row.update(approver_name=row.get('approver_name', LEGACY_NAME),
+                       previous_operator_status=row['status'], status='operator_changed_review',
+                       operator_changed_at=time.time())
+            changed = True
+    return changed
+
+
 def poll(export, send, paused, mark_rescan):
     if paused() or not k.config().get('enabled'):
         return
+    approver = operator_name()
     rows = k.read_json(REQUESTS, {})
-    changed = filter_queued_requests(rows)
+    changed = hold_previous_operator_requests(rows, approver)
+    changed = filter_queued_requests(rows) or changed
     changed = hold_old_requests(rows, k.config()) or changed
     if changed:
         k.save_json(REQUESTS, rows)
@@ -305,14 +321,14 @@ def poll(export, send, paused, mark_rescan):
         nonlocal cached_history
         if cached_history is not None and not refresh:
             return cached_history
-        text = export(APPROVER)
-        if not text.splitlines() or text.splitlines()[0].strip() not in (APPROVER + ' 님과 카카오톡 대화', APPROVER + ' 임과 카카오톡 대화'):
+        text = export(approver)
+        if not text.splitlines() or text.splitlines()[0].strip() not in (approver + ' 님과 카카오톡 대화', approver + ' 임과 카카오톡 대화'):
             raise RuntimeError('승인자 대화방 제목 불일치')
         cached_history = parse_export(text, 'keyword-approval')
         return cached_history
 
     for row in active:
-        if paused() or not k.config().get('enabled'):
+        if paused() or operator_name() != approver or not k.config().get('enabled'):
             return
         event, rid = row['event'], row['id']
         events = row.get('events', [event])
@@ -388,20 +404,20 @@ def poll(export, send, paused, mark_rescan):
                 report('확인 필요', f'승인요청 방 확인 실패: {exc}')
                 continue
             message = request_message(row)
-            row.update(status='request_unknown', baseline=[e['event_id'] for e in before],
+            row.update(status='request_unknown', approver_name=approver, baseline=[e['event_id'] for e in before],
                        request_payload=message, request_attempted_at=time.time())
             k.save_json(REQUESTS, rows)  # persist before any Enter; never auto resend
             try:
-                if paused() or not k.config().get('enabled'):
+                if paused() or operator_name() != approver or not k.config().get('enabled'):
                     raise OperationPaused('일시정지')
-                send(APPROVER, message)
+                send(approver, message)
                 after = history(refresh=True)
                 verified = verified_request(after, row)
                 if verified is None:
                     raise RuntimeError('승인요청 전송 결과 확인 불가')
                 row.update(status='waiting', request_event_id=verified['event_id'], sent_at=time.time())
                 k.save_json(REQUESTS, rows)
-                report('승인대기', f'요청 {rid} 전송 확인 · 임재용대리 답변 대기')
+                report('승인대기', f'요청 {rid} 전송 확인 · 승인 담당자 답변 대기')
             except OperationPaused:
                 raise
             except Exception as exc:
@@ -430,7 +446,7 @@ def poll(export, send, paused, mark_rescan):
                         'source_room': k.config().get('source', '영업방'),
                         'target_room': k.config().get('target', '현장 추가취소방'),
                         'sender': event.get('sender_name', ''), 'preview': event.get('content', ''),
-                        'stage': '임재용대리 승인 답변 대기',
+                        'stage': '승인 담당자 답변 대기',
                         'cause': '승인 질문 전송 확인 후 15분 동안 답변 없음',
                         'automatic_action': '현장방으로 보내지 않고 늦은 답변 대기 상태로 보류',
                     })
@@ -445,7 +461,7 @@ def poll(export, send, paused, mark_rescan):
                     try:
                         if paused(): return
                         before = {e['event_id'] for e in history()}
-                        send(APPROVER, payload)
+                        send(approver, payload)
                         matched = [e for e in history(refresh=True) if e['event_id'] not in before
                                    and k.normalize(e['content']) == k.normalize(payload)]
                         row['reminder_status'] = 'sent' if len(matched) == 1 else 'unknown'
@@ -498,14 +514,14 @@ def poll(export, send, paused, mark_rescan):
                 if reply == '보내지마':
                     row['status'] = 'rejected'
                     k.save_json(REQUESTS, rows)
-                    route_status(event, '승인거절', f'요청 {rid}: 임재용대리 보내지마')
+                    route_status(event, '승인거절', f'요청 {rid}: 승인 담당자 보내지마')
                     notify_results(row)
                     continue
                 if reply != '보내':
                     continue
                 row['status'] = 'approved'
                 k.save_json(REQUESTS, rows)
-                route_status(event, '승인됨', f'요청 {rid}: 임재용대리 보내')
+                route_status(event, '승인됨', f'요청 {rid}: 승인 담당자 보내')
         if row['status'] == 'approved':
             if is_batch(row):
                 for i, item in enumerate(events):

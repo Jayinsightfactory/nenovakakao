@@ -11,3 +11,5 @@ def isolated_error_notice_queue(tmp_path, monkeypatch):
     monkeypatch.setattr(keyword_approval, 'REQUESTS', tmp_path / 'approval_requests.json')
     from core import moyi_control
     monkeypatch.setattr(moyi_control, 'PAUSE_FILE', tmp_path / 'worker.pause')
+    from core import operator_settings
+    monkeypatch.setattr(operator_settings, 'CONFIG', tmp_path / 'operator.json')

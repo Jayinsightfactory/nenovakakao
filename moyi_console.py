@@ -65,7 +65,15 @@ class Console(tk.Tk):
         ttk.Label(top, textvariable=self.status).pack(side="right")
         self.hotkey_label = tk.StringVar()
         ttk.Label(self, textvariable=self.hotkey_label).pack(anchor='w', padx=12)
-        ttk.Label(self, text='상황 보고 → 임재용대리 · 오류 우선 / 일반 보고 묶음 전송 · 정지 중에는 보관 후 재개 시 전송').pack(anchor='w', padx=12)
+        from core.operator_settings import operator_name
+        operator = ttk.Frame(self, padding=(12, 4)); operator.pack(fill='x')
+        ttk.Label(operator, text='보고·승인 담당자 카톡 이름').pack(side='left')
+        self.operator_name = tk.StringVar(value=operator_name())
+        ttk.Entry(operator, textvariable=self.operator_name, width=22).pack(side='left', padx=8)
+        ttk.Button(operator, text='담당자 저장', command=self.save_operator).pack(side='left')
+        self.operator_status = tk.StringVar(value=f'현재 대상: {operator_name()}')
+        ttk.Label(operator, textvariable=self.operator_status).pack(side='left', padx=8)
+        ttk.Label(self, text='완료·오류·상황 보고와 신규 승인 요청에 적용 · 변경 시 일시정지 · 기존 담당자 요청은 별도 검토').pack(anchor='w', padx=12)
         ttk.Button(top, text='긴급 정지', command=self.stop_now).pack(side='right')
         routing = ttk.LabelFrame(self, text='키워드 자동 전달 · 영업방 → 현장 추가취소방', padding=8)
         routing.pack(fill='x', padx=12)
@@ -108,6 +116,17 @@ class Console(tk.Tk):
         bottom = ttk.Frame(self, padding=(12, 0, 12, 12)); bottom.pack(fill="x")
         ttk.Label(bottom, text="확인 필요 항목은 자동 재전송하지 않습니다. 워커 로그와 서버 ACK를 함께 확인하세요.").pack(side="left")
         ttk.Button(bottom, text="로그 폴더 열기", command=self.open_log_folder).pack(side="right")
+
+    def save_operator(self):
+        from core.operator_settings import configure
+        try:
+            name = configure(self.operator_name.get())
+            self.operator_name.set(name)
+            self.operator_status.set(f'저장됨: {name} · 일시정지 중, 재개 버튼으로 시작')
+            audit('operator_changed', name)
+            self._update_pause_display()
+        except (OSError, ValueError) as exc:
+            messagebox.showerror('담당자 저장 실패', str(exc), parent=self)
 
     def setup_nenova_credential(self):
         dialog = tk.Toplevel(self); dialog.title('담당자별 네노바 로그인 설정'); dialog.resizable(False, False)
@@ -161,11 +180,11 @@ class Console(tk.Tk):
             counts_r = {label: sum(r['status'] == label for r in routing) for label in ('전송 성공', '중복 생략', '승인요청 전송대기', '승인대기', '승인거절', '확인 필요', '결과 불명', '전송 확인중')}
             from core import keyword_approval
             approvals = keyword_forward.read_json(keyword_approval.REQUESTS, {}).values()
-            request_counts = {status: 0 for status in ('queued', 'waiting', 'awaiting_late_reply', 'request_unknown', 'historical_review')}
+            request_counts = {status: 0 for status in ('queued', 'waiting', 'awaiting_late_reply', 'request_unknown', 'historical_review', 'operator_changed_review')}
             for request in approvals:
                 if request['status'] in request_counts: request_counts[request['status']] += 1
             self.route_summary.set(' · '.join(f'{label} {n}건' for label, n in counts_r.items()) + '\n' +
-                f"질문 전송대기 {request_counts['queued']}묶음 · 답변 대기 {request_counts['waiting']}묶음 · "
+                f"이전 담당자 별도검토 {request_counts['operator_changed_review']}묶음 · 질문 전송대기 {request_counts['queued']}묶음 · 답변 대기 {request_counts['waiting']}묶음 · "
                 f"15분 미응답 {request_counts['awaiting_late_reply']}묶음 · 과거 별도검토 {request_counts['historical_review']}묶음 · 전송결과 확인 필요 {request_counts['request_unknown']}묶음")
             for child in self.route_table.get_children(): self.route_table.delete(child)
             for row in sorted(routing, key=lambda r: r['at'])[-30:]:

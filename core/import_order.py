@@ -29,8 +29,12 @@ def _save(path, value):
 
 
 def config():
-    return _read(CONFIG, {'enabled': False, 'source': '수입방', 'start_at': None,
+    value = _read(CONFIG, {'enabled': False, 'source': '수입방', 'start_at': None,
                           'staff_rooms': {}, 'allowed_senders': [], 'write_enabled': False})
+    from core.operator_settings import CONFIG as OPERATOR_CONFIG, operator_name
+    if value.get('review_gate_room') and OPERATOR_CONFIG.exists():
+        value['review_gate_room'] = operator_name()
+    return value
 
 
 def direct_contacts():
@@ -505,6 +509,11 @@ def poll(export, send, master, registrar, paused):
         if paused(): return
         if row['status'] not in ('draft', 'gate_request_unknown', 'gate_waiting', 'waiting'):
             continue
+        from core.operator_settings import CONFIG as OPERATOR_CONFIG
+        if OPERATOR_CONFIG.exists() and row.get('gate_room') and row['gate_room'] != config().get('review_gate_room') and row['status'] in ('gate_waiting', 'gate_request_unknown'):
+            row.update(previous_operator_status=row['status'], status='operator_changed_review')
+            _save(STATE, rows)
+            continue
         allowed = {normalize(s) for s in config().get('allowed_senders', [])}
         if allowed and normalize(row.get('event', {}).get('sender_name', '')) not in allowed:
             continue
@@ -530,7 +539,7 @@ def poll(export, send, master, registrar, paused):
                     new = [e for e in after if e['event_id'] not in row['gate_baseline']
                            and normalize(e['content']) == normalize(message)]
                     if len(new) != 1:
-                        raise RuntimeError('임재용대리 검증 질문 전송 결과 확인 불가')
+                        raise RuntimeError('승인 담당자 검증 질문 전송 결과 확인 불가')
                     row.update(status='gate_waiting', gate_request_event_id=new[0]['event_id'])
                     append_log(row, 'gate_sent', f"{row['staff_room']} 담당자 전송 전 확인")
                     rows[event_id] = row; _save(STATE, rows)
@@ -562,7 +571,7 @@ def poll(export, send, master, registrar, paused):
                 if not choice: continue
                 if choice == '보내지마':
                     row['status'] = 'gate_rejected'
-                    append_log(row, 'gate_rejected', '임재용대리 보내지마')
+                    append_log(row, 'gate_rejected', '승인 담당자 보내지마')
                 else:
                     _verified_send(row, review_message(row), export, send, paused)
                     append_log(row, 'review_sent', row['staff_room'])

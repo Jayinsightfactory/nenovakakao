@@ -9,7 +9,8 @@ from core.atomic_json import save
 
 STATE = Path(__file__).resolve().parent.parent / 'data' / 'error_notifications.json'
 OPERATOR_LOG = Path(__file__).resolve().parent.parent / 'logs' / 'operator_alerts.jsonl'
-RECIPIENT = '임재용대리'
+from core.operator_settings import operator_name
+RECIPIENT = '임재용대리'  # Legacy compatibility; sending uses operator_name().
 COOLDOWN = 1800
 REPORT_LABELS = {
     'server_recovered': '서버 대기 목록 조회 정상 복구',
@@ -25,7 +26,7 @@ REPORT_LABELS = {
     'order_account_consent': '담당자 계정 사용 동의/거절 반영', 'order_hold': '주문 보류',
     'order_completed': '실제 주문 등록 결과 검증 완료',
     'order_completed_simulation': '주문 테스트 완료 — 실제 등록 없음',
-    'order_changed': '주문 정보 수정 반영', 'approval_waiting': '임재용대리 승인 답변 대기',
+    'order_changed': '주문 정보 수정 반영', 'approval_waiting': '승인 담당자 답변 대기',
     'approval_accepted': '전달 승인 반영', 'approval_rejected': '전달 거절/제외 반영',
     'forward_sent': '메시지 전달 확인', 'forward_skipped': '중복 메시지 전달 생략',
     'outbound_sent': '서버 요청 메시지 전송 처리', 'inbound_processed': '새 대화 수집 처리',
@@ -52,7 +53,7 @@ ERROR_GUIDANCE = {
     'unknown_result': ('카카오톡 메시지 전송', 'Enter 입력 뒤 대상 방에서 동일 메시지를 확인하지 못했습니다.',
                        '전송 여부가 불명확하여 같은 메시지의 자동 재전송을 차단했습니다.',
                        '대상 방에 메시지가 있는지 확인한 뒤 중복되지 않게 처리해주세요.'),
-    'approval_check_failed': ('임재용대리 승인 답변 확인', '임재용대리 대화방을 읽지 못해 승인 답변을 확인하지 못했습니다.',
+    'approval_check_failed': ('승인 담당자 답변 확인', '승인 담당자 대화방을 읽지 못해 승인 답변을 확인하지 못했습니다.',
                               '기존 승인 상태를 유지하며 추가취소 전달은 진행하지 않았습니다.',
                               '프로그램이 다음 회차에 답변을 다시 확인합니다.'),
     'import_order_check_failed': ('발주 확인 답변 처리', '담당자 대화방을 읽지 못해 발주 확인·수정 답변을 처리하지 못했습니다.',
@@ -288,6 +289,7 @@ def message(row):
 
 def poll(export, send, paused, receipts_only=False):
     if paused(): return
+    recipient = operator_name()
     from core.moyi_inbound import parse_export
     from core.moyi_control import audit
     if not receipts_only:
@@ -321,9 +323,9 @@ def poll(export, send, paused, receipts_only=False):
         from core.keyword_approval import has_pending_question
         if has_pending_question(): return
     def history():
-        text = export(RECIPIENT)
+        text = export(recipient)
         if not text.splitlines() or text.splitlines()[0].strip() not in (
-                RECIPIENT + ' 님과 카카오톡 대화', RECIPIENT + ' 임과 카카오톡 대화'):
+                recipient + ' 님과 카카오톡 대화', recipient + ' 임과 카카오톡 대화'):
             raise RuntimeError('wrong room')
         return parse_export(text, 'error-notice')
     try:
@@ -334,9 +336,9 @@ def poll(export, send, paused, receipts_only=False):
             raise
         row['retry_at'] = time.time() + 60
         save(STATE, rows)
-        audit('error_notice_preflight_failed', '임재용대리 오류 알림 대기 · 60초 후 조회 재시도')
+        audit('error_notice_preflight_failed', '보고 담당자 알림 대기 · 60초 후 조회 재시도')
         return
-    if paused(): return
+    if paused() or operator_name() != recipient: return
     batch = [row]
     if row.get('kind') == 'receipt':
         batch = [r for r in ordered if r.get('kind') == 'receipt'
@@ -362,12 +364,15 @@ def poll(export, send, paused, receipts_only=False):
                    f"예: {batch[0]['request_id']} 가 보내 / {batch[0]['request_id']} 가 안보내\n"
                    '답하지 않은 항목은 계속 대기하며 자동 전달하지 않습니다.')
     for entry in batch:
-        entry.update(status='unknown', updated_at=time.time())
+        entry.update(status='unknown', recipient=recipient, updated_at=time.time())
         if entry.get('category') == 'approval_unanswered':
             entry['reminder_attempted_at'] = time.time()
     save(STATE, rows)  # crash or uncertain send must never replay
     try:
-        send(RECIPIENT, payload)
+        if operator_name() != recipient:
+            from core.moyi_control import OperationPaused
+            raise OperationPaused('보고 담당자 변경으로 전송 보류')
+        send(recipient, payload)
         after = history()
         normalized = lambda value: re.sub(r'\s+', ' ', value).strip()
         matches = [e for e in after if e['event_id'] not in before
@@ -376,7 +381,7 @@ def poll(export, send, paused, receipts_only=False):
         for entry in batch:
             entry.update(status='sent', updated_at=time.time(), sent_event_id=matches[0]['event_id'])
         save(STATE, rows)
-        audit('error_notice_sent', f"임재용대리 · 알림 {row['id']}")
+        audit('error_notice_sent', f"{recipient} · 알림 {row['id']}")
     except Exception as exc:
         from core.moyi_control import OperationPaused
         if isinstance(exc, OperationPaused):
