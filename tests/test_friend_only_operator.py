@@ -6,7 +6,9 @@ from core import moyi_inbound as inbound, safe_worker_room as rooms, operator_se
 
 def test_operator_uses_friends_even_if_same_title_window_exists(monkeypatch):
     operator_settings.configure('강현우')
-    main = SimpleNamespace(left=0, top=0, _hWnd=1)
+    from core.window_detector import KakaoWindow
+    main = KakaoWindow('카카오톡', 0, 0, 500, 800)
+    monkeypatch.setattr('core.window_detector._exact_main_window', lambda: SimpleNamespace(_hWnd=1))
     monkeypatch.setattr('core.window_detector.activate_kakaotalk', Mock(return_value=main))
     monkeypatch.setattr(rooms, '_foreground_belongs_to', lambda hwnd: True)
     monkeypatch.setattr(inbound.time, 'sleep', Mock())

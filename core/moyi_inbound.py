@@ -316,15 +316,16 @@ def _open_or_reuse_exact_room(title: str) -> int:
     from core.operator_settings import operator_name
     from core.import_order import direct_contacts
     if title == operator_name() or title in direct_contacts():
-        from core.window_detector import activate_kakaotalk
+        from core.window_detector import activate_kakaotalk, _exact_main_window
         from core.safe_worker_room import _foreground_belongs_to
         main = activate_kakaotalk()
-        if not _foreground_belongs_to(main._hWnd):
+        main_hwnd = _exact_main_window()._hWnd
+        if not _foreground_belongs_to(main_hwnd):
             raise RuntimeError('친구 목록 검색 전 카카오 메인창 포커스 확인 실패')
         pyautogui.click(main.left + 33, main.top + 57)
         time.sleep(0.5)
         replace_room_search(main, title)
-        if not _foreground_belongs_to(main._hWnd):
+        if not _foreground_belongs_to(main_hwnd):
             raise RuntimeError('친구 목록 검색 중 포커스 변경; 대화 열기 차단')
         pyautogui.doubleClick(main.left + 175, main.top + 185, interval=0.12)
         time.sleep(1)
