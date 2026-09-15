@@ -159,12 +159,24 @@ def test_tinted_blue_candidates_and_selection_require_reapproval(tmp_path):
         {'name':'ROSE / Tinted Blue 50cm','category':'장미','origin':'콜롬비아','nenova_key':1328,'code':1328},
         {'name':'CARNATION Tinted Blue','category':'카네이션','origin':'콜롬비아','nenova_key':488}]}
     row=d.rematch(d.load(p),master)
-    assert row['items'][0]['product'] is None
-    assert len(row['items'][0]['candidates'])==2
+    assert row['items'][0]['product']['nenova_key']==1328
+    assert row['items'][0]['default_size']=='50cm'
+    assert len(row['items'][0]['candidates'])==1
     assert '입력 위치' not in d.question(row) and '초대' not in d.question(row)
     row.update(status='waiting',question_event_id='q')
     e={'event_id':'a','sender_name':'박성수','content':d.label(row)+' 선택 1=1'}
     row=d.apply_reply(row,e,{'a'})
     assert row['status']=='needs_match' and row['revision']==2
     row=d.rematch(row,master)
-    assert row['status']=='ready_question' and row['items'][0]['product']['nenova_key']==1471
+    assert row['status']=='ready_question' and row['items'][0]['product']['nenova_key']==1328
+
+
+def test_explicit_length_overrides_default(tmp_path):
+    event={**EVENT,'content':'37-1 콜 장미\n검증꽃집\n틴티드블루 40cm 3단'}
+    p=d.capture(event,'2026-09-15T10:06:45+09:00','박성수',tmp_path)
+    master={'customers':MASTER['customers'],'products':[
+        {'name':'ROSE / Tinted Blue 40cm','category':'장미','origin':'콜롬비아','nenova_key':1471},
+        {'name':'ROSE / Tinted Blue 50cm','category':'장미','origin':'콜롬비아','nenova_key':1328}]}
+    row=d.rematch(d.load(p),master)
+    assert row['items'][0]['product']['nenova_key']==1471
+    assert row['items'][0]['default_size'] is None

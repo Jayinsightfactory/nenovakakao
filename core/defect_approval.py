@@ -76,8 +76,20 @@ def rematch(row, master):
             p['name_alias'] = list(p.get('name_alias') or []) + ['틴티드블루']
     items = []
     for item in source['items']:
-        product, candidates = match_one(item['product_raw'], products)
-        items.append({**item, 'product': product, 'candidates': candidates})
+        term = item['product_raw']
+        size = re.search(r'(\d+)\s*cm\b', term, re.I)
+        explicit_key = any(str(p.get('nenova_key')) == term for p in products)
+        query = re.sub(r'\d+\s*cm\b', '', term, flags=re.I).strip() if size else term
+        pool = products
+        if size:
+            pool = [p for p in products if re.search(r'(?<!\d)' + size[1] + r'\s*cm\b', p.get('name', ''), re.I)]
+        product, candidates = match_one(query, pool)
+        default_size = None
+        if not size and not explicit_key and any(re.search(r'\d+\s*cm\b', p.get('name', ''), re.I) for p in candidates):
+            pool = [p for p in candidates if re.search(r'(?<!\d)50\s*cm\b', p.get('name', ''), re.I)]
+            product, candidates = match_one(query, pool)
+            default_size = '50cm'
+        items.append({**item, 'product': product, 'candidates': candidates, 'default_size': default_size})
     result['items'] = items
     result['status'] = 'ready_question'
     result.pop('approved_revision', None)
