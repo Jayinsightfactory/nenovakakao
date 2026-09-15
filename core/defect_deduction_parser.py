@@ -10,12 +10,17 @@ CATEGORIES = ('알스트로메리아', '알스트로 메리아', '카네이션',
 ORIGINS = ('콜롬비아', '에콰도르', '이스라엘', '네덜란드', '말레이시아', '중국', '베트남', '케냐', '호주', '태국', '콜', '에콰')
 
 
+SYSTEM_NOTICE = re.compile(r"^.+님이 .+님을 초대했습니다\.$|^.+님이 (?:들어왔습니다|나갔습니다)\.$")
+
+def clean_text(text):
+    return "\n".join(line for line in str(text).splitlines() if not SYSTEM_NOTICE.fullmatch(line.strip())).strip()
+
 def extract(event):
-    text = str(event.get('content', '')).strip()
+    text = clean_text(event.get('content', ''))
     sender = str(event.get('sender_name', '')).strip()
     result = {'event_id': event.get('event_id'), 'sender': sender, 'staff': SENDERS.get(sender),
               'source_time': event.get('timestamp', ''), 'raw_text': text, 'sequence': '',
-              'category': '', 'customer': None, 'customer_candidates': [], 'items': [],
+              'origin': '', 'category': '', 'customer': None, 'customer_candidates': [], 'items': [],
               'issues': [], 'notes': [], 'status': 'review', 'approved': False}
     if sender not in SENDERS:
         result.update(status='excluded_sender')
@@ -28,6 +33,8 @@ def extract(event):
         return result
     lines = [re.sub(r'\s+', ' ', line).strip() for line in text.splitlines() if line.strip()]
     header = lines[0] if lines else ''
+    if re.search(r'(?:^|\s)(?:콜|콜롬비아)(?:\s|$)', header): result['origin'] = '콜롬비아'
+    elif re.search(r'(?:^|\s)(?:에콰|에콰도르)(?:\s|$)', header): result['origin'] = '에콰도르'
     sequences = list(dict.fromkeys(f'{m[1]}-{m[2]}' for m in SEQUENCE.finditer(text)))
     if len(sequences) == 1:
         result['sequence'] = sequences[0]

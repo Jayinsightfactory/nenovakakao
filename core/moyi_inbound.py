@@ -337,7 +337,8 @@ def _open_or_reuse_exact_room(title: str) -> int:
     """Operator/staff DMs must originate from Friends, never chat search."""
     from core.operator_settings import operator_name
     from core.import_order import direct_contacts
-    if title == operator_name() or title in direct_contacts():
+    from core.defect_approval import RECIPIENTS
+    if title == operator_name() or title in direct_contacts() or title in RECIPIENTS.values():
         from core.moyi_control import OperationPaused
         for attempt in range(2):
             try:

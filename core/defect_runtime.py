@@ -60,7 +60,7 @@ def poll(export, send):
         _next_collection = time.monotonic() + cfg.get('collection_interval_sec', 60)
         # No attachment drawer/download/upload; the export includes text only.
         for event in export('수입불량방'):
-            d.capture(event, cutoff, operator_name())
+            d.capture(event, cutoff, d.recipient_for(event))
         start_master()
         return
     active = []
@@ -68,7 +68,7 @@ def poll(export, send):
         row = d.load(path)
         stamp = timestamp(row['event'].get('timestamp', ''))
         from datetime import datetime
-        if stamp is None or stamp <= datetime.fromisoformat(cutoff) or row['recipient'] != operator_name():
+        if stamp is None or stamp <= datetime.fromisoformat(cutoff) or row['recipient'] != d.recipient_for(row['event']):
             continue
         if row.get('retry_at', 0) > time.time():
             continue

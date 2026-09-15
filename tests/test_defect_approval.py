@@ -140,3 +140,31 @@ def test_unknown_question_recovery_does_not_accept_old_or_duplicate(tmp_path):
 def test_verification_does_not_accept_request_id_only_or_changed_quantity():
     assert d.verified_message('request v1\n15단',[],[{'event_id':'a','content':'request v1\n16단'}]) is None
     assert d.verified_message('request v1\n15단',[],[{'event_id':'a','content':'request v1'}]) is None
+
+
+def test_author_routing_and_system_notice_dedup(tmp_path):
+    assert d.recipient_for(EVENT) == '박성수'
+    assert d.recipient_for({**EVENT, 'sender_name':'김원영'}) == '김원영차장'
+    p=d.capture(EVENT,'2026-09-15T10:06:45+09:00','박성수',tmp_path)
+    second={**EVENT,'event_id':'changed','content':EVENT['content']+'\n김원빈님이 성공&연용님을 초대했습니다.'}
+    assert d.capture(second,'2026-09-15T10:06:45+09:00','박성수',tmp_path)==p
+    assert '초대' not in d.load(p)['event']['content']
+
+
+def test_tinted_blue_candidates_and_selection_require_reapproval(tmp_path):
+    event={**EVENT,'content':'37-1 콜 장미\n검증꽃집\n틴티드블루 3단'}
+    p=d.capture(event,'2026-09-15T10:06:45+09:00','박성수',tmp_path)
+    master={'customers':MASTER['customers'],'products':[
+        {'name':'ROSE / Tinted Blue 40cm','category':'장미','origin':'콜롬비아','nenova_key':1471,'code':1471},
+        {'name':'ROSE / Tinted Blue 50cm','category':'장미','origin':'콜롬비아','nenova_key':1328,'code':1328},
+        {'name':'CARNATION Tinted Blue','category':'카네이션','origin':'콜롬비아','nenova_key':488}]}
+    row=d.rematch(d.load(p),master)
+    assert row['items'][0]['product'] is None
+    assert len(row['items'][0]['candidates'])==2
+    assert '입력 위치' not in d.question(row) and '초대' not in d.question(row)
+    row.update(status='waiting',question_event_id='q')
+    e={'event_id':'a','sender_name':'박성수','content':d.label(row)+' 선택 1=1'}
+    row=d.apply_reply(row,e,{'a'})
+    assert row['status']=='needs_match' and row['revision']==2
+    row=d.rematch(row,master)
+    assert row['status']=='ready_question' and row['items'][0]['product']['nenova_key']==1471

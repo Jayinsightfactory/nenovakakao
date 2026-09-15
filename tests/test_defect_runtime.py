@@ -12,6 +12,7 @@ def setup(monkeypatch, tmp_path):
     monkeypatch.setattr(r, 'config', lambda: {'enabled': True, 'write_enabled': True})
     monkeypatch.setattr(r, 'forward_config', lambda: {'start_at': '2026-09-15T10:06:45+09:00'})
     monkeypatch.setattr(r, 'operator_name', lambda: '강현우')
+    monkeypatch.setattr(d, 'recipient_for', lambda event: '강현우')
     monkeypatch.setattr(r, '_next_collection', time.monotonic()+100)
     monkeypatch.setattr(r, 'start_master', Mock())
 

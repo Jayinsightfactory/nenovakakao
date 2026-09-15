@@ -12,7 +12,7 @@ from datetime import datetime
 from pathlib import Path
 
 from core.atomic_json import save
-from core.defect_deduction_parser import extract
+from core.defect_deduction_parser import extract, clean_text
 from core.keyword_forward import timestamp
 from core.import_order import match_one
 
@@ -23,6 +23,14 @@ def load(path):
     return json.loads(Path(path).read_text(encoding='utf-8'))
 
 
+RECIPIENTS = {'박성수':'박성수', '정재훈':'정재훈', '조현욱':'조현욱', '김원영':'김원영차장', '김원영차장':'김원영차장'}
+
+def recipient_for(event):
+    return RECIPIENTS.get(event.get('sender_name', ''))
+
+def source_key(event):
+    return (event.get('sender_name'), event.get('timestamp'), clean_text(event.get('content', '')).split())
+
 def capture(event, cutoff, recipient, directory=None):
     stamp = timestamp(event.get('timestamp', ''))
     if stamp is None or stamp <= datetime.fromisoformat(cutoff):
@@ -30,10 +38,15 @@ def capture(event, cutoff, recipient, directory=None):
     parsed = extract(event)
     if parsed['status'] in ('excluded_sender', 'attachment_only', 'deleted') or not parsed['items']:
         return None
+    directory = Path(directory or ROOT)
+    for existing in directory.glob('*.json'):
+        if source_key(load(existing)['event']) == source_key(event): return existing
+    event = {**event, 'content': clean_text(event['content'])}
     rid = '불량-' + hashlib.sha256(event['event_id'].encode()).hexdigest()[:12].upper()
     path = Path(directory or ROOT) / (rid + '.json')
     if not path.exists():
         save(path, {'id': rid, 'event': event, 'extracted': parsed,
+                    'short_label': '불량' + str(1 + len(list(directory.glob('*.json')))),
                     'recipient': recipient, 'revision': 1, 'status': 'needs_match',
                     'created_at': time.time(), 'history': [], 'processed_replies': []})
     return path
@@ -55,6 +68,12 @@ def rematch(row, master):
     # Never silently accept the same variety name from another flower category.
     if category:
         products = [p for p in products if p.get('category') == category]
+    if source.get('origin'):
+        products = [p for p in products if p.get('origin') == source['origin']]
+    products = deepcopy(products)
+    for p in products:
+        if re.search(r'\bTinted Blue\b', p.get('name', ''), re.I):
+            p['name_alias'] = list(p.get('name_alias') or []) + ['틴티드블루']
     items = []
     for item in source['items']:
         product, candidates = match_one(item['product_raw'], products)
@@ -76,7 +95,7 @@ def ready(row):
 
 
 def label(row):
-    return f"{row['id']} v{row['revision']}"
+    return (row['short_label'] + (f"-{row['revision']}" if row['revision'] > 1 else '')) if row.get('short_label') else f"{row['id']} v{row['revision']}"
 
 
 def verified_message(payload, before_ids, history):
@@ -110,18 +129,19 @@ def reconcile_question(path, history):
 
 def question(row):
     customer = row.get('customer') or {}
-    lines = [f"[불량 매칭 승인 · {label(row)}]", '입력 위치: 영업수입불량차감 > 영업입력',
-             f"원문: {row['event']['sender_name']} · {row['event']['timestamp']}",
-             f"차수: {row['extracted']['sequence']}",
-             f"거래처: {row['extracted'].get('customer') or '확인 필요'} → {customer.get('name', '매칭 확인 필요')}"]
+    lines = [f"{label(row)} · {row['extracted']['sequence']} {customer.get('name') or row['extracted'].get('customer') or '거래처 확인 필요'}"]
     for index, item in enumerate(row.get('items', []), 1):
         product = item.get('product') or {}
-        candidates = ' / '.join(str(p.get('name', '')) for p in item.get('candidates', []))
-        lines.append(f"{index}. {item['product_raw']} → {product.get('name') or '확인 필요: ' + candidates} / {item['quantity_raw']}{item['unit_raw']}")
-    lines += ['원문 내용:', row['event']['content'], '',
-              f"일치·입력 승인: {label(row)} 맞아" if ready(row) else '미확정 정보가 있어 현재 입력 승인 불가',
-              f"품목 불일치: {label(row)} 틀려", f"품목 수정: {label(row)} 품목 1=정확한 품목명",
-              f"제외: {label(row)} 안함"]
+        lines.append(f"{item['product_raw']} {item['quantity_raw']}{item['unit_raw']}")
+        if product:
+            lines.append(f"매칭: {product['name']}")
+        else:
+            for n, candidate in enumerate(item.get('candidates', []), 1):
+                lines.append(f"{n}) {candidate['name']}")
+            if item.get('candidates'):
+                lines.append(f"선택: {label(row)} 선택 {index}=번호")
+    if ready(row): lines.append(f"{label(row)} 맞아 / 틀려 / 안함")
+    else: lines.append(f"품목 수정: {label(row)} 품목 1=품목명")
     return '\n'.join(lines)
 
 
@@ -139,6 +159,11 @@ def apply_reply(row, event, later_event_ids):
     if not content.startswith(prefix):
         return result
     command = content[len(prefix):].strip()
+    selection = re.fullmatch(r'선택\s+(\d+)=(\d+)', command)
+    if selection and 1 <= int(selection[1]) <= len(result.get('items', [])):
+        candidates = result['items'][int(selection[1])-1].get('candidates', [])
+        if 1 <= int(selection[2]) <= len(candidates):
+            command = f"품목 {selection[1]}={candidates[int(selection[2])-1]['nenova_key']}"
     correction = re.fullmatch(r'품목\s+(\d+)\s*=\s*(\S.*)', command)
     if command in ('맞아', '승인') and result['status'] == 'waiting' and ready(result):
         result.update(status='approved', approved_revision=result['revision'], approval_event_id=eid)
