@@ -12,6 +12,19 @@
 - export/photos/files/upload 단계별 시간 로그를 추가했다. 첨부의 수집 순서와 개수는 유지했다. 후순위 첨부 UI/업로드의 완전한 비동기 분리는 아직 미구현이며 60초 지연 해결 완료로 해석하지 않는다.
 - 격리 테스트 283개 통과. 불량 ERP 자동 입력은 여전히 미연결이다. 재시작 감독 결과는 로컬 data/supervised_start_result.json 확인.
 
+## 2026-09-15 불량 영업입력 실행 연결
+
+사용자가 실제 URL https://nenovaweb.com/sales/defect-deductions?popup=1 을 제공했다. Chrome의 로그인된 영업 입력 화면을 확인했다. 표시 버전 5d87c9dd와 origin/master의 pages/api/sales/defect-deductions.js 및 lib/salesDefectDeductions.js Git blob이 동일함을 확인했다.
+
+- 신규 core/defect_runtime.py를 단일 UI 워커 priority 20, interval 15초에 연결. sales 0/approval 1 다음, order 30 앞이다. 불량 수집은 60초마다 텍스트 내보내기로 수행하며 기존 후순위 사진 수집 목록에서 수입불량방을 제외했다. 각 호출은 수집/매칭/질문/답변/저장/알림 중 한 단계만 수행하고, 대기 요청은 최근 처리 시각으로 순환한다.
+- 원문 cutoff는 keyword_forward_config.start_at(2026-09-15 10:06:45 KST, 분 표시상 10:07부터)을 공유한다. 과거 자료/사진/비지정 작성자는 승인 대상으로 만들지 않는다. 수집된 불량 요청은 data/defect_requests/, 실마스터 캐시는 data/defect_master.json이다. 마스터 HTTP 조회는 별도 프로세스에서 수행한다.
+- 승인자는 operator_name()인 강현우, 입력 원장 담당자는 원문 작성자의 ERP managerOptions 유일 매칭이다. 승인자와 작성자가 다름을 유지한다.
+- core/defect_services.py는 /api/sales/defect-deductions GET 목록/중복검사, POST action=rematch(저장 없음), POST action=save(영업입력 저장)만 사용한다. register/incoming-confirm/DELETE/기존 deductionKey 갱신은 하지 않는다. 원차수37-1은 parent37차+비고로 보존한다. 송이 등 미지원 단위는 단으로 임의 변환하지 않는다.
+- 원문 요청 ID를 SourceFileName에 기록하고 전후 조회의 ID/품목/업체/수량/단위/담당자/연도/차수/항목수를 확인한다. 저장 전 write_unknown을 디스크 기록한다. 불명 결과는 자동 재전송하지 않는다. 같은 내용의 수동 원장도 자동 덮어쓰거나 중복 등록하지 않는다.
+- 현재 계정 blocker: Windows Credential Manager의 강현우 프로필이 없음. 브라우저 로그인 쿠키를 추출하지 않았다. 운영 콘솔에 ‘불량 영업입력 자동화 계정 설정’ 버튼을 추가했다. 저장 대상 프로필 강현우, 실제 네노바 사용자 로그인/권한은 서버가 확인한다. 계정 미설정 시 승인 건은 approved+last_error로 유지하고 실제 저장하지 않는다. 계정 설정 뒤 실등록/재조회 검증은 아직 필요하다.
+- data/defect_config.json enabled/write_enabled=true, credential_profile=강현우, sales_input_save_only. 저장은 matched+해당 revision 담당자승인+자격증명+서버검증이 모두 필요하다. 기능 활성화가 실제 저장 성공을 뜻하지 않는다.
+- 테스트 302개 통과(신규 어댑터/런타임 10개 포함). 실제 마스터3371품목/688업체 조회 성공. 최종 재시작 결과는 data/supervised_start_result.json, 불량 상태는 요청 파일을 읽어 확인한다. 아래 미연결 절은 이 변경 이전 기록이다.
+
 ## 2026-09-15 불량 승인 구현 진행 (미연결)
 
 사용자가 수입불량방 텍스트 → 담당자 품목 매칭 승인 → 영업수입불량차감 탭 영업입력 자동 등록을 재요청했다. `core/defect_approval.py`에 새 원문 시각 필터·지정 작성자/텍스트 추출·실마스터 매칭·버전별 승인/품목 수정·재승인·질문 전후 확인·등록 전 중복 조회/등록 후 재조회 인터페이스를 구현했다. 실제 worker 호출 및 목적 탭 어댑터는 아직 연결하지 않았다. 실카톡 승인 질문/ERP 입력을 실행한 상태가 아니다.

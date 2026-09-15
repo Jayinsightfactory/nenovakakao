@@ -97,6 +97,8 @@ class Console(tk.Tk):
         ttk.Label(orders, text='최우선: 영업방 수집 → 승인·완료 알림 반복 · 수입방 약 1분 · 기타 작업 30분').pack(anchor='w')
         ttk.Button(orders, text='주문 검토 시트 열기', command=self.open_order_review).pack(anchor='e')
         ttk.Button(orders, text='담당자별 네노바 로그인 설정', command=self.setup_nenova_credential).pack(anchor='e')
+        ttk.Button(orders, text='불량 영업입력 자동화 계정 설정',
+                   command=lambda: self.setup_nenova_credential(defect=True)).pack(anchor='e')
         self.order_table = ttk.Treeview(orders, columns=('time','status','id','staff','customer','week','items','detail'), show='headings', height=4)
         for col, label, width in [('time','시간',110),('status','상태',110),('id','요청번호',120),('staff','담당자',100),('customer','거래처',100),('week','차수',70),('items','품목',55),('detail','상세',360)]:
             self.order_table.heading(col, text=label); self.order_table.column(col, width=width)
@@ -137,9 +139,13 @@ class Console(tk.Tk):
         except (OSError, ValueError) as exc:
             messagebox.showerror('담당자 저장 실패', str(exc), parent=self)
 
-    def setup_nenova_credential(self):
+    def setup_nenova_credential(self, defect=False):
         dialog = tk.Toplevel(self); dialog.title('담당자별 네노바 로그인 설정'); dialog.resizable(False, False)
         values = {key: tk.StringVar() for key in ('staff','room','username','password')}
+        if defect:
+            from core.operator_settings import operator_name
+            values['staff'].set(operator_name())
+            values['room'].set(operator_name())
         for row, (key, label) in enumerate((('staff','수입방 발신자 이름'),('room','담당자 1:1 카톡방 이름'),('username','네노바 아이디'),('password','네노바 비밀번호'))):
             ttk.Label(dialog, text=label).grid(row=row, column=0, padx=10, pady=6, sticky='e')
             ttk.Entry(dialog, textvariable=values[key], width=34, show='*' if key == 'password' else '').grid(row=row, column=1, padx=10, pady=6)
@@ -156,7 +162,9 @@ class Console(tk.Tk):
                 if enable_review.get():
                     import_order.configure_staff(values['staff'].get(), room)
                 values['password'].set('')
-                messagebox.showinfo('저장 완료', '계정을 저장했습니다. 실제 등록은 API·권한·결과 검증 전까지 차단됩니다.', parent=dialog)
+                messagebox.showinfo('저장 완료',
+                    '계정을 저장했습니다. 불량 매칭 승인을 받은 항목만 영업 입력 저장을 시도합니다.' if defect
+                    else '계정을 저장했습니다. 실제 등록은 API·권한·결과 검증 전까지 차단됩니다.', parent=dialog)
                 dialog.destroy()
             except Exception as exc:
                 values['password'].set('')

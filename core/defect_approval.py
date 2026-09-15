@@ -63,13 +63,16 @@ def rematch(row, master):
     result['status'] = 'ready_question'
     result.pop('approved_revision', None)
     result.pop('question_event_id', None)
+    result.pop('correction_notice_id', None)
     return result
 
 
 def ready(row):
     return (not row['extracted']['issues'] and bool(row.get('customer', {}).get('nenova_key')
             if row.get('customer') else False) and bool(row.get('items'))
-            and all(i.get('product') and i['product'].get('nenova_key') for i in row['items']))
+            and all(i.get('product') and i['product'].get('nenova_key')
+                    and i['unit_raw'] in ('단', '박스', 'BOX', 'box', '대', '스팀', '스팀(대)')
+                    for i in row['items']))
 
 
 def label(row):

@@ -1,0 +1,61 @@
+import time
+from unittest.mock import Mock
+from core import defect_runtime as r
+from core import defect_approval as d
+from core.atomic_json import save
+from tests.test_defect_approval import EVENT, waiting, reply
+
+
+def setup(monkeypatch, tmp_path):
+    monkeypatch.setattr(d, 'ROOT', tmp_path)
+    monkeypatch.setattr(r, 'is_paused', lambda: False)
+    monkeypatch.setattr(r, 'config', lambda: {'enabled': True, 'write_enabled': True})
+    monkeypatch.setattr(r, 'forward_config', lambda: {'start_at': '2026-09-15T10:06:45+09:00'})
+    monkeypatch.setattr(r, 'operator_name', lambda: '강현우')
+    monkeypatch.setattr(r, '_next_collection', time.monotonic()+100)
+    monkeypatch.setattr(r, 'start_master', Mock())
+
+
+def test_collection_captures_text_without_send(monkeypatch, tmp_path):
+    setup(monkeypatch, tmp_path)
+    monkeypatch.setattr(r, '_next_collection', 0)
+    export = Mock(return_value=[EVENT, {**EVENT,'event_id':'photo','content':'사진'}])
+    send = Mock()
+    r.poll(export, send)
+    export.assert_called_once_with('수입불량방')
+    assert len(list(tmp_path.glob('*.json'))) == 1
+    send.assert_not_called()
+
+
+def test_reply_saved_before_next_turn_write(monkeypatch, tmp_path):
+    setup(monkeypatch, tmp_path)
+    path, row = waiting(tmp_path)
+    export = Mock(return_value=[{'event_id':'question-1'},reply(row,'맞아')])
+    adapter = Mock(); adapter.profile = '강현우'
+    monkeypatch.setattr(r, '_adapter', adapter)
+    r.poll(export, Mock())
+    assert d.load(path)['status'] == 'approved'
+    adapter.insert.assert_not_called()
+
+
+def test_unknown_write_keeps_hold_and_no_second_insert(monkeypatch, tmp_path):
+    setup(monkeypatch, tmp_path)
+    path, row = waiting(tmp_path)
+    save(path, d.apply_reply(row, reply(row,'맞아'), {'answer-1'}))
+    adapter = Mock(); adapter.profile = '강현우'
+    adapter.lookup.return_value = None
+    adapter.insert.side_effect = TimeoutError()
+    monkeypatch.setattr(r, '_adapter', adapter)
+    r.poll(Mock(), Mock())
+    assert d.load(path)['status'] == 'write_unknown'
+    r.poll(Mock(), Mock())
+    adapter.insert.assert_called_once()
+
+
+def test_old_cutoff_and_changed_recipient_never_dispatched(monkeypatch, tmp_path):
+    setup(monkeypatch, tmp_path)
+    path, row = waiting(tmp_path)
+    row['recipient'] = '다른사람'; save(path,row)
+    export,send = Mock(),Mock()
+    r.poll(export,send)
+    export.assert_not_called(); send.assert_not_called()

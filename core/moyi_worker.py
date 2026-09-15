@@ -368,7 +368,15 @@ def run() -> int:
                       keyword_forward.send_exact, order_services.master,
                       order_services.register_bulk, is_paused)
 
+    def defect_agent():
+        from core.defect_runtime import poll as poll_defects
+        from core.moyi_inbound import parse_export
+        def history(title):
+            return parse_export(export_exact_room(title), 'defect:' + title)
+        return _timed('agent:defect', poll_defects, history, keyword_forward.send_exact)
+
     error_states = {'sales': 'inbound_room_failed', 'approval': 'approval_check_failed',
+                    'defect': 'defect_check_failed',
                     'order': 'import_order_check_failed'}
     def agent_error(agent, exc):
         if isinstance(exc, pyautogui.FailSafeException):
@@ -379,6 +387,7 @@ def run() -> int:
     coordinator = AgentCoordinator(AGENT_LOG, clock=time.monotonic,
                                    wall_clock=time.time, on_error=agent_error)
     register_agents(coordinator, sales_agent, approval_agent, order_agent)
+    coordinator.add('defect', 20, 15, defect_agent)
 
     def priority_poll():
         nonlocal next_primary_at
@@ -451,7 +460,7 @@ def run() -> int:
                 rooms = [
                     room for room in rooms_response.json().get("items", [])
                     if str(room.get("exact_title") or "").strip()
-                    and str(room.get("exact_title") or "").strip() not in ('영업방', '수입방')
+                    and str(room.get("exact_title") or "").strip() not in ('영업방', '수입방', '수입불량방')
                 ]
                 if rooms and not is_paused():
                     for room in _inbound_schedule(rooms):
