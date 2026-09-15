@@ -78,6 +78,8 @@ class AgentCoordinator:
                       'error_type': error_type}
             self._append(record)
             outcomes.append((agent.name, outcome, value))
+            if outcome == 'paused':
+                break
         return outcomes
 
     def _append(self, record):

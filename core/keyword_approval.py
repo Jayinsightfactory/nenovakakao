@@ -1,5 +1,6 @@
 """Numbered Kakao approval requests; no ambiguous or old reply is accepted."""
 import json
+import pyautogui
 import re
 import time
 from datetime import datetime
@@ -447,7 +448,7 @@ def poll(export, send, paused, mark_rescan):
                     k.save_json(REQUESTS, rows)
                 from core.error_notifications import resolve
                 resolve('approval_error', rid)
-            except OperationPaused:
+            except (OperationPaused, pyautogui.FailSafeException):
                 raise
             except Exception as exc:
                 row['precheck_retry_at'] = time.time() + PRECHECK_RETRY_SEC
@@ -456,7 +457,7 @@ def poll(export, send, paused, mark_rescan):
                 return
             try:
                 before = history()
-            except OperationPaused:
+            except (OperationPaused, pyautogui.FailSafeException):
                 raise
             except Exception as exc:
                 row['precheck_retry_at'] = time.time() + PRECHECK_RETRY_SEC
@@ -483,7 +484,7 @@ def poll(export, send, paused, mark_rescan):
                 row.update(status='waiting', request_event_id=verified['event_id'], sent_at=time.time())
                 k.save_json(REQUESTS, rows)
                 report('승인대기', f'요청 {rid} 전송 확인 · 승인 담당자 답변 대기')
-            except OperationPaused:
+            except (OperationPaused, pyautogui.FailSafeException):
                 raise
             except Exception as exc:
                 report('확인 필요', f'요청 {rid} 결과 불명: {exc}; 자동 재전송 금지')
@@ -534,7 +535,7 @@ def poll(export, send, paused, mark_rescan):
                         matched = [e for e in history(refresh=True) if e['event_id'] not in before
                                    and k.normalize(e['content']) == k.normalize(payload)]
                         row['reminder_status'] = 'sent' if len(matched) == 1 else 'unknown'
-                    except OperationPaused:
+                    except (OperationPaused, pyautogui.FailSafeException):
                         raise
                     except Exception:
                         row['reminder_status'] = 'unknown'

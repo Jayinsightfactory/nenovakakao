@@ -5,7 +5,7 @@ from pathlib import Path
 from urllib.parse import urlparse
 import pyautogui, requests, win32api
 from dotenv import load_dotenv
-from core.moyi_control import is_paused
+from core.moyi_control import is_paused, set_paused
 from core.moyi_outbound import open_room_by_name
 from core.safe_worker_room import open_unique_exact_room, close_room
 
@@ -85,8 +85,8 @@ def _is_suppressed_system_item(item: dict) -> bool:
 
 def _restore_safe_cursor() -> None:
     """Recover after failed UI automation without disabling the fail-safe."""
-    width, height = pyautogui.size()
-    win32api.SetCursorPos((max(1, width // 2), max(1, height // 2)))
+    # Never move the cursor away from an operator-triggered fail-safe.
+    return
 
 def _config() -> tuple[str, str]:
     load_dotenv(ROOT / ".env")
@@ -371,6 +371,8 @@ def run() -> int:
     error_states = {'sales': 'inbound_room_failed', 'approval': 'approval_check_failed',
                     'order': 'import_order_check_failed'}
     def agent_error(agent, exc):
+        if isinstance(exc, pyautogui.FailSafeException):
+            set_paused(True)
         _event(None, error_states[agent.name], str(exc)[:200])
         _restore_safe_cursor()
 
@@ -410,6 +412,8 @@ def run() -> int:
                 error_notifications.poll(export_exact_room,
                     lambda room, text: keyword_forward.send_exact(room, text, require_forward_enabled=False), is_paused)
             except Exception as exc:
+                if isinstance(exc, pyautogui.FailSafeException):
+                    set_paused(True)
                 from core.moyi_control import audit, OperationPaused
                 if isinstance(exc, OperationPaused):
                     audit('notice_paused', '사용자 일시정지; 알림 처리 기록 유지')
@@ -424,6 +428,8 @@ def run() -> int:
             try:
                 _timed('outbound', process_item, server, secret, item)
             except Exception as exc:
+                if isinstance(exc, pyautogui.FailSafeException):
+                    set_paused(True)
                 detail = str(exc)
                 state = "failed_not_sent" if detail.startswith("not_sent:") or "방 제목" in detail or "exact room" in detail else "unknown_result"
                 print(f"[MOYI] {state} {item.get('id')}: {detail}")
@@ -460,6 +466,8 @@ def run() -> int:
                                     print(f"[MOYI] inbound {title}: {result['sent']} sent, {result['initialized']} initialized")
                                 room_breaker.succeeded(title)
                             except Exception as room_exc:
+                                if isinstance(room_exc, pyautogui.FailSafeException):
+                                    set_paused(True)
                                 print(f"[MOYI] inbound room failed ({title}): {room_exc}")
                                 _event(None, "inbound_room_failed", f"{title}: {str(room_exc)[:400]}")
                                 if room_breaker.failed(title):

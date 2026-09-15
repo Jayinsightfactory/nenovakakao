@@ -55,3 +55,13 @@ def test_user_pause_is_logged_without_failure_or_error_callback(tmp_path):
     assert runtime.run_due() == [('approval', 'paused', None)]
     assert agent.failures == 0
     errors.assert_not_called()
+
+
+def test_pause_stops_remaining_due_agents(tmp_path):
+    from core.moyi_control import OperationPaused
+    lower = Mock()
+    runtime = AgentCoordinator(tmp_path / 'agents.jsonl')
+    runtime.add('approval', 0, 5, Mock(side_effect=OperationPaused('paused')))
+    runtime.add('order', 30, 5, lower)
+    assert runtime.run_due() == [('approval', 'paused', None)]
+    lower.assert_not_called()

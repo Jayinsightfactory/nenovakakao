@@ -17,6 +17,7 @@ import win32con
 import win32gui
 import win32process
 
+from core.moyi_control import OperationPaused
 from core.kakao_search import clear_room_search, replace_room_search
 from core.moyi_outbound import open_room_by_name
 from core.safe_worker_room import close_room, open_unique_exact_room
@@ -419,6 +420,7 @@ def export_exact_room(title: str) -> str:
 
 def _upload_attachment(server: str, headers: dict[str, str], path: Path) -> dict:
     """Upload one locally downloaded Kakao attachment without exposing secrets."""
+    _assert_export_running()
     if path.stat().st_size > MAX_ATTACHMENT_BYTES:
         raise RuntimeError(f"Kakao attachment exceeds 50MB: {path.name}")
     mime = mimetypes.guess_type(path.name)[0] or "application/octet-stream"
@@ -516,7 +518,8 @@ def poll_once(server: str, secret: str, only_title: str | None = None,
         retry_bindings.add(binding)
         state["_needs_rescan"] = sorted(retry_bindings)
         _save_state(state)
-        text = export_exact_room(title)
+        from core.moyi_worker import _timed
+        text = _timed('export:' + title, export_exact_room, title)
         verify = requests.post(
             f"{server}/kakao/agent/verify-room",
             headers=headers,
@@ -585,16 +588,17 @@ def poll_once(server: str, secret: str, only_title: str | None = None,
                 print(f"[MOYI] mindmap raw archive: {flushed} messages")
         except Exception as exc:
             print(f"[MOYI] mindmap sink queued ({title}): {type(exc).__name__}")
+        _assert_export_running()
         photo_events = [event for event in new_events if PHOTO_MARKER_RE.search(event["content"])]
         held_event_ids: set[str] = set()
         if photo_events:
             try:
-                photo_files = _collect_photo_files(title, len(photo_events))
+                photo_files = _timed('photos:' + title, _collect_photo_files, title, len(photo_events))
                 if len(photo_files) < len(photo_events):
                     raise RuntimeError(
                         f"Kakao photo download incomplete: expected {len(photo_events)}, got {len(photo_files)}"
                     )
-                uploaded = [_upload_attachment(server, headers, path) for path in photo_files]
+                uploaded = [_timed('upload:' + title, _upload_attachment, server, headers, path) for path in photo_files]
                 # Kakao's drawer is newest-first. One Kakao photo event can be
                 # an album that downloads multiple image files.
                 newest_first = list(reversed(photo_events))
@@ -602,6 +606,8 @@ def poll_once(server: str, secret: str, only_title: str | None = None,
                     event["attachments"] = [attachment]
                 for attachment in uploaded[len(newest_first):]:
                     newest_first[0].setdefault("attachments", []).append(attachment)
+            except (OperationPaused, pyautogui.FailSafeException):
+                raise
             except Exception as exc:
                 for event in photo_events:
                     held_event_ids.add(event["event_id"])
@@ -612,18 +618,23 @@ def poll_once(server: str, secret: str, only_title: str | None = None,
                 )
         missing_file_events: list[tuple[dict, str]] = []
         for event in new_events:
+            _assert_export_running()
             file_match = FILE_MARKER_RE.match(event["content"].strip())
             if file_match:
                 name = file_match.group("name").strip()
                 try:
                     local_file = _find_local_kakao_file(name)
-                    event["attachments"] = [_upload_attachment(server, headers, local_file)]
+                    event["attachments"] = [_timed('upload:' + title, _upload_attachment, server, headers, local_file)]
+                except OperationPaused:
+                    raise
                 except RuntimeError as exc:
                     if str(exc).startswith("Kakao file was not downloaded:"):
                         missing_file_events.append((event, name))
                         continue
                     held_event_ids.add(event["event_id"])
                     _hold_attachment_event(state, binding, title, event, str(exc))
+                except pyautogui.FailSafeException:
+                    raise
                 except Exception as exc:
                     held_event_ids.add(event["event_id"])
                     _hold_attachment_event(state, binding, title, event, str(exc))
@@ -633,10 +644,12 @@ def poll_once(server: str, secret: str, only_title: str | None = None,
                     )
         if missing_file_events:
             try:
-                _collect_file_files(title, len(missing_file_events))
+                _timed('files:' + title, _collect_file_files, title, len(missing_file_events))
                 for event, name in missing_file_events:
                     local_file = _find_local_kakao_file(name)
-                    event["attachments"] = [_upload_attachment(server, headers, local_file)]
+                    event["attachments"] = [_timed('upload:' + title, _upload_attachment, server, headers, local_file)]
+            except (OperationPaused, pyautogui.FailSafeException):
+                raise
             except Exception as exc:
                 for event, name in missing_file_events:
                     held_event_ids.add(event["event_id"])
@@ -646,6 +659,7 @@ def poll_once(server: str, secret: str, only_title: str | None = None,
                         f"{name}; later text will continue"
                     )
         for event in new_events:
+            _assert_export_running()
             if event["event_id"] in held_event_ids:
                 known.add(event["event_id"])
                 known_ids.append(event["event_id"])

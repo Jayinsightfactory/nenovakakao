@@ -191,7 +191,8 @@ def process_source(title, events, export, send, paused, max_new_events=5):
                 continue
         except Exception as exc:
             from core.moyi_control import OperationPaused
-            if isinstance(exc, OperationPaused):
+            import pyautogui
+            if isinstance(exc, (OperationPaused, pyautogui.FailSafeException)):
                 raise
             record(event, '검증 재시도', str(exc)[:200])
             return
@@ -215,7 +216,8 @@ def process_source(title, events, export, send, paused, max_new_events=5):
             record(event, '전송 성공', '대상 방 원문 재조회 확인')
         except Exception as exc:
             from core.moyi_control import OperationPaused
-            if isinstance(exc, OperationPaused):
+            import pyautogui
+            if isinstance(exc, (OperationPaused, pyautogui.FailSafeException)):
                 raise
             record(event, '결과 불명', str(exc)[:200])
 

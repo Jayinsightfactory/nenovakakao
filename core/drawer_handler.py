@@ -10,6 +10,11 @@ import pygetwindow as gw
 import win32con
 import win32gui
 
+def _check_running():
+    from core.moyi_inbound import _assert_export_running
+    _assert_export_running()
+
+
 DRAWER_TITLE = "채팅방 서랍"
 MAX_ATTACHMENTS = 12
 DOWNLOAD_X_FROM_RIGHT = 40
@@ -27,6 +32,7 @@ def _snapshot_downloads() -> dict[Path, int]:
         if not root.exists():
             continue
         for path in root.rglob("*"):
+            _check_running()
             if not path.is_file():
                 continue
             try:
@@ -37,6 +43,7 @@ def _snapshot_downloads() -> dict[Path, int]:
 
 
 def _activate(hwnd: int) -> None:
+    _check_running()
     win32gui.ShowWindow(hwnd, win32con.SW_RESTORE)
     try:
         win32gui.SetForegroundWindow(hwnd)
@@ -95,6 +102,7 @@ def _download_selection(drawer: object, count: int, kind: str) -> list[Path]:
     pyautogui.keyDown("ctrl")
     try:
         for index in range(limit):
+            _check_running()
             row, col = divmod(index, columns)
             x = first_x + col * x_spacing
             y = first_y + row * y_spacing
@@ -110,6 +118,7 @@ def _download_selection(drawer: object, count: int, kind: str) -> list[Path]:
             f"Kakao {kind} selection incomplete: expected {limit}, selected {selected}"
         )
 
+    _check_running()
     pyautogui.click(
         drawer.left + drawer.width - DOWNLOAD_X_FROM_RIGHT,
         drawer.top + drawer.height - DOWNLOAD_Y_FROM_BOTTOM,
