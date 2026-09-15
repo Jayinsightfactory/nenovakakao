@@ -39,14 +39,14 @@ def _notice(path, row, payload, export, send, field):
     if is_paused():
         return
     previous = row['status']
-    row.update(status='notice_unknown', notice_payload=payload, notice_previous_status=previous)
+    row.update(status='notice_unknown', notice_payload=payload, notice_previous_status=previous,
+               notice_before_ids=[e['event_id'] for e in before], notice_receipt_field=field)
     save(path, row)
     send(row['recipient'], payload)
-    old = {e['event_id'] for e in before}
-    found = [e for e in export(row['recipient']) if e['event_id'] not in old and e['content'].strip() == payload.strip()]
-    if len(found) == 1:
+    found = d.verified_message(payload, row['notice_before_ids'], export(row['recipient']))
+    if found:
         row.update(status=previous)
-        row[field] = found[0]['event_id']
+        row[field] = found['event_id']
         save(path, row)
 
 
@@ -72,7 +72,8 @@ def poll(export, send):
             continue
         if row.get('retry_at', 0) > time.time():
             continue
-        if row['status'] in ('needs_match', 'ready_question', 'waiting', 'awaiting_product', 'approved') or (
+        if row['status'] in ('needs_match', 'ready_question', 'waiting', 'awaiting_product', 'approved',
+                             'question_unknown', 'notice_unknown') or (
                 row['status'] in ('completed', 'declined') and not row.get('receipt_event_id')):
             active.append((path, row))
     if not active:
@@ -83,7 +84,17 @@ def poll(export, send):
     save(path, row)
     try:
         status = row['status']
-        if status == 'needs_match':
+        if status == 'question_unknown':
+            d.reconcile_question(path, export(row['recipient']))
+        elif status == 'notice_unknown':
+            if 'notice_before_ids' not in row:
+                return
+            found = d.verified_message(row['notice_payload'], row['notice_before_ids'], export(row['recipient']))
+            if found:
+                row['status'] = row['notice_previous_status']
+                row[row['notice_receipt_field']] = found['event_id']
+                save(path, row)
+        elif status == 'needs_match':
             start_master()
             if MASTER.exists() and time.time() - MASTER.stat().st_mtime < 1800:
                 save(path, d.rematch(row, d.load(MASTER)))

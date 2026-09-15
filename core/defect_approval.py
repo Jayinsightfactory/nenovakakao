@@ -79,6 +79,35 @@ def label(row):
     return f"{row['id']} v{row['revision']}"
 
 
+def verified_message(payload, before_ids, history):
+    """Kakao's export parser omits blank lines; preserve all other content.
+
+    Match only new event IDs with the full message, never an ID substring.
+    """
+    def canonical(text):
+        return '\n'.join(line.rstrip() for line in str(text).replace('\r\n', '\n').split('\n')
+                         if line.strip()).strip()
+    expected = canonical(payload)
+    if not expected:
+        return None
+    matches = [e for e in history if e['event_id'] not in set(before_ids)
+               and canonical(e.get('content', '')) == expected]
+    return matches[0] if len(matches) == 1 else None
+
+
+def reconcile_question(path, history):
+    row = load(path)
+    if row['status'] != 'question_unknown' or 'question_before_ids' not in row:
+        return False
+    found = verified_message(row.get('question_payload', ''), row['question_before_ids'], history)
+    if found is None:
+        return False
+    row.update(status='waiting', question_event_id=found['event_id'], reconciled_at=time.time())
+    row.pop('last_error', None)
+    save(path, row)
+    return True
+
+
 def question(row):
     customer = row.get('customer') or {}
     lines = [f"[불량 매칭 승인 · {label(row)}]", '입력 위치: 영업수입불량차감 > 영업입력',
@@ -145,12 +174,7 @@ def send_question(path, export, send, paused):
                question_before_ids=[e['event_id'] for e in before])
     save(path, row)
     send(row['recipient'], payload)
-    after = export(row['recipient'])
-    matches = [e for e in after if e['content'].strip() == payload.strip()
-               and e['event_id'] not in row['question_before_ids']]
-    if len(matches) == 1:
-        row.update(status='waiting', question_event_id=matches[0]['event_id'])
-        save(path, row)
+    reconcile_question(path, export(row['recipient']))
 
 
 def submit(path, adapter, paused):

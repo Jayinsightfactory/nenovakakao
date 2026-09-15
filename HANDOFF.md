@@ -12,6 +12,16 @@
 - export/photos/files/upload 단계별 시간 로그를 추가했다. 첨부의 수집 순서와 개수는 유지했다. 후순위 첨부 UI/업로드의 완전한 비동기 분리는 아직 미구현이며 60초 지연 해결 완료로 해석하지 않는다.
 - 격리 테스트 283개 통과. 불량 ERP 자동 입력은 여전히 미연결이다. 재시작 감독 결과는 로컬 data/supervised_start_result.json 확인.
 
+## 2026-09-15 불량 질문 확인 누락 수정
+
+불량-8D68454CCD74(12:05 조현욱 원문)는 실제 카톡 12:09 발송됨에도 question_unknown으로 남았다. parse_export가 빈 줄을 제거하므로 payload.strip() 직접 비교가 실패했다. 이후 runtime이 unknown을 제외해 답변 확인도 하지 않았다.
+
+- 질문/안내 확인에서 CRLF·빈 줄·줄 끝 공백만 정규화하고 전체본문 및 전송 전 event ID 기준을 유지한다. 동일 본문 후보가 2개면 복구하지 않는다.
+- question_unknown/notice_unknown을 읽기 전용 재대조 대상에 포함했다. 자동 재전송하지 않는다. 이전 notice에 전송 전 ID 목록이 없으면 수동 검토로 보존한다.
+- 최신 강현우 내보내기로 해당 질문의 유일한 새 event ID를 확인하여 waiting으로 복구했다. 최신 기록상 질문 이후 강현우 답변은 없다. 재전송하지 않았다.
+- 16:15:48 불량방 export 기준 cutoff 이후 3건: 사진2/텍스트1. 누락된 추가 텍스트는 해당 export에서 발견되지 않았다.
+- 305개 테스트 통과. 수정본 워커를 교체하되 사용자의 현재 일시정지는 유지했다. 재개 후 실시간 답변 확인/ERP 계정 설정 상태를 다시 확인할 것.
+
 ## 2026-09-15 불량 영업입력 실행 연결
 
 사용자가 실제 URL https://nenovaweb.com/sales/defect-deductions?popup=1 을 제공했다. Chrome의 로그인된 영업 입력 화면을 확인했다. 표시 버전 5d87c9dd와 origin/master의 pages/api/sales/defect-deductions.js 및 lib/salesDefectDeductions.js Git blob이 동일함을 확인했다.

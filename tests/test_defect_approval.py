@@ -114,3 +114,29 @@ def test_question_requires_positive_readback(tmp_path):
     d.send_question(path, export, Mock(), lambda: False)
     assert d.load(path)['status'] == 'waiting'
     assert d.load(path)['question_event_id'] == 'q2'
+
+
+def test_blank_lines_removed_by_real_export_still_verify(tmp_path):
+    path, row = waiting(tmp_path)
+    row['status'] = 'ready_question'; save(path, row)
+    payload = d.question(row)
+    exported = '\n'.join(line for line in payload.splitlines() if line.strip())
+    export = Mock(side_effect=[[], [{'event_id': 'real-q', 'content': exported}]])
+    d.send_question(path, export, Mock(), lambda: False)
+    assert d.load(path)['status'] == 'waiting'
+
+
+def test_unknown_question_recovery_does_not_accept_old_or_duplicate(tmp_path):
+    path, row = waiting(tmp_path)
+    row.update(status='question_unknown', question_payload=d.question(row), question_before_ids=['old'])
+    save(path,row)
+    assert not d.reconcile_question(path,[{'event_id':'old','content':row['question_payload']}])
+    events=[{'event_id':'a','content':row['question_payload']}, {'event_id':'b','content':row['question_payload']}]
+    assert not d.reconcile_question(path,events)
+    assert d.reconcile_question(path,events[:1])
+    assert d.load(path)['question_event_id'] == 'a'
+
+
+def test_verification_does_not_accept_request_id_only_or_changed_quantity():
+    assert d.verified_message('request v1\n15단',[],[{'event_id':'a','content':'request v1\n16단'}]) is None
+    assert d.verified_message('request v1\n15단',[],[{'event_id':'a','content':'request v1'}]) is None
