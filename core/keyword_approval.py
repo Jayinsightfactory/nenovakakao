@@ -198,7 +198,8 @@ def request_message(row):
     if row.get('item_labels'):
         return (f"[전달 승인 요청 {row['id']}]\n대상: {k.config()['target']}\n\n{originals}\n\n"
                 f"전달하려면 {item_label(row, 0)} 승인\n전달하지 않으려면 {item_label(row, 0)} 거절\n"
-                "답하지 않은 건은 계속 대기합니다.")
+                "여러 건은 띄어쓰기 없이 붙여 답해도 됩니다. 예: 1가승인2가거절3가승인\n"
+                "예시 번호 대신 각 안내에 표시된 번호를 써주세요. 답하지 않은 건은 계속 대기합니다.")
     return (f"[전달 승인 요청 {row['id']}]\n대상: {k.config()['target']}\n\n{originals}\n\n"
             "답변 예시: 가 보내" + (" 나 안보내" if len(events) > 1 else " / 가 안보내") + "\n"
             "한 건씩 따로 답해도 됩니다. 답하지 않은 건은 대기합니다.\n"
@@ -696,7 +697,8 @@ def recheck_missing(rows, export, send, paused, history):
                "이 내용이 추가취소방에 아직 전달되지 않았습니다. 지금 전달할까요?\n"
                f"전달하려면 {new_labels[missing[0][0]]} 승인\n"
                f"전달하지 않으려면 {new_labels[missing[0][0]]} 거절\n"
-               "답하지 않은 건은 대기합니다.")
+               "여러 건은 띄어쓰기 없이 붙여 답해도 됩니다. 예: 1가승인2가거절3가승인\n"
+               "예시 번호 대신 각 안내에 표시된 번호를 써주세요. 답하지 않은 건은 대기합니다.")
     before = {e['event_id'] for e in history()}
     if paused() or operator_name() != row.get('approver_name', LEGACY_NAME):
         return

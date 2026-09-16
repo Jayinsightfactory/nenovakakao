@@ -28,3 +28,12 @@ def test_legacy_recheck_alias_only_after_verified_recheck_boundary():
     assert a.decision(history+[answer],row,False)=={0:'approve'}
     answer['content']='가하 승인 1가 거절'
     assert a.decision(history+[answer],row,False) is None
+
+
+def test_concatenated_answers_across_three_batches():
+    history=[{'event_id':'q','sender_name':'봇','content':'질문'},
+             {'event_id':'a','sender_name':a.APPROVER,'content':'1가승인2가거절3가승인'}]
+    for number,answer in [(1,'approve'),(2,'reject'),(3,'approve')]:
+        row={'id':str(number),'events':[{}],'item_labels':[f'{number}가'],
+             'choice_format':'per_item','status':'waiting','request_event_id':'q'}
+        assert a.decision(history,row,False)=={0:answer}
