@@ -110,7 +110,7 @@ def test_question_requires_positive_readback(tmp_path):
     path, row = waiting(tmp_path)
     row['status'] = 'ready_question'
     save(path, row)
-    export = Mock(side_effect=[[], [{'event_id':'q2', 'content':d.question(row)}]])
+    export = Mock(side_effect=[[], [{'event_id':'q2', 'content':d.question({**row,'reply_number':1})}]])
     d.send_question(path, export, Mock(), lambda: False)
     assert d.load(path)['status'] == 'waiting'
     assert d.load(path)['question_event_id'] == 'q2'
@@ -119,7 +119,7 @@ def test_question_requires_positive_readback(tmp_path):
 def test_blank_lines_removed_by_real_export_still_verify(tmp_path):
     path, row = waiting(tmp_path)
     row['status'] = 'ready_question'; save(path, row)
-    payload = d.question(row)
+    payload = d.question({**row,'reply_number':1})
     exported = '\n'.join(line for line in payload.splitlines() if line.strip())
     export = Mock(side_effect=[[], [{'event_id': 'real-q', 'content': exported}]])
     d.send_question(path, export, Mock(), lambda: False)

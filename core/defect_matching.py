@@ -12,6 +12,8 @@ def norm(value):
 
 
 PRODUCT_NAMES = {
+    '모멘텀': 'ROSE / Momentum 50cm',
+    '롤리팝화이트블루': 'ROSE / Lollipop White Blue 50cm',
     '하츠': 'ROSE / Hearts 50cm', '아가판글리스터': 'Agapanthus / Gletsjer',
     '문라이트': 'CARNATION Moon Light', '몬디알화이트': 'ROSE / Mondial White 50cm',
     '플라야블랑카': 'ROSE / Playa Blanca 50cm', '프라도민트': 'CARNATION Prado Mint',

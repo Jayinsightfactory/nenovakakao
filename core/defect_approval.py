@@ -109,6 +109,8 @@ def ready(row):
 
 
 def label(row):
+    if row.get('reply_number'):
+        return str(row['reply_number'])
     return (row['short_label'] + (f"-{row['revision']}" if row['revision'] > 1 else '')) if row.get('short_label') else f"{row['id']} v{row['revision']}"
 
 
@@ -143,19 +145,24 @@ def reconcile_question(path, history):
 
 def question(row):
     customer = row.get('customer') or {}
-    lines = [f"{label(row)} · {row['extracted']['sequence']} {customer.get('name') or row['extracted'].get('customer') or '거래처 확인 필요'}"]
+    lines = [f"불량 확인 {label(row)} · {row['extracted']['sequence']} {customer.get('name') or row['extracted'].get('customer') or '거래처 확인 필요'}"]
+    if row.get('replaces_label'):
+        lines.append(f"이전 {row['replaces_label']} 대신 이 번호로 답해주세요.")
     for index, item in enumerate(row.get('items', []), 1):
         product = item.get('product') or {}
-        lines.append(f"{index}. {item['product_raw']} {item['quantity_raw']}{item['unit_raw']}")
+        lines.append(f"{'원문' if len(row['items']) == 1 else str(index)+'. 원문'}: {item['product_raw']} {item['quantity_raw']}{item['unit_raw']}")
         if product:
-            lines.append(f"매칭: {product['name']}")
+            lines.append(f"매칭: {product['name']} {item['quantity_raw']}{item['unit_raw']}")
         else:
             for n, candidate in enumerate(item.get('candidates', []), 1):
                 lines.append(f"{n}) {candidate['name']}")
             if item.get('candidates'):
                 lines.append(f"선택: {label(row)} 선택 {index}=번호")
-    if ready(row): lines.append(f"{label(row)} 맞아 / 틀려 / 안함")
-    else: lines.append(f"품목 수정: {label(row)} 품목 1=품목명")
+    if ready(row): lines.append(f"맞으면 {label(row)} 맞아\n다르면 {label(row)} 틀려\n처리 안 하면 {label(row)} 안함")
+    else:
+        lines.append('매칭 확인이 필요합니다.')
+        lines.append(f"답장: {label(row)} 품목 품목명" if len(row.get('items',[]))==1 else f"답장: {label(row)} 품목 1=품목명")
+        lines.append(f"처리 안 하면 {label(row)} 안함")
     return '\n'.join(lines)
 
 
@@ -168,11 +175,14 @@ def apply_reply(row, event, later_event_ids):
             or eid not in later_event_ids or eid in result['processed_replies']
             or event.get('sender_name') != result['recipient']):
         return result
-    prefix = label(result) + ' '
     content = event.get('content', '').strip()
-    if not content.startswith(prefix):
+    prefix = re.match(r'^'+re.escape(label(result))+r'\s*(?=맞아|승인|틀려|틀림|안함|안보내|품목|수량|거래처|차수|선택)', content)
+    if not prefix:
         return result
-    command = content[len(prefix):].strip()
+    command = content[prefix.end():].strip()
+    simple_product = re.fullmatch(r'품목\s+(\S.*)', command)
+    if simple_product and len(result.get('items',[]))==1 and not re.match(r'\d+\s*=',simple_product[1]):
+        command = '품목 1=' + simple_product[1]
     selection = re.fullmatch(r'선택\s+(\d+)=(\d+)', command)
     if selection and 1 <= int(selection[1]) <= len(result.get('items', [])):
         candidates = result['items'][int(selection[1])-1].get('candidates', [])
@@ -208,7 +218,8 @@ def apply_reply(row, event, later_event_ids):
         result.update(status='approved', approved_revision=result['revision'], approval_event_id=eid)
     elif command in ('틀려', '틀림'):
         result['status'] = 'awaiting_product'
-        result['correction_message'] = (f"수정할 내용만 답해주세요.\n{label(result)} 품목 1=품목명\n"
+        product_guide = f"{label(result)} 품목 품목명" if len(result.get('items',[]))==1 else f"{label(result)} 품목 1=품목명"
+        result['correction_message'] = (f"수정할 내용만 답해주세요.\n{product_guide}\n"
             f"{label(result)} 수량 1=3단\n{label(result)} 거래처=거래처명\n{label(result)} 차수=37-1\n"
             "수정 후 다시 승인받겠습니다.")
     elif command in ('안함', '안보내'):
@@ -233,6 +244,10 @@ def send_question(path, export, send, paused):
     if paused() or row['status'] != 'ready_question':
         return
     before = export(row['recipient'])
+    # Never reuse a numeric approval token, including after a correction. This
+    # prevents a late reply to the previous question from approving a new match.
+    numbers = [int(r.get('reply_number',0)) for p in Path(path).parent.glob('*.json') for r in [load(p)]]
+    row['reply_number'] = max(numbers, default=0) + 1
     payload = question(row)
     if paused():
         return
