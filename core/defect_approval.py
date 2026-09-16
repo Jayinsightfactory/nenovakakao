@@ -14,7 +14,7 @@ from pathlib import Path
 from core.atomic_json import save
 from core.defect_deduction_parser import extract, clean_text
 from core.keyword_forward import timestamp
-from core.import_order import match_one
+from core.defect_matching import match as match_one, customer as match_customer, PRODUCT_NAMES, CATEGORY_NAMES, ORIGIN_NAMES
 
 ROOT = Path(__file__).resolve().parents[1] / 'data' / 'defect_requests'
 
@@ -60,7 +60,7 @@ def _data(master, name):
 def rematch(row, master):
     result = deepcopy(row)
     source = result['extracted']
-    customer, customers = match_one(source.get('customer') or '', _data(master, 'customers'))
+    customer, customers = match_customer(source, _data(master, 'customers'))
     result['customer'] = customer
     result['customer_candidates'] = customers
     products = _data(master, 'products')
@@ -75,6 +75,8 @@ def rematch(row, master):
         if re.search(r'\bTinted Blue\b', p.get('name', ''), re.I):
             p['name_alias'] = list(p.get('name_alias') or []) + ['틴티드블루']
     items = []
+    vocabulary = {**PRODUCT_NAMES, **CATEGORY_NAMES.get(category, {}),
+                  **ORIGIN_NAMES.get(source.get('origin'), {})}
     for item in source['items']:
         term = item['product_raw']
         size = re.search(r'(\d+)\s*cm\b', term, re.I)
@@ -83,11 +85,11 @@ def rematch(row, master):
         pool = products
         if size:
             pool = [p for p in products if re.search(r'(?<!\d)' + size[1] + r'\s*cm\b', p.get('name', ''), re.I)]
-        product, candidates = match_one(query, pool)
+        product, candidates = match_one(term, pool, vocabulary)
         default_size = None
         if not size and not explicit_key and any(re.search(r'\d+\s*cm\b', p.get('name', ''), re.I) for p in candidates):
             pool = [p for p in candidates if re.search(r'(?<!\d)50\s*cm\b', p.get('name', ''), re.I)]
-            product, candidates = match_one(query, pool)
+            product, candidates = match_one(term, pool, vocabulary)
             default_size = '50cm'
         items.append({**item, 'product': product, 'candidates': candidates, 'default_size': default_size})
     result['items'] = items

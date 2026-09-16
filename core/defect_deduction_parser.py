@@ -33,8 +33,12 @@ def extract(event):
         return result
     lines = [re.sub(r'\s+', ' ', line).strip() for line in text.splitlines() if line.strip()]
     header = lines[0] if lines else ''
-    if re.search(r'(?:^|\s)(?:콜|콜롬비아)(?:\s|$)', header): result['origin'] = '콜롬비아'
-    elif re.search(r'(?:^|\s)(?:에콰|에콰도르)(?:\s|$)', header): result['origin'] = '에콰도르'
+    origins = {({'콜':'콜롬비아','에콰':'에콰도르'}.get(origin,origin))
+               for origin in ORIGINS if re.search(r'(?:^|\s)'+re.escape(origin)+r'(?:\s|$)',header)}
+    if len(origins) == 1:
+        result['origin'] = origins.pop()
+    elif len(origins) > 1:
+        result['issues'].append('여러 원산지; 항목별 확인 필요')
     sequences = list(dict.fromkeys(f'{m[1]}-{m[2]}' for m in SEQUENCE.finditer(text)))
     if len(sequences) == 1:
         result['sequence'] = sequences[0]
