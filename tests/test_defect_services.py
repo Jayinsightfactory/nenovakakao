@@ -47,10 +47,23 @@ def test_manual_identical_record_is_held(tmp_path):
 
 def test_unsupported_unit_never_defaults_to_bunch(tmp_path):
     _, row = waiting(tmp_path)
-    row['items'][0]['unit_raw'] = '송이'
+    row['items'][0]['unit_raw'] = '묶음'
     adapter = DefectAdapter(session=Mock())
     assert not d.ready(row)
     with pytest.raises(ValueError, match='단위'): adapter.payload(row)
+
+
+def test_flower_stem_unit_preserves_quantity_and_approval_revision(tmp_path):
+    _, row = waiting(tmp_path)
+    from tests.test_defect_approval import reply
+    edited = d.apply_reply(row, reply(row,'수량 1=6송이'), {'answer-1'})
+    assert edited['status']=='needs_match' and edited['revision']==row['revision']+1
+    assert not edited.get('approved_revision')
+    row['items'][0].update(unit_raw='송이', quantity_raw='6')
+    adapter = DefectAdapter(session=Mock())
+    assert d.ready(row)
+    item=adapter.payload(row)['rows'][0]
+    assert item['quantity']==6 and item['sourceUnit']=='스팀(대)'
 
 
 def test_missing_credentials_does_not_call_api(monkeypatch):

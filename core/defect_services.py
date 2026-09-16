@@ -13,7 +13,7 @@ from core.defect_approval import ready
 BASE = 'https://nenovaweb.com'
 API = '/api/sales/defect-deductions'
 UNITS = {'단': '단', '박스': '박스', 'BOX': '박스', 'box': '박스',
-         '대': '스팀(대)', '스팀': '스팀(대)', '스팀(대)': '스팀(대)'}
+         '대': '스팀(대)', '스팀': '스팀(대)', '스팀(대)': '스팀(대)', '송이': '스팀(대)'}
 
 
 class DefectAdapter:

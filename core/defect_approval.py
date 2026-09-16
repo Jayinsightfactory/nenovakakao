@@ -104,7 +104,7 @@ def ready(row):
     return (not row['extracted']['issues'] and bool(row.get('customer', {}).get('nenova_key')
             if row.get('customer') else False) and bool(row.get('items'))
             and all(i.get('product') and i['product'].get('nenova_key')
-                    and i['unit_raw'] in ('단', '박스', 'BOX', 'box', '대', '스팀', '스팀(대)')
+                    and i['unit_raw'] in ('단', '박스', 'BOX', 'box', '대', '스팀', '스팀(대)', '송이')
                     for i in row['items']))
 
 
@@ -180,7 +180,7 @@ def apply_reply(row, event, later_event_ids):
             command = f"품목 {selection[1]}={candidates[int(selection[2])-1]['nenova_key']}"
     correction = re.fullmatch(r'품목\s+(\d+)\s*=\s*(\S.*)', command)
     field_edit = re.fullmatch(r'(거래처|차수)\s*=\s*(\S.*)', command)
-    quantity_edit = re.fullmatch(r'수량\s+(\d+)\s*=\s*(\d+(?:\.\d{1,4})?)\s*(단|박스|대|스팀)', command)
+    quantity_edit = re.fullmatch(r'수량\s+(\d+)\s*=\s*(\d+(?:\.\d{1,4})?)\s*(단|박스|대|스팀|송이)', command)
     if field_edit or quantity_edit:
         from decimal import Decimal
         source = result['extracted']
