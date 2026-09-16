@@ -592,31 +592,11 @@ def poll_once(server: str, secret: str, only_title: str | None = None,
         _assert_export_running()
         photo_events = [event for event in new_events if PHOTO_MARKER_RE.search(event["content"])]
         held_event_ids: set[str] = set()
-        if photo_events:
-            try:
-                photo_files = _timed('photos:' + title, _collect_photo_files, title, len(photo_events))
-                if len(photo_files) < len(photo_events):
-                    raise RuntimeError(
-                        f"Kakao photo download incomplete: expected {len(photo_events)}, got {len(photo_files)}"
-                    )
-                uploaded = [_timed('upload:' + title, _upload_attachment, server, headers, path) for path in photo_files]
-                # Kakao's drawer is newest-first. One Kakao photo event can be
-                # an album that downloads multiple image files.
-                newest_first = list(reversed(photo_events))
-                for event, attachment in zip(newest_first, uploaded):
-                    event["attachments"] = [attachment]
-                for attachment in uploaded[len(newest_first):]:
-                    newest_first[0].setdefault("attachments", []).append(attachment)
-            except (OperationPaused, pyautogui.FailSafeException):
-                raise
-            except Exception as exc:
-                for event in photo_events:
-                    held_event_ids.add(event["event_id"])
-                    _hold_attachment_event(state, binding, title, event, str(exc))
-                print(
-                    f"[MOYI] inbound attachments held ({title}): "
-                    f"{len(photo_events)} photo events; later text will continue"
-                )
+        from core.deferred_photos import enqueue as defer_photo
+        for event in photo_events:
+            defer_photo(binding, title, event)
+            held_event_ids.add(event['event_id'])
+        # Photo UI and uploads belong to the separate evening phase.
         missing_file_events: list[tuple[dict, str]] = []
         for event in new_events:
             _assert_export_running()

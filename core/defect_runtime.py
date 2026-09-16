@@ -62,7 +62,6 @@ def poll(export, send):
         for event in export('수입불량방'):
             d.capture(event, cutoff, d.recipient_for(event))
         start_master()
-        return
     active = []
     for path in d.ROOT.glob('*.json'):
         row = d.load(path)
@@ -78,8 +77,10 @@ def poll(export, send):
             active.append((path, row))
     if not active:
         return
-    # Round-robin means an unanswered request cannot starve new questions.
-    path, row = min(active, key=lambda pair: pair[1].get('last_polled_at', 0))
+    # Ready work precedes old unanswered requests; new collection does not return early.
+    path, row = min(active, key=lambda pair: (
+        0 if pair[1]['status'] in ('approved', 'ready_question', 'needs_match') else 1,
+        pair[1].get('last_polled_at', 0)))
     row['last_polled_at'] = time.time()
     save(path, row)
     try:
@@ -98,6 +99,8 @@ def poll(export, send):
             start_master()
             if MASTER.exists() and time.time() - MASTER.stat().st_mtime < 1800:
                 save(path, d.rematch(row, d.load(MASTER)))
+                if not is_paused():
+                    d.send_question(path, export, send, is_paused)
         elif status == 'ready_question':
             d.send_question(path, export, send, is_paused)
         elif status in ('waiting', 'awaiting_product'):

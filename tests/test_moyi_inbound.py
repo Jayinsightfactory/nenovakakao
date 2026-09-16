@@ -186,8 +186,9 @@ second line
                 for call in post.call_args_list
             ))
 
-    def test_failed_photo_is_held_while_later_text_is_delivered(self):
+    def test_photo_is_deferred_while_later_text_is_delivered(self):
         with TemporaryDirectory() as tmp, patch.object(inbound, "STATE_FILE", Path(tmp) / "state.json"), \
+             patch("core.deferred_photos.QUEUE", Path(tmp) / "photos"), \
              patch.object(inbound, "OUTBOUND_JOURNAL", Path(tmp) / "journal.jsonl"):
             inbound._save_state({"binding": ["checkpoint"]})
             rooms = Mock()
@@ -206,7 +207,7 @@ second line
                  patch.object(inbound, "export_exact_room", return_value="export"), \
                  patch.object(inbound, "parse_export", return_value=events), \
                  patch.object(inbound, "PHOTO_MARKER_RE") as photo_marker, \
-                 patch.object(inbound, "_collect_photo_files", side_effect=RuntimeError("drawer failed")):
+                 patch.object(inbound, "_collect_photo_files") as collect:
                 photo_marker.search.side_effect = lambda content: object() if content == "PHOTO" else None
                 result = inbound.poll_once("https://example.test", "secret")
             inbound_posts = [
@@ -216,7 +217,11 @@ second line
             state = inbound._load_state()
             self.assertEqual(result["sent"], 1)
             self.assertEqual(inbound_posts[0].kwargs["json"]["event_id"], "text")
-            self.assertEqual(state["_attachment_holds"][0]["event_id"], "photo")
+            collect.assert_not_called()
+            import json
+            queued = list((Path(tmp) / "photos").glob("*.json"))
+            self.assertEqual(len(queued), 1)
+            self.assertEqual(json.loads(queued[0].read_text(encoding="utf-8"))["event"]["event_id"], "photo")
             self.assertIn("photo", state["binding"])
             self.assertIn("text", state["binding"])
 

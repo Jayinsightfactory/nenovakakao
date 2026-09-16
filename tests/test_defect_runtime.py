@@ -15,6 +15,22 @@ def setup(monkeypatch, tmp_path):
     monkeypatch.setattr(d, 'recipient_for', lambda event: '강현우')
     monkeypatch.setattr(r, '_next_collection', time.monotonic()+100)
     monkeypatch.setattr(r, 'start_master', Mock())
+    monkeypatch.setattr(r, 'MASTER', tmp_path / 'cache' / 'master.json')
+
+
+def test_collection_matches_and_requests_approval_in_same_poll(monkeypatch, tmp_path):
+    setup(monkeypatch, tmp_path)
+    monkeypatch.setattr(r, '_next_collection', 0)
+    save(r.MASTER, {})
+    rematch = Mock(side_effect=lambda row, master: {**row, 'status': 'ready_question'})
+    question = Mock()
+    monkeypatch.setattr(d, 'rematch', rematch)
+    monkeypatch.setattr(d, 'send_question', question)
+    export, send = Mock(return_value=[EVENT]), Mock()
+    r.poll(export, send)
+    rematch.assert_called_once()
+    question.assert_called_once()
+    assert d.load(question.call_args.args[0])['status'] == 'ready_question'
 
 
 def test_collection_captures_text_without_send(monkeypatch, tmp_path):

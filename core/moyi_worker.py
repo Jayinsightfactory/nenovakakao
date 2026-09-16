@@ -492,6 +492,8 @@ def run() -> int:
         priority_poll()
         if not is_paused() and time.monotonic() >= next_archive_at:
             try:
+                from core.deferred_photos import drain_one
+                _timed('evening_photos', drain_one, server, secret)
                 from core.mindmap_sink import flush_pending
                 archived = _timed('archive', flush_pending, batch_size=50, timeout=10)
                 if archived: report('archive_completed')
