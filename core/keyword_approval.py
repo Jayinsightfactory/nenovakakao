@@ -245,8 +245,11 @@ def decision(replies, row, allow_short=False):
     if index is None:
         return None
     short_context = allow_short
+    recheck_context = False
     item_answers = {}
     for event in replies[index + 1:]:
+        if event['event_id'] == row.get('missing_recheck_event_id'):
+            recheck_context = True
         # An intervening approval prompt makes bare replies refer to that
         # newer prompt, never an older pending request.
         if event.get('sender_name') != approver and re.match(r'\[전달 승인', event.get('content', '')):
@@ -261,7 +264,8 @@ def decision(replies, row, allow_short=False):
             elif not short_context and not (row.get('item_labels') and
                     row.get('status') in ('waiting', 'awaiting_late_reply') and not row.get('recovered_at')):
                 continue
-            pattern = r'([가-하]+(?:\s*[,，]\s*[가-하]+)*)\s+(안\s*보내|보내)'
+            actions = r'안\s*보내|보내|아니요|네' if recheck_context else r'안\s*보내|보내'
+            pattern = r'([가-하]+(?:\s*[,，]\s*[가-하]+)*)\s+(' + actions + ')'
             groups = list(re.finditer(pattern, content))
             matches = [(label.strip(), match[2]) for match in groups
                        for label in re.split('[,，]', match[1])]
@@ -275,7 +279,7 @@ def decision(replies, row, allow_short=False):
                 if label not in labels:
                     continue
                 # The first explicit decision is immutable after processing.
-                item_answers.setdefault(labels[label], 'approve' if action == '보내' else 'reject')
+                item_answers.setdefault(labels[label], 'approve' if action in ('보내', '네') else 'reject')
             continue
         if is_batch(row):
             selected = batch_selection(content, row)
@@ -632,3 +636,70 @@ def poll(export, send, paused, mark_rescan):
             elif result in HELD_ITEMS:
                 row['status'] = 'delivery_held'
                 k.save_json(REQUESTS, rows)
+    recheck_missing(rows, export, send, paused, history)
+
+
+def recheck_missing(rows, export, send, paused, history):
+    """Reconcile unanswered items, then send at most one verified reminder.
+
+    Original decisions/labels stay immutable. Unknown sends are never retried.
+    """
+    cfg = k.config()
+    if (paused() or not cfg.get('enabled') or not question_hours_open(cfg)
+            or not cfg.get('approval_missing_recheck', False)):
+        return
+    now = time.time()
+    interval = max(60, cfg.get('approval_missing_recheck_sec', 1800))
+    if any(now - r.get('missing_recheck_attempted_at', 0) < interval for r in rows.values()):
+        return
+    candidates = [r for r in rows.values()
+                  if r['status'] in ('waiting', 'awaiting_late_reply')
+                  and r.get('item_labels') and r.get('request_event_id')
+                  and r.get('approver_name', LEGACY_NAME) == operator_name()
+                  and r.get('choice_format') == 'per_item'
+                  and r.get('sent_at') and now - r['sent_at'] >= interval
+                  and r.get('missing_recheck_status') != 'unknown'
+                  and now - r.get('missing_recheck_checked_at', 0) >= interval]
+    if not candidates:
+        return
+    row = min(candidates, key=lambda r: r.get('missing_recheck_checked_at', r['sent_at']))
+    row['missing_recheck_checked_at'] = now
+    k.save_json(REQUESTS, rows)
+    from core.moyi_inbound import parse_export
+    text = export(cfg['target'])
+    if cfg['target'] not in '\n'.join(text.splitlines()[:3]):
+        raise RuntimeError('재확인 대상 방 제목 불일치')
+    target = parse_export(text, 'keyword-target-recheck')
+    if not target:
+        return  # An unreadable/empty export is not evidence of absence.
+    state = k.read_json(k.STATE, {})
+    missing = []
+    events = row.get('events') or [row['event']]
+    for i, event in enumerate(events):
+        if (str(i) in row.get('item_answers', {}) or
+                state.get(event['event_id'], {}).get('status') not in
+                ('승인대기', '미응답 보류', '승인요청 전송대기')):
+            continue
+        if k.duplicate(event['content'], target):
+            route_status(event, '중복 생략', '미전달 재확인 중 대상 방 동일 원문 확인')
+        else:
+            missing.append((i, event))
+    if not missing:
+        return
+    body = '\n\n'.join(f"{item_label(row, i)} — {e['sender_name']}\n{e['content']}" for i, e in missing)
+    payload = (f"[추가취소 미전달 재확인 {row['id']}]\n{body}\n\n"
+               "이 내용이 추가취소방에 아직 전달되지 않았습니다. 지금 전달할까요?\n"
+               f"{item_label(row, missing[0][0])} 네 / {item_label(row, missing[0][0])} 아니요\n"
+               "네: 전달 승인 · 아니요: 미전달 유지")
+    before = {e['event_id'] for e in history()}
+    if paused() or operator_name() != row.get('approver_name', LEGACY_NAME):
+        return
+    row.update(missing_recheck_attempted_at=now, missing_recheck_status='unknown',
+               missing_recheck_payload=payload)
+    k.save_json(REQUESTS, rows)
+    send(operator_name(), payload)
+    matched = [e for e in history(refresh=True) if e['event_id'] not in before
+               and k.normalize(e['content']) == k.normalize(payload)]
+    if len(matched) == 1:
+        row.update(missing_recheck_status='sent', missing_recheck_event_id=matched[0]['event_id'])
+        k.save_json(REQUESTS, rows)
