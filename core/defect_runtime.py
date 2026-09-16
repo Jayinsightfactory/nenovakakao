@@ -118,8 +118,13 @@ def poll(export, send):
         elif status == 'approved':
             if not cfg.get('write_enabled'):
                 return
-            if _adapter is None or _adapter.profile != cfg.get('credential_profile', '강현우'):
-                _adapter = DefectAdapter(cfg.get('credential_profile', '강현우'))
+            profile = 'browser-session' if cfg.get('transport') == 'browser-session' else cfg.get('credential_profile', '강현우')
+            if _adapter is None or _adapter.profile != profile:
+                if profile == 'browser-session':
+                    from core.browser_session_bridge import BrowserDefectAdapter
+                    _adapter = BrowserDefectAdapter()
+                else:
+                    _adapter = DefectAdapter(profile)
             d.submit(path, _adapter, is_paused)
         elif status in ('completed', 'declined'):
             payload = (f"{d.label(row)} 처리했습니다.\n영업수입불량차감 > 영업 입력 저장 완료."

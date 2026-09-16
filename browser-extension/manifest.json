@@ -1,0 +1,30 @@
+{
+  "manifest_version": 3,
+  "name": "네노바 불량 승인 연결",
+  "version": "1.0.0",
+  "description": "담당자 승인 건만 현재 로그인 세션으로 영업입력 저장",
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAs3mr/3YTHQDcmlx9kSIEGhSOP6Nb/mjdL2ieb5w6mmya97tZRCNDytzc35mlhLqC1cCh3pd3bdrdKBKYg7VSRPV0Be6BHGuJZWFA/C2UfEOOgrenLF6kU12tqHFfldAy4FPPwrLB/nfiplILaRNMuI6SCe0be8ntOOGu7WvyJlJimB/P1Ct4vzVB6pbCk+mcN/3tA1YIZ7YVdrRgqN6CQpyFehis9LoQ6dTtsLZoOEhRwAR3zVouKW31KkEdXQklbxZ9zqvo0NFvdhSRBkgpbIB2I9WzBGYq73VjLb60qTQ/4JCJYNwKXAwYm1Sktr+cQZZjw6plqVeP77XKWFn7XQIDAQAB",
+  "permissions": [
+    "nativeMessaging"
+  ],
+  "host_permissions": [
+    "https://nenovaweb.com/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_title": "네노바 매크로 연결 (OFF일 때 클릭)"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://nenovaweb.com/sales/defect-deductions*"
+      ],
+      "js": [
+        "content.js"
+      ],
+      "run_at": "document_idle"
+    }
+  ]
+}

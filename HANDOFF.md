@@ -12,6 +12,16 @@
 - export/photos/files/upload 단계별 시간 로그를 추가했다. 첨부의 수집 순서와 개수는 유지했다. 후순위 첨부 UI/업로드의 완전한 비동기 분리는 아직 미구현이며 60초 지연 해결 완료로 해석하지 않는다.
 - 격리 테스트 283개 통과. 불량 ERP 자동 입력은 여전히 미연결이다. 재시작 감독 결과는 로컬 data/supervised_start_result.json 확인.
 
+## 2026-09-16 로그인된 Chrome 세션 연결
+
+browser-extension/ + core/browser_session_bridge.py + scripts/nenova_session_host.py 추가. Chrome content script가 현재 nenovaweb.com 영업입력 탭에서 same-origin fetch로 서버 인증 세션을 사용한다. 쿠키나 비밀번호를 추출하지 않는다. nativeMessaging으로 디스크 큐 요청/응답만 전달하며 TCP 포트를 열지 않는다.
+
+Native host HKCU 등록 완료, 확장ID pgbmfhegpkdifgkojfmdjonneoppdlji 한 개만 허용. 확장 자체는 아직 Chrome에 로드하지 않았다. browser-extension/README.md의 로드 단계가 필요하다. 테스트312개, JS 구문검사, 실제 Python 네이티브 메시지 프레임 idle 응답 확인. 브라우저 실제 통신/저장은 미검증이다.
+
+승인자·승인 버전·approval_event_id·미완료 상태·원문 작성자를 재검증하고 GET 연도/차수 또는 POST rematch/save의 payload가 승인 기록과 정확히 같을 때만 전달한다. 저장은 write_unknown 기록 후에만 허용. 연결이 없는 경우 validate에서 막아 approved 상태를 보존한다. 이미 dispatched된 요청은 재전송하지 않는다.
+
+운영 defect_config.transport=browser-session으로 변경. 기존 일시정지를 유지하며 워커만 수정본으로 교체했다. 확장 로드 후 연결상태는 data/browser_session_bridge/connection.json(page_ready/at)로 확인. live API 401 시 사용자 웹 정상 로그인 필요. 구 계정 로그인 방식은 코드에 남지만 선택하지 않는다. 아직 자동 저장 완료로 보고하면 안 된다.
+
 ## 규격 기본값 50cm
 
 사용자 지시: 규격 미기재 시 기본값50cm. 길이 규격 후보가 있는 품목은 50cm 후보를 우선하며, 원문에 40cm 등 규격이 있거나 담당자가 정확한 품목키를 선택하면 그 값을 우선한다. 50cm 후보가 없으면 다른 길이를 자동 승인하지 않는다. 현재 틴티드블루 요청은 50cm(1328)로 새 버전 매칭해 작성자에게 재승인 요청한다. 이미 승인/저장된 행은 바꾸지 않는다. 308개 테스트 통과.
