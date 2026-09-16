@@ -144,10 +144,13 @@ def reconcile_question(path, history):
 
 
 def question(row):
+    from core.defect_scope import upload_scope
     customer = row.get('customer') or {}
     lines = [f"불량 확인 {label(row)} · {row['extracted']['sequence']} {customer.get('name') or row['extracted'].get('customer') or '거래처 확인 필요'}"]
     if row.get('replaces_label'):
         lines.append(f"이전 {row['replaces_label']} 대신 이 번호로 답해주세요.")
+    target = upload_scope(row)
+    lines.append(f"입력: {target['year']}년 {target['week']}차 (원문 다음 차수)")
     for index, item in enumerate(row.get('items', []), 1):
         product = item.get('product') or {}
         lines.append(f"{'원문' if len(row['items']) == 1 else str(index)+'. 원문'}: {item['product_raw']} {item['quantity_raw']}{item['unit_raw']}")

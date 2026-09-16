@@ -49,12 +49,8 @@ class DefectAdapter:
 
     @staticmethod
     def scope(row):
-        sequence = row['extracted']['sequence']
-        year = int(row['event']['timestamp'].split('년')[0])
-        week = int(sequence.split('-')[0])
-        if not 2000 <= year <= 2100 or not 1 <= week <= 53:
-            raise ValueError('불량 원문 연도/차수 확인 필요')
-        return {'year': year, 'week': week}
+        from core.defect_scope import upload_scope
+        return upload_scope(row)
 
     @staticmethod
     def marker(row):

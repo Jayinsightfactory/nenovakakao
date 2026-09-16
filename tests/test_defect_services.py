@@ -8,7 +8,7 @@ from tests.test_defect_approval import waiting
 
 def receipt(adapter, row):
     return [{**item, 'deductionKey': n, 'sourceFileName': adapter.marker(row),
-             'orderYear': 2026, 'orderWeek': '37', 'managerName': '박성수'}
+             'orderYear': 2026, 'orderWeek': '38', 'managerName': '박성수'}
             for n, item in enumerate(adapter.payload(row)['rows'], 1)]
 
 
@@ -19,7 +19,7 @@ def test_sales_save_scope_fields_and_no_final_registration(tmp_path):
     adapter.request = Mock(return_value={'saved': 1})
     adapter.insert(row)
     body = adapter.request.call_args.kwargs['json']
-    assert body['action'] == 'save' and body['week'] == 37 and body['year'] == 2026
+    assert body['action'] == 'save' and body['week'] == 38 and body['year'] == 2026
     assert body['managerName'] == '박성수'
     assert '37-1' in body['rows'][0]['note']
     assert body['rows'][0]['quantity'] == 15 and body['rows'][0]['sourceUnit'] == '단'

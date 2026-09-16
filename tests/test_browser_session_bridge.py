@@ -16,14 +16,14 @@ def fixture(monkeypatch,tmp_path):
     monkeypatch.setattr(d,'ROOT',tmp_path)
     monkeypatch.setattr(moyi_control,'is_paused',lambda:False)
     job={'request_id':row['id'],'expires_at':time.time()+20,'method':'GET',
-         'params':{'year':2026,'week':37},'body':None}
+         'params':{'year':2026,'week':38},'body':None}
     return path,row,job
 
 
 def test_only_approved_scope_is_read(monkeypatch,tmp_path):
     path,row,job=fixture(monkeypatch,tmp_path)
     b.validate_job(job)
-    job['params']['week']=38
+    job['params']['week']=37
     with pytest.raises(ValueError):b.validate_job(job)
     row['status']='waiting';save(path,row)
     with pytest.raises(ValueError):b.validate_job(job)
