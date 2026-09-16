@@ -572,6 +572,8 @@ def poll(export, send, paused, mark_rescan):
                     if answer == 'reject':
                         route_status(item, '승인거절', f'요청 {rid}: 항목별 안보내')
                         continue
+                    if str(index) in row.get('item_review_holds', {}):
+                        continue  # Similar manual delivery needs explicit reconciliation.
                     route_status(item, '승인됨', f'요청 {rid}: 항목별 보내')
                     cfg = k.config()
                     mark_rescan(cfg['target'])
@@ -688,13 +690,21 @@ def recheck_missing(rows, export, send, paused, history):
         if k.duplicate(event['content'], target):
             route_status(event, '중복 생략', '미전달 재확인 중 대상 방 동일 원문 확인')
         else:
-            missing.append((i, event))
+            similar = k.possible_manual_delivery(event,target)
+            if similar:
+                row.setdefault('item_review_holds',{})[str(i)] = {
+                    'reason':'차수/출고 문구가 다른 동일 거래처·품목·수량 전달 후보',
+                    'target_event_ids':[e['event_id'] for e in similar],
+                    'target_times':[e.get('timestamp') for e in similar], 'checked_at':now}
+            elif str(i) not in row.get('item_review_holds',{}):
+                missing.append((i, event))
+    k.save_json(REQUESTS,rows)
     if not missing:
         return
     new_labels = numbered_labels(row, rows)
     body = '\n\n'.join(f"{new_labels[i]} — {e['sender_name']}\n{e['content']}" for i, e in missing)
     payload = (f"[추가취소 미전달 재확인 {row['id']}]\n{body}\n\n"
-               "이 내용이 추가취소방에 아직 전달되지 않았습니다. 지금 전달할까요?\n"
+               "대조한 추가취소방 기록에서 일치하는 내용을 찾지 못했습니다. 전달이 필요할까요?\n"
                f"전달하려면 {new_labels[missing[0][0]]} 승인\n"
                f"전달하지 않으려면 {new_labels[missing[0][0]]} 거절\n"
                "여러 건은 띄어쓰기 없이 붙여 답해도 됩니다. 예: 1가승인2가거절3가승인\n"

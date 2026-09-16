@@ -90,6 +90,38 @@ def duplicate(body, target_events):
     return False
 
 
+def possible_manual_delivery(source, target_events):
+    """Evidence for review only, never proof authorizing a send or completion.
+
+    Require the same customer/item/quantity/action text and same-day chronology.
+    Only the leading shipment week and non-quantity shipping prose may differ.
+    """
+    def signature(text):
+        lines = [line.strip() for line in text.splitlines() if line.strip()]
+        if not lines:
+            return ''
+        lines[0] = re.sub(r'^\d{1,2}(?:\s*[-/]\s*\d{1,2})?\s*차?\s*', '', lines[0])
+        kept=[]
+        for line in lines:
+            if (re.match(r'^(?:[-=]*>\s*)?(?:오늘|늦게)',line)
+                    and not re.search(r'\d\s*(?:박스|단|대|송이|스팀)',line)):
+                continue
+            kept.append(re.sub(r'\s+','',line))
+        body='\n'.join(kept)
+        return body if re.search(r'\d+(?:\.\d+)?(?:박스|단|대|송이|스팀)',body) else ''
+    stamp=timestamp(source.get('timestamp',''))
+    key=signature(source['content'])
+    if stamp is None or not key:
+        return []
+    matches=[]
+    for event in target_events:
+        target_stamp=timestamp(event.get('timestamp',''))
+        if (target_stamp is not None and target_stamp.date()==stamp.date() and target_stamp>=stamp
+                and signature(event['content'])==key):
+            matches.append(event)
+    return matches
+
+
 def process_source(title, events, export, send, paused, max_new_events=5):
     cfg = config()
     if not cfg.get('enabled') or title != cfg.get('source') or paused():
