@@ -106,7 +106,7 @@ class DefectAdapter:
         entries = data.get('rows')
         if not isinstance(entries, list):
             raise ValueError('불량 원장 조회 rows 누락')
-        found = [r for r in entries if r.get('sourceFileName') == self.marker(row)]
+        found = [r for r in entries if self.owned(row,r)]
         if found:
             return found
         # Manual identical entries must not be silently duplicated or adopted.
@@ -120,10 +120,16 @@ class DefectAdapter:
         return (str(item.get('custKey')), str(item.get('prodKey')),
                 str(Decimal(str(item.get('quantity', 0))).normalize()), item.get('sourceUnit'))
 
+    def owned(self,row,item):
+        # The deployed API omits sourceFileName in readback. It preserves the
+        # full per-item request/revision note; accept only an exact note match.
+        return item.get('sourceFileName') == self.marker(row) or (not item.get('sourceFileName') and item.get('note') in {
+            r['note'] for r in self.payload(row)['rows']})
+
     def matches(self, row, receipt):
         desired = self.payload(row)['rows']
         return (isinstance(receipt, list) and len(receipt) == len(desired)
-                and all(r.get('deductionKey') and r.get('sourceFileName') == self.marker(row)
+                and all(r.get('deductionKey') and self.owned(row,r)
                         and r.get('orderYear') == self.scope(row)['year']
                         and str(r.get('orderWeek')) == str(self.scope(row)['week'])
                         and r.get('managerName') == row['extracted']['staff']

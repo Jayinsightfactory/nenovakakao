@@ -40,9 +40,21 @@ def test_readback_checks_scope_owner_and_quantities(tmp_path):
 def test_manual_identical_record_is_held(tmp_path):
     _, row = waiting(tmp_path)
     adapter = DefectAdapter(session=Mock())
-    actual = receipt(adapter, row); actual[0]['sourceFileName'] = 'manual.xlsx'
+    actual = receipt(adapter, row); actual[0]['sourceFileName'] = 'manual.xlsx'; actual[0]['note']='수동입력'
     adapter.request = Mock(return_value={'rows': actual})
     with pytest.raises(ValueError, match='중복'): adapter.lookup(row)
+
+
+def test_readback_without_filename_requires_exact_request_note(tmp_path):
+    _,row=waiting(tmp_path)
+    adapter=DefectAdapter(session=Mock())
+    actual=receipt(adapter,row); actual[0].pop('sourceFileName')
+    adapter.request=Mock(return_value={'rows':actual})
+    assert adapter.lookup(row)==actual
+    assert adapter.matches(row,actual)
+    actual[0]['note']+=' altered'
+    assert not adapter.matches(row,actual)
+    with pytest.raises(ValueError,match='중복'):adapter.lookup(row)
 
 
 def test_unsupported_unit_never_defaults_to_bunch(tmp_path):

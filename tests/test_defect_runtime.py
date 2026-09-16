@@ -76,3 +76,18 @@ def test_old_cutoff_and_changed_recipient_never_dispatched(monkeypatch, tmp_path
     export,send = Mock(),Mock()
     r.poll(export,send)
     export.assert_not_called(); send.assert_not_called()
+
+
+def test_single_author_export_processes_other_pending_questions(monkeypatch,tmp_path):
+    from copy import deepcopy
+    setup(monkeypatch,tmp_path)
+    path,row=waiting(tmp_path)
+    row['reply_number']=1;save(path,row)
+    other=deepcopy(row);other.update(id='other',reply_number=3,question_event_id='q3')
+    other_path=tmp_path/'other.json';save(other_path,other)
+    export=Mock(return_value=[{'event_id':'question-1'}, {'event_id':'q3'},
+        {'event_id':'answer-3','sender_name':'강현우','content':'3 맞아'}])
+    r.poll(export,Mock(),phase='responses')
+    export.assert_called_once_with('강현우')
+    assert d.load(path)['status']=='waiting'
+    assert d.load(other_path)['status']=='approved'

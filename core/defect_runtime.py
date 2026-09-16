@@ -110,16 +110,22 @@ def poll(export, send, phase='all'):
         elif status in ('waiting', 'awaiting_product'):
             history = export(row['recipient'])
             ids = [e['event_id'] for e in history]
-            boundary = row.get('question_event_id')
-            if boundary not in ids:
-                return
-            later = history[ids.index(boundary)+1:]
-            for event in later:
-                updated = d.apply_reply(row, event, {e['event_id'] for e in later})
-                if updated != row:
-                    row = updated
-                    save(path, row)
-                    break
+            # One export contains replies to every pending question for this
+            # author. Consume each against its own verified question boundary.
+            for other_path, other in active:
+                if other['recipient'] != row['recipient'] or other['status'] not in ('waiting','awaiting_product'):
+                    continue
+                boundary = other.get('question_event_id')
+                if boundary not in ids:
+                    continue
+                later = history[ids.index(boundary)+1:]
+                for event in later:
+                    updated = d.apply_reply(other,event,{e['event_id'] for e in later})
+                    if updated != other:
+                        save(other_path,updated)
+                        if other_path == path:
+                            row = updated
+                        break
             if row['status'] == 'awaiting_product' and not row.get('correction_notice_id'):
                 _notice(path, row, row['correction_message'], export, send, 'correction_notice_id')
         elif status in ('approved', 'write_unknown'):
