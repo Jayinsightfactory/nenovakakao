@@ -9,13 +9,13 @@ def test_unique_labels_persist_and_do_not_reuse_legacy_names():
     first = {'id': 'FIRST', 'event': {}}
     rows = {'OLD': old, 'FIRST': first}
     a.assign_item_labels(first, rows)
-    assert first['item_labels'] == ['다']
+    assert first['item_labels'] == ['1가']
     second = {'id': 'SECOND', 'event': {}}
     rows['SECOND'] = second
     a.assign_item_labels(second, rows)
-    assert second['item_labels'] == ['라']
+    assert second['item_labels'] == ['2가']
     a.assign_item_labels(first, rows)
-    assert first['item_labels'] == ['다']
+    assert first['item_labels'] == ['1가']
 
 
 @pytest.mark.parametrize('uncertain', [False, True])

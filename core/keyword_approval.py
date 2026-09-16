@@ -35,15 +35,14 @@ def assign_item_labels(row, rows):
     """Never reuse a printed label, including labels on legacy requests."""
     if row.get('item_labels'):
         return
-    used = {label for old in rows.values() for label in
-            (old.get('item_labels') or [choice_label(i) for i in range(len(old.get('events') or [old['event']]))])}
-    labels, index = [], 0
-    for _ in row.get('events') or [row['event']]:
-        while choice_label(index) in used:
-            index += 1
-        labels.append(choice_label(index))
-        used.add(labels[-1])
-    row['item_labels'] = labels
+    row['item_labels'] = numbered_labels(row, rows)
+
+
+def numbered_labels(row, rows):
+    if not row.get('batch_number'):
+        row['batch_number'] = max((int(r.get('batch_number',0)) for r in rows.values()), default=0)+1
+    return [str(row['batch_number'])+choice_label(i)
+            for i in range(len(row.get('events') or [row['event']]))]
 
 
 def has_pending_question():
@@ -198,8 +197,7 @@ def request_message(row):
         for i, e in enumerate(events))
     if row.get('item_labels'):
         return (f"[전달 승인 요청 {row['id']}]\n대상: {k.config()['target']}\n\n{originals}\n\n"
-                f"답변 예시: {item_label(row, 0)} 보내 / {item_label(row, 0)} 안보내\n"
-                "표시는 다른 요청과 겹치지 않습니다. 한 건씩 또는 여러 건을 함께 답해주세요.\n"
+                f"전달하려면 {item_label(row, 0)} 승인\n전달하지 않으려면 {item_label(row, 0)} 거절\n"
                 "답하지 않은 건은 계속 대기합니다.")
     return (f"[전달 승인 요청 {row['id']}]\n대상: {k.config()['target']}\n\n{originals}\n\n"
             "답변 예시: 가 보내" + (" 나 안보내" if len(events) > 1 else " / 가 안보내") + "\n"
@@ -264,22 +262,28 @@ def decision(replies, row, allow_short=False):
             elif not short_context and not (row.get('item_labels') and
                     row.get('status') in ('waiting', 'awaiting_late_reply') and not row.get('recovered_at')):
                 continue
-            actions = r'안\s*보내|보내|아니요|네' if recheck_context else r'안\s*보내|보내'
-            pattern = r'([가-하]+(?:\s*[,，]\s*[가-하]+)*)\s+(' + actions + ')'
+            actions = r'안\s*보내|보내|승인|거절' + (r'|아니요|네' if recheck_context else '')
+            token = r'(?:[1-9]\d*)?[가-하]+'
+            pattern = r'('+token+r'(?:\s*[,，]\s*'+token+r')*)\s*(' + actions + ')'
             groups = list(re.finditer(pattern, content))
             matches = [(label.strip(), match[2]) for match in groups
                        for label in re.split('[,，]', match[1])]
             residue = re.sub(pattern, '', content)
             labels = {item_label(row, i): i for i in range(len(row.get('events') or [row['event']]))}
+            if recheck_context:
+                labels.update({label:i for i,label in enumerate(row.get('recheck_labels',[]))})
             if (not matches or residue.strip(' ,，\n\t') or
                     (not row.get('item_labels') and any(label not in labels for label, _ in matches)) or
                     len({label for label, _ in matches}) != len(matches)):
+                continue
+            mapped = [labels[label] for label,_ in matches if label in labels]
+            if len(set(mapped)) != len(mapped):
                 continue
             for label, action in matches:
                 if label not in labels:
                     continue
                 # The first explicit decision is immutable after processing.
-                item_answers.setdefault(labels[label], 'approve' if action in ('보내', '네') else 'reject')
+                item_answers.setdefault(labels[label], 'approve' if action in ('보내', '네', '승인') else 'reject')
             continue
         if is_batch(row):
             selected = batch_selection(content, row)
@@ -686,20 +690,23 @@ def recheck_missing(rows, export, send, paused, history):
             missing.append((i, event))
     if not missing:
         return
-    body = '\n\n'.join(f"{item_label(row, i)} — {e['sender_name']}\n{e['content']}" for i, e in missing)
+    new_labels = numbered_labels(row, rows)
+    body = '\n\n'.join(f"{new_labels[i]} — {e['sender_name']}\n{e['content']}" for i, e in missing)
     payload = (f"[추가취소 미전달 재확인 {row['id']}]\n{body}\n\n"
                "이 내용이 추가취소방에 아직 전달되지 않았습니다. 지금 전달할까요?\n"
-               f"{item_label(row, missing[0][0])} 네 / {item_label(row, missing[0][0])} 아니요\n"
-               "네: 전달 승인 · 아니요: 미전달 유지")
+               f"전달하려면 {new_labels[missing[0][0]]} 승인\n"
+               f"전달하지 않으려면 {new_labels[missing[0][0]]} 거절\n"
+               "답하지 않은 건은 대기합니다.")
     before = {e['event_id'] for e in history()}
     if paused() or operator_name() != row.get('approver_name', LEGACY_NAME):
         return
     row.update(missing_recheck_attempted_at=now, missing_recheck_status='unknown',
-               missing_recheck_payload=payload)
+               missing_recheck_payload=payload, missing_recheck_pending_labels=new_labels)
     k.save_json(REQUESTS, rows)
     send(operator_name(), payload)
     matched = [e for e in history(refresh=True) if e['event_id'] not in before
                and k.normalize(e['content']) == k.normalize(payload)]
     if len(matched) == 1:
-        row.update(missing_recheck_status='sent', missing_recheck_event_id=matched[0]['event_id'])
+        row.update(missing_recheck_status='sent', missing_recheck_event_id=matched[0]['event_id'],
+                   recheck_labels=new_labels)
         k.save_json(REQUESTS, rows)
