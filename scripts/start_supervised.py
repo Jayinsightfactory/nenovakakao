@@ -75,7 +75,11 @@ def main():
     except BaseException:
         emergency_stop('supervised_start_exception')
         raise
-    if not error and not {'approval', 'sales', 'order'}.issubset(agents):
+    from core.workflow_settings import config as workflow_config
+    required = {'approval', 'sales', 'defect_responses', 'defect'}
+    if workflow_config()['order_processing_enabled']:
+        required.add('order')
+    if not error and not required.issubset(agents):
         error = 'startup_incomplete'
     if error:
         emergency_stop('supervised_start:' + error)

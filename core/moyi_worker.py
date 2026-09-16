@@ -355,7 +355,7 @@ def run() -> int:
         return result
 
     def order_agent():
-        if is_paused(): return None
+        if is_paused() or not workflow_config()['order_processing_enabled']: return None
         result = _timed('agent:import_collection', poll_inbound_once, server, secret,
                         only_title='수입방', defer_archive=True, max_events=5)
         from core.order_review import start_sync
@@ -368,15 +368,16 @@ def run() -> int:
                       keyword_forward.send_exact, order_services.master,
                       order_services.register_bulk, is_paused)
 
-    def defect_agent():
+    def defect_agent(phase='intake'):
         from core.defect_runtime import poll as poll_defects
         from core.moyi_inbound import parse_export
         def history(title):
             return parse_export(export_exact_room(title), 'defect:' + title)
-        return _timed('agent:defect', poll_defects, history, keyword_forward.send_exact)
+        return _timed('agent:defect:' + phase, poll_defects, history, keyword_forward.send_exact, phase)
 
     error_states = {'sales': 'inbound_room_failed', 'approval': 'approval_check_failed',
                     'defect': 'defect_check_failed',
+                    'defect_responses': 'defect_check_failed',
                     'order': 'import_order_check_failed'}
     def agent_error(agent, exc):
         if isinstance(exc, pyautogui.FailSafeException):
@@ -387,6 +388,7 @@ def run() -> int:
     coordinator = AgentCoordinator(AGENT_LOG, clock=time.monotonic,
                                    wall_clock=time.time, on_error=agent_error)
     register_agents(coordinator, sales_agent, approval_agent, order_agent)
+    coordinator.add('defect_responses', 5, 5, lambda: defect_agent('responses'))
     coordinator.add('defect', 20, 15, defect_agent)
 
     def priority_poll():
@@ -399,7 +401,7 @@ def run() -> int:
             start_archive()
     print("[MOYI] Kakao connector worker started (fail-closed)")
     report('worker_started')
-    print("[MOYI] agents: sales then approvals/receipts, import review, 30-minute background")
+    print("[MOYI] agents: approvals, defect replies, sales, defect intake; optional import; 30-minute background")
     while True:
         if is_paused():
             if not pause_announced:

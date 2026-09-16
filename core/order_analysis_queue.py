@@ -53,11 +53,11 @@ def main():
             msvcrt.locking(lock.fileno(), msvcrt.LK_NBLCK, 1)
         except OSError:
             return
-        if not config()['order_review_only']:
+        if not config()['order_review_only'] or not config()['order_processing_enabled']:
             return
         started = time.time()
         drain(lambda event: import_order.capture(event, order_llm.parse, order_services.master),
-              lambda: is_paused() or not config()['order_review_only']
+              lambda: is_paused() or not config()['order_review_only'] or not config()['order_processing_enabled']
                       or not import_order.config().get('enabled'))
         print(json.dumps({'at': time.time(), 'duration_sec': time.time()-started,
                           'pending': len(list(QUEUE.glob('*.json')))}), flush=True)

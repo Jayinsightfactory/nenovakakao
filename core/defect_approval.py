@@ -144,7 +144,7 @@ def question(row):
     lines = [f"{label(row)} · {row['extracted']['sequence']} {customer.get('name') or row['extracted'].get('customer') or '거래처 확인 필요'}"]
     for index, item in enumerate(row.get('items', []), 1):
         product = item.get('product') or {}
-        lines.append(f"{item['product_raw']} {item['quantity_raw']}{item['unit_raw']}")
+        lines.append(f"{index}. {item['product_raw']} {item['quantity_raw']}{item['unit_raw']}")
         if product:
             lines.append(f"매칭: {product['name']}")
         else:
@@ -177,11 +177,38 @@ def apply_reply(row, event, later_event_ids):
         if 1 <= int(selection[2]) <= len(candidates):
             command = f"품목 {selection[1]}={candidates[int(selection[2])-1]['nenova_key']}"
     correction = re.fullmatch(r'품목\s+(\d+)\s*=\s*(\S.*)', command)
+    field_edit = re.fullmatch(r'(거래처|차수)\s*=\s*(\S.*)', command)
+    quantity_edit = re.fullmatch(r'수량\s+(\d+)\s*=\s*(\d+(?:\.\d{1,4})?)\s*(단|박스|대|스팀)', command)
+    if field_edit or quantity_edit:
+        from decimal import Decimal
+        source = result['extracted']
+        if field_edit and field_edit[1] == '차수' and not re.fullmatch(r'(?:[1-9]|[1-4]\d|5[0-3])-\d+', field_edit[2]):
+            return row
+        if quantity_edit and (not 1 <= int(quantity_edit[1]) <= len(source['items']) or Decimal(quantity_edit[2]) <= 0):
+            return row
+        result['history'].append({'revision': result['revision'], 'extracted': deepcopy(source),
+                                  'items': deepcopy(result.get('items')), 'question_event_id': result['question_event_id']})
+        if field_edit:
+            field = 'customer' if field_edit[1] == '거래처' else 'sequence'
+            source[field] = field_edit[2].strip()
+            addressed = {'거래처 없음', '거래처/농장/품종 후보 복수; 확인 필요'} if field == 'customer' else {
+                '차수 없음', '여러 차수; 항목별 확인 필요', '차수 범위 표기; 단일 차수로 확정 금지'}
+            source['issues'] = [issue for issue in source['issues'] if issue not in addressed]
+        else:
+            source['items'][int(quantity_edit[1])-1].update(quantity_raw=quantity_edit[2], unit_raw=quantity_edit[3])
+        result.update(revision=result['revision']+1, status='needs_match')
+        result.pop('question_event_id', None)
+        result.pop('approved_revision', None)
+        result.pop('approval_event_id', None)
+        result['processed_replies'].append(eid)
+        return result
     if command in ('맞아', '승인') and result['status'] == 'waiting' and ready(result):
         result.update(status='approved', approved_revision=result['revision'], approval_event_id=eid)
     elif command in ('틀려', '틀림'):
         result['status'] = 'awaiting_product'
-        result['correction_message'] = f"{label(result)} 품목 1=정확한 품목명 으로 답장해주세요. 재매칭 후 다시 승인받겠습니다."
+        result['correction_message'] = (f"수정할 내용만 답해주세요.\n{label(result)} 품목 1=품목명\n"
+            f"{label(result)} 수량 1=3단\n{label(result)} 거래처=거래처명\n{label(result)} 차수=37-1\n"
+            "수정 후 다시 승인받겠습니다.")
     elif command in ('안함', '안보내'):
         result['status'] = 'declined'
     elif correction and 1 <= int(correction[1]) <= len(result['extracted']['items']):

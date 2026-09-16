@@ -21,7 +21,7 @@ def test_sales_and_approval_alternate_before_less_frequent_orders(tmp_path):
     coordinator.run_due()
     now[0] += 60
     coordinator.run_due()
-    assert calls == ['sales', 'approval', 'order', 'sales', 'approval', 'sales', 'approval', 'order']
+    assert calls == ['approval', 'sales', 'order', 'approval', 'sales', 'approval', 'sales', 'order']
 
 
 def test_updates_follow_user_sort_and_never_overwrite_review_columns():

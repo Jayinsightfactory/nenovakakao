@@ -50,13 +50,13 @@ def _notice(path, row, payload, export, send, field):
         save(path, row)
 
 
-def poll(export, send):
+def poll(export, send, phase='all'):
     global _next_collection, _adapter
     cfg = config()
     if not cfg.get('enabled') or is_paused():
         return
     cutoff = forward_config()['start_at']
-    if time.monotonic() >= _next_collection:
+    if phase != 'responses' and time.monotonic() >= _next_collection:
         _next_collection = time.monotonic() + cfg.get('collection_interval_sec', 60)
         # No attachment drawer/download/upload; the export includes text only.
         for event in export('수입불량방'):
@@ -71,15 +71,19 @@ def poll(export, send):
             continue
         if row.get('retry_at', 0) > time.time():
             continue
+        if phase == 'responses' and row['status'] in ('needs_match', 'ready_question'):
+            continue
+        if phase == 'intake' and row['status'] not in ('needs_match', 'ready_question'):
+            continue
         if row['status'] in ('needs_match', 'ready_question', 'waiting', 'awaiting_product', 'approved',
-                             'question_unknown', 'notice_unknown') or (
+                             'question_unknown', 'notice_unknown', 'write_unknown') or (
                 row['status'] in ('completed', 'declined') and not row.get('receipt_event_id')):
             active.append((path, row))
     if not active:
         return
-    # Ready work precedes old unanswered requests; new collection does not return early.
+    # Dedicated response phase cannot be starved by new matches/questions.
     path, row = min(active, key=lambda pair: (
-        0 if pair[1]['status'] in ('approved', 'ready_question', 'needs_match') else 1,
+        0 if pair[1]['status'] == 'approved' else 1,
         pair[1].get('last_polled_at', 0)))
     row['last_polled_at'] = time.time()
     save(path, row)
@@ -118,7 +122,7 @@ def poll(export, send):
                     break
             if row['status'] == 'awaiting_product' and not row.get('correction_notice_id'):
                 _notice(path, row, row['correction_message'], export, send, 'correction_notice_id')
-        elif status == 'approved':
+        elif status in ('approved', 'write_unknown'):
             if not cfg.get('write_enabled'):
                 return
             profile = 'browser-session' if cfg.get('transport') == 'browser-session' else cfg.get('credential_profile', '강현우')
@@ -128,7 +132,17 @@ def poll(export, send):
                     _adapter = BrowserDefectAdapter()
                 else:
                     _adapter = DefectAdapter(profile)
-            d.submit(path, _adapter, is_paused)
+            if status == 'approved':
+                d.submit(path, _adapter, is_paused)
+            else:
+                # Reconcile a possibly successful write; never insert again.
+                _adapter.validate(row)
+                receipt = _adapter.lookup(row)
+                if receipt is not None and _adapter.matches(row, receipt):
+                    row.update(status='completed', receipt=receipt)
+                else:
+                    row['retry_at'] = time.time() + 300
+                save(path, row)
         elif status in ('completed', 'declined'):
             payload = (f"{d.label(row)} 처리했습니다.\n영업수입불량차감 > 영업 입력 저장 완료."
                        if status == 'completed' else f"{d.label(row)} 안함 처리했습니다. 입력에서 제외했습니다.")
