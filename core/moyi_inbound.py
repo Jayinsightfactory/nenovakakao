@@ -423,8 +423,9 @@ def export_exact_room(title: str) -> str:
         return content
     finally:
         from core.moyi_control import is_paused
-        if not is_paused() and dialog_confirmed:
-            close_room(hwnd)
+        # Keep the verified room open after export.  Re-closing it forces the
+        # next approval precheck through Kakao's fragile exact-room search and
+        # was the source of intermittent zero-match failures.
 
 
 def _upload_attachment(server: str, headers: dict[str, str], path: Path) -> dict:
