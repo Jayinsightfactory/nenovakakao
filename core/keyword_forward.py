@@ -136,7 +136,7 @@ def process_source(title, events, export, send, paused, max_new_events=5):
     events = sorted(events, key=lambda event: timestamp(event.get('timestamp', '')) or cutoff,
                     reverse=True)
 
-    def record(event, status, detail):
+    def record(event, status, detail, audit=None):
         from core.error_notifications import report
         from core.error_notifications import resolve
         notice_request_id = event['event_id'].removeprefix('kakao_')[:12]
@@ -157,6 +157,13 @@ def process_source(title, events, export, send, paused, max_new_events=5):
                'keywords': [k for k in cfg['keywords'] if k in event['content']],
                'preview': event['content'][:160], 'detail': detail,
                'content_hash': hashlib.sha256(normalize(event['content']).encode()).hexdigest()}
+        # Keep Kakao's own message timestamps for an auditable source-to-target
+        # delivery measurement.  ``at`` remains the program processing time.
+        source_stamp = timestamp(event.get('timestamp', ''))
+        if source_stamp is not None:
+            row['source_kakao_at'] = source_stamp.isoformat()
+        if audit:
+            row.update(audit)
         state[event['event_id']] = row
         save_json(STATE, state)
         with LOG.open('a', encoding='utf-8') as stream:
@@ -245,7 +252,16 @@ def process_source(title, events, export, send, paused, max_new_events=5):
             count = lambda rows: sum(normalize(r['content']) == normalize(payload) for r in rows)
             if count(after) <= count(before):
                 raise RuntimeError('대상 방 재조회에서 전송 결과 확인 불가')
-            record(event, '전송 성공', '대상 방 원문 재조회 확인')
+            delivered = [r for r in after if normalize(r.get('content', '')) == normalize(payload)]
+            target_stamp = max((timestamp(r.get('timestamp', '')) for r in delivered
+                                if timestamp(r.get('timestamp', '')) is not None), default=None)
+            audit = {}
+            if target_stamp is not None:
+                audit['target_kakao_at'] = target_stamp.isoformat()
+                source_stamp = timestamp(event.get('timestamp', ''))
+                if source_stamp is not None:
+                    audit['delivery_elapsed_sec'] = round((target_stamp - source_stamp).total_seconds(), 3)
+            record(event, '전송 성공', '대상 방 원문 재조회 확인', audit)
         except Exception as exc:
             from core.moyi_control import OperationPaused
             import pyautogui
