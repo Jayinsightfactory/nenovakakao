@@ -7,6 +7,7 @@ import mimetypes
 import os
 import re
 import time
+import threading
 from pathlib import Path
 
 import pyautogui
@@ -384,7 +385,7 @@ def _assert_export_target(hwnd: int, title: str) -> None:
         raise RuntimeError('대화 저장 차단: 대상 방 제목/포커스 불일치; Ctrl+S 미입력')
 
 
-def export_exact_room(title: str) -> str:
+def _export_exact_room(title: str) -> str:
     """Open one exact room, export its text, and return the UTF-8 content."""
     _assert_export_running()
     # Recursive file discovery may take seconds. Do it before taking focus.
@@ -426,6 +427,12 @@ def export_exact_room(title: str) -> str:
         # Keep the verified room open after export.  Re-closing it forces the
         # next approval precheck through Kakao's fragile exact-room search and
         # was the source of intermittent zero-match failures.
+
+
+def export_exact_room(title: str) -> str:
+    """Serialize Kakao UI exports across concurrent worker stages."""
+    with KAKAO_UI_LOCK:
+        return _export_exact_room(title)
 
 
 def _upload_attachment(server: str, headers: dict[str, str], path: Path) -> dict:
@@ -693,3 +700,4 @@ def poll_once(server: str, secret: str, only_title: str | None = None,
         _save_state(state)
     _save_state(state)
     return {"sent": sent, "initialized": initialized}
+KAKAO_UI_LOCK = threading.RLock()
