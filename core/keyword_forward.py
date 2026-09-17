@@ -270,7 +270,7 @@ def process_source(title, events, export, send, paused, max_new_events=5):
             record(event, '결과 불명', str(exc)[:200])
 
 
-def send_exact(title, payload, require_forward_enabled=True):
+def _send_exact(title, payload, require_forward_enabled=True):
     import ctypes
     from ctypes import wintypes
     import pyautogui
@@ -356,3 +356,9 @@ def send_exact(title, payload, require_forward_enabled=True):
         time.sleep(0.8)
     finally:
         close_room(hwnd)
+
+# Serialize all Kakao UI sends with room exports.
+def send_exact(title, payload, require_forward_enabled=True):
+    from core.moyi_inbound import KAKAO_UI_LOCK
+    with KAKAO_UI_LOCK:
+        return _send_exact(title, payload, require_forward_enabled)
