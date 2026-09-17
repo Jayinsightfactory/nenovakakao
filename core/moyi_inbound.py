@@ -274,9 +274,17 @@ def _dismiss_export_complete_dialog(chat_hwnd: int, title: str,
             else:
                 raise RuntimeError('Kakao export completion OK button was not found')
             close_deadline = time.monotonic() + timeout
+            fallback_sent = False
             while time.monotonic() < close_deadline:
                 if not win32gui.IsWindow(dialog) or not win32gui.IsWindowVisible(dialog):
                     return
+                # Some Kakao builds ignore BM_CLICK on the custom completion
+                # notice while it is not the foreground window.  Re-focus and
+                # confirm once before declaring the export failed.
+                if custom_completion and not fallback_sent:
+                    win32gui.SetForegroundWindow(dialog)
+                    pyautogui.press('enter')
+                    fallback_sent = True
                 time.sleep(0.1)
             raise RuntimeError('Kakao export completion dialog did not close')
         time.sleep(0.1)
