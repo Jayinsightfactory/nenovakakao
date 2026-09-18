@@ -29,3 +29,6 @@ def isolated_error_notice_queue(tmp_path, monkeypatch):
     # as room "room" must never be queued for upload from here.
     from core import mindmap_sink
     monkeypatch.setattr(mindmap_sink, 'OUTBOX_FILE', tmp_path / 'mindmap_outbox.json')
+    # Learned defect aliases are operational data too; tests start without them.
+    from core import defect_approval
+    monkeypatch.setattr(defect_approval, 'LEARNED_ALIASES', tmp_path / 'defect_learned_aliases.json')

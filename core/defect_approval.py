@@ -57,7 +57,92 @@ def _data(master, name):
     return rows.get('data', []) if isinstance(rows, dict) else rows
 
 
-def rematch(row, master):
+LEARNED_ALIASES = ROOT.parent / 'defect_learned_aliases.json'
+_learned_cache = {'mtime': None, 'value': {}}
+
+
+def learned_aliases():
+    """Aliases learned from Kakao text joined to posted ERP deductions."""
+    try:
+        mtime = LEARNED_ALIASES.stat().st_mtime_ns
+    except OSError:
+        return {}
+    if _learned_cache['mtime'] != mtime:
+        try:
+            value = json.loads(LEARNED_ALIASES.read_text(encoding='utf-8')).get('aliases', {})
+        except (OSError, ValueError):
+            value = {}
+        _learned_cache.update(mtime=mtime, value=value)
+    return _learned_cache['value']
+
+
+def origin_priors():
+    """category -> origin, learned where posted deductions use one origin only."""
+    learned_aliases()  # refresh the cache when the file changed
+    try:
+        return json.loads(LEARNED_ALIASES.read_text(encoding='utf-8')).get('origin_priors', {})
+    except (OSError, ValueError):
+        return {}
+
+
+def learn_from_approval(row):
+    """Record 'first wording -> approved product' for staff-corrected items."""
+    from core.defect_matching import norm
+    pairs = [(norm(item['original_product_raw']), item['product']['name'].strip())
+             for item in row.get('items', [])
+             if item.get('original_product_raw') and item.get('product')]
+    pairs = [(alias, target) for alias, target in pairs if len(alias) >= 2 and not alias.isdecimal()]
+    if not pairs:
+        return 0
+    try:
+        document = json.loads(LEARNED_ALIASES.read_text(encoding='utf-8'))
+    except (OSError, ValueError):
+        document = {}
+    aliases = document.setdefault('aliases', {})
+    bucket = aliases.setdefault(row['extracted'].get('category') or '*', {})
+    for alias, target in pairs:
+        previous = bucket.get(alias, {})
+        support = previous.get('support', 0) + 1 if previous.get('target') == target else 1
+        bucket[alias] = {'target': target, 'support': support, 'source': 'staff_correction'}
+    save(LEARNED_ALIASES, document)
+    return len(pairs)
+
+
+def _fallback_match(query, size, products, category, learned=None):
+    """Learned alias first, then Hangul-to-English phonetic similarity."""
+    from core.defect_matching import norm
+    from core import defect_phonetic
+    sized = lambda rows, cm: [p for p in rows if re.search(r'(?<!\d)' + cm + r'\s*cm\b', p.get('name', ''), re.I)]
+    has_size = lambda rows: any(re.search(r'\d+\s*cm\b', p.get('name', ''), re.I) for p in rows)
+    table = learned_aliases() if learned is None else learned
+    entry = (table.get(category or '', {}) or {}).get(norm(query)) or table.get('*', {}).get(norm(query))
+    if entry:
+        target = entry['target']
+        if size:
+            target = re.sub(r'\d+\s*cm\b', size[1] + 'cm', target, flags=re.I)
+        found = [p for p in products if str(p.get('name', '')).strip() == target]
+        if len(found) == 1:
+            default = '50cm' if not size and re.search(r'(?<!\d)50\s*cm\b', target, re.I) else None
+            return found[0], found, 'learned', default
+    pool, default = products, None
+    if size:
+        pool = sized(products, size[1])
+    elif has_size(products):
+        pool = sized(products, '50') + [p for p in products if not re.search(r'\d+\s*cm\b', p.get('name', ''), re.I)]
+    chosen, candidates = defect_phonetic.resolve(query, pool)
+    if not chosen and len(candidates) > 1 and len({c.get('name') for c in candidates}) == 1:
+        # One catalog name under several origins: posted ERP deductions for
+        # this category may show that only one origin is ever used.
+        prior = origin_priors().get(category or '')
+        preferred = [c for c in candidates if prior and c.get('origin') == prior]
+        if len(preferred) == 1:
+            chosen = preferred[0]
+    if chosen and not size and re.search(r'(?<!\d)50\s*cm\b', chosen.get('name', ''), re.I):
+        default = '50cm'
+    return chosen, candidates, ('phonetic' if chosen else None), default
+
+
+def rematch(row, master, learned=None):
     result = deepcopy(row)
     source = result['extracted']
     customer, customers = match_customer(source, _data(master, 'customers'))
@@ -67,6 +152,12 @@ def rematch(row, master):
     category = source.get('category')
     # Never silently accept the same variety name from another flower category.
     if category:
+        # Staff write "알스트로메리아" while the master category is "알스트로".
+        known = {p.get('category') for p in products if p.get('category')}
+        if category not in known:
+            near = sorted(c for c in known if c.startswith(category) or category.startswith(c))
+            if len(near) == 1:
+                category = near[0]
         products = [p for p in products if p.get('category') == category]
     if source.get('origin'):
         products = [p for p in products if p.get('origin') == source['origin']]
@@ -91,7 +182,14 @@ def rematch(row, master):
             pool = [p for p in candidates if re.search(r'(?<!\d)50\s*cm\b', p.get('name', ''), re.I)]
             product, candidates = match_one(term, pool, vocabulary)
             default_size = '50cm'
-        items.append({**item, 'product': product, 'candidates': candidates, 'default_size': default_size})
+        matched_by = 'catalog' if product else None
+        if not product and not explicit_key:
+            product, extra, matched_by, fallback_size = _fallback_match(
+                query, size, products, category, learned)
+            candidates = candidates or extra
+            default_size = default_size or fallback_size
+        items.append({**item, 'product': product, 'candidates': candidates,
+                      'default_size': default_size, 'matched_by': matched_by})
     result['items'] = items
     result['status'] = 'ready_question'
     result.pop('approved_revision', None)
@@ -157,8 +255,11 @@ def question(row):
         if product:
             lines.append(f"매칭: {product['name']} {item['quantity_raw']}{item['unit_raw']}")
         else:
+            shown = [c['name'] for c in item.get('candidates', [])]
             for n, candidate in enumerate(item.get('candidates', []), 1):
-                lines.append(f"{n}) {candidate['name']}")
+                # Same catalog name under two origins is unreadable without it.
+                origin = f" ({candidate.get('origin')})" if shown.count(candidate['name']) > 1 and candidate.get('origin') else ''
+                lines.append(f"{n}) {candidate['name']}{origin}")
             if item.get('candidates'):
                 lines.append(f"선택: {label(row)} 선택 {index}=번호")
     if ready(row): lines.append(f"맞으면 {label(row)} 맞아\n다르면 {label(row)} 틀려\n처리 안 하면 {label(row)} 안함")
@@ -219,6 +320,10 @@ def apply_reply(row, event, later_event_ids):
         return result
     if command in ('맞아', '승인') and result['status'] == 'waiting' and ready(result):
         result.update(status='approved', approved_revision=result['revision'], approval_event_id=eid)
+        try:
+            learn_from_approval(result)
+        except Exception:
+            pass  # Learning is advisory; it must never block an approval.
     elif command in ('틀려', '틀림'):
         result['status'] = 'awaiting_product'
         product_guide = f"{label(result)} 품목 품목명" if len(result.get('items',[]))==1 else f"{label(result)} 품목 1=품목명"
@@ -230,7 +335,11 @@ def apply_reply(row, event, later_event_ids):
     elif correction and 1 <= int(correction[1]) <= len(result['extracted']['items']):
         result['history'].append({'revision': result['revision'], 'items': deepcopy(result.get('items')),
                                   'question_event_id': result['question_event_id']})
-        result['extracted']['items'][int(correction[1])-1]['product_raw'] = correction[2].strip()
+        corrected = result['extracted']['items'][int(correction[1])-1]
+        # Keep the staff's first wording so an approved correction can teach
+        # the matcher what that wording meant.
+        corrected.setdefault('original_product_raw', corrected['product_raw'])
+        corrected['product_raw'] = correction[2].strip()
         result['revision'] += 1
         result['status'] = 'needs_match'
         result.pop('question_event_id', None)
