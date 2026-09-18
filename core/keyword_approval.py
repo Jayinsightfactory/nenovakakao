@@ -391,7 +391,7 @@ def poll(export, send, paused, mark_rescan):
             return cached_history
         text = export(approver)
         if not text.splitlines() or text.splitlines()[0].strip() not in (approver + ' 님과 카카오톡 대화', approver + ' 임과 카카오톡 대화'):
-            raise RuntimeError('승인자 대화방 제목 불일치')
+            raise RuntimeError(f'승인자 대화방 제목 불일치: 설정={approver!r}; 실제={(text.splitlines() or [""])[0].strip()!r}')
         cached_history = parse_export(text, 'keyword-approval')
         return cached_history
 

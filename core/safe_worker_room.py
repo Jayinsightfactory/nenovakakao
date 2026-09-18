@@ -41,7 +41,14 @@ def open_unique_exact_room(title: str, *, allow_main_activation=True, require_fo
         candidates = [w for w in gw.getAllWindows()
                       if w.visible and w.title == title and w.width > 300 and w.height > 300]
     if len(candidates) != 1:
-        raise RuntimeError(f"exact room verification failed: {len(candidates)} matches")
+        # A case-only difference (e.g. "(J)" vs "(j)") means the configured
+        # name no longer matches the real Kakao title. Name it so the alert
+        # points at the setting instead of a transient UI failure.
+        near = sorted({w.title for w in gw.getAllWindows()
+                       if w.visible and w.title.casefold() == title.casefold()
+                       and w.title != title and w.width > 300 and w.height > 300})
+        hint = f"; 대소문자만 다른 창: {near}" if near else ""
+        raise RuntimeError(f"exact room verification failed: {len(candidates)} matches{hint}")
     window = candidates[0]
     if not require_foreground:
         _activate_verified(window)
