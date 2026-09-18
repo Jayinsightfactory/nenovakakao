@@ -48,3 +48,16 @@ def test_export_room_title_uses_exact_kakao_header(tmp_path: Path):
     export = tmp_path / "room.txt"
     export.write_text("수입방 님과 카카오톡 대화\n저장한 날짜 : 2026-08-10", encoding="utf-8")
     assert sink._export_room_title(export) == "수입방"
+
+
+def test_sales_room_archive_keeps_only_add_cancel_text(monkeypatch):
+    from core import moyi_inbound as inbound
+    monkeypatch.setattr('core.keyword_forward.config', lambda: {'source': '영업방'})
+    events = [
+        {'event_id': 'a', 'content': '38-1 수국 추가 미우 화이트 60박스'},
+        {'event_id': 'b', 'content': '오늘 출고 완료했습니다'},
+        {'event_id': 'c', 'content': '플라야블랑카 10단 취소 가능할까요'},
+    ]
+    kept = [event['event_id'] for event in inbound.order_feed_events('영업방', events)]
+    assert kept == ['a', 'c']
+    assert inbound.order_feed_events('수입방', events) == events

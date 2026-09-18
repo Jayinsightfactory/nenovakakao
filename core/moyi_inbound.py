@@ -497,6 +497,20 @@ def _find_local_kakao_file(name: str) -> Path:
     return max(unique, key=lambda path: path.stat().st_mtime_ns)
 
 
+def order_feed_events(title: str, events: list[dict]) -> list[dict]:
+    """Limit the sales room's raw archive to add/cancel/shipment-change text.
+
+    nenovaweb's paste-order inbox reads the 영업방 archive from the mindmap
+    sink. Operators asked for that feed to carry only add/cancel work, so
+    generic status chatter is not uploaded. Other rooms keep the full archive.
+    """
+    from core.keyword_forward import classify_transfer, config as forward_config
+    if title != forward_config().get('source', '영업방'):
+        return events
+    return [event for event in events
+            if classify_transfer(str(event.get('content') or ''))['decision'] != 'exclude']
+
+
 def poll_once(server: str, secret: str, only_title: str | None = None,
               defer_archive=False, max_events=MAX_AUTO_INBOUND_EVENTS) -> dict[str, int]:
     """Open only unread/retry rooms and post messages newer than the baseline."""
@@ -598,7 +612,7 @@ def poll_once(server: str, secret: str, only_title: str | None = None,
             print(f"[MOYI] import order capture held ({title}): {type(order_exc).__name__}")
             # Do not advance the source checkpoint if durable enqueue failed.
             raise
-        enqueue_events(binding, title, new_events)
+        enqueue_events(binding, title, order_feed_events(title, new_events))
         try:
             flushed = 0 if defer_archive else flush_pending()
             if flushed:

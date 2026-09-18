@@ -25,3 +25,7 @@ def isolated_error_notice_queue(tmp_path, monkeypatch):
     from core import inbound_archive_queue
     monkeypatch.setattr(inbound_archive_queue, 'QUEUE', tmp_path / 'inbound_archive_queue')
     monkeypatch.setattr(inbound_archive_queue, 'start', Mock())
+    # The mindmap raw archive outbox is real operational data; test rows such
+    # as room "room" must never be queued for upload from here.
+    from core import mindmap_sink
+    monkeypatch.setattr(mindmap_sink, 'OUTBOX_FILE', tmp_path / 'mindmap_outbox.json')

@@ -339,6 +339,14 @@ def run() -> int:
                         only_title='영업방', defer_archive=True, max_events=5)
         if result['sent'] or result['initialized']:
             report('inbound_processed')
+        # The paste-order inbox on nenovaweb reads the sales archive. Flush it
+        # right after the export instead of the 30-minute background cycle so
+        # approved add/cancel text and the web feed move together.
+        try:
+            from core.mindmap_sink import flush_pending
+            _timed('archive:sales', flush_pending, batch_size=50, timeout=10)
+        except Exception as exc:
+            _event(None, 'archive_deferred', 'sales:' + type(exc).__name__)
         from core.error_notifications import resolve_all
         resolve_all('inbound_room_failed')
         return result

@@ -112,6 +112,7 @@ second line
             failed.raise_for_status.side_effect = RuntimeError("server unavailable")
             with patch.object(inbound.requests, "get", return_value=rooms), \
                  patch.object(inbound.requests, "post", side_effect=[verify, failed]), \
+                 patch("core.mindmap_sink.flush_pending", return_value=0), \
                  patch.object(inbound, "has_unread_exact_room", return_value=True), \
                  patch.object(inbound, "export_exact_room", return_value="export"), \
                  patch.object(inbound, "parse_export", return_value=[{
