@@ -35,7 +35,7 @@ def hangul_key(text, vowels=False):
 
 def _latin_full(text):
     s = re.sub(r'[^a-z]', '', str(text or '').lower())
-    for src, dst in (('sch', 's'), ('tch', 'j'), ('ph', 'p'), ('sh', 's'), ('ch', 'j'), ('th', 't'),
+    for src, dst in (('stl', 'sl'), ('sch', 's'), ('tch', 'j'), ('ph', 'p'), ('sh', 's'), ('ch', 'j'), ('th', 't'),
                      ('ck', 'k'), ('qu', 'k'), ('gh', ''), ('kn', 'n'), ('wr', 'r')):
         s = s.replace(src, dst)
     s = re.sub(r'c(?=[eiy])', 's', s)

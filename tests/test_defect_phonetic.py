@@ -77,3 +77,18 @@ def test_approved_staff_correction_is_recorded(tmp_path, monkeypatch):
     assert approval.learn_from_approval(row) == 1
     saved = json.loads(target.read_text(encoding='utf-8'))['aliases']['알스트로']
     assert saved == {'피삐': {'target': 'ALSTROMERIA Fifi', 'support': 2, 'source': 'staff_correction'}}
+
+
+def test_spray_prefix_reaches_mini_carnation_rows_in_other_categories():
+    rows = CATALOG + [product('MiniCarnation Artic/Ibis(화이트)', '미니카네이션', 20),
+                      product('CARNATION Spritz', '카네이션', 21)]
+    master = {'products': {'data': rows}, 'customers': {'data': []}}
+    item = approval.rematch(request('카네이션', '스프레이 화이트'), master, learned={})['items'][0]
+    assert item['product']['name'] == 'MiniCarnation Artic/Ibis(화이트)'
+
+
+def test_silent_t_in_whistler():
+    rows = CATALOG + [product('ALSTROMERIA Whistler', '알스트로', 30), product('ALSTROMERIA Helena', '알스트로', 31)]
+    master = {'products': {'data': rows}, 'customers': {'data': []}}
+    item = approval.rematch(request('알스트로', '휘슬러'), master, learned={})['items'][0]
+    assert item['product']['name'] == 'ALSTROMERIA Whistler'

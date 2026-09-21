@@ -108,7 +108,7 @@ def learn_from_approval(row):
     return len(pairs)
 
 
-def _fallback_match(query, size, products, category, learned=None):
+def _fallback_match(query, size, products, category, learned=None, catalog=None):
     """Learned alias first, then Hangul-to-English phonetic similarity."""
     from core.defect_matching import norm
     from core import defect_phonetic
@@ -125,6 +125,16 @@ def _fallback_match(query, size, products, category, learned=None):
             default = '50cm' if not size and re.search(r'(?<!\d)50\s*cm\b', target, re.I) else None
             return found[0], found, 'learned', default
     pool, default = products, None
+    spray = re.match(r'\s*(?:스프레이|sp)\s*(\S.*)', query, re.I)
+    if spray and category in ('카네이션', '미니카네이션') and catalog is not None:
+        # "스프레이 화이트" under 카네이션 means the spray/mini carnation rows,
+        # which the master files under several categories.
+        pool = [p for p in catalog if re.match(
+            r'\s*(?:\[[^\]]*\]\s*)?(?:mini\s*carnation|spa?r[ay]y?\s*carnation)', p.get('name', ''), re.I)]
+        chosen, candidates = defect_phonetic.resolve(spray[1], pool)
+        if chosen:
+            return chosen, candidates, 'phonetic', None
+        pool = products
     if size:
         pool = sized(products, size[1])
     elif has_size(products):
@@ -185,7 +195,7 @@ def rematch(row, master, learned=None):
         matched_by = 'catalog' if product else None
         if not product and not explicit_key:
             product, extra, matched_by, fallback_size = _fallback_match(
-                query, size, products, category, learned)
+                query, size, products, category, learned, _data(master, 'products'))
             candidates = candidates or extra
             default_size = default_size or fallback_size
         items.append({**item, 'product': product, 'candidates': candidates,
