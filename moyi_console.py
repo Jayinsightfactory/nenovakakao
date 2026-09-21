@@ -24,7 +24,20 @@ def worker_running() -> bool:
     return any(worker_processes())
 
 
+def start_stop_button() -> None:
+    """Show the floating stop button; a second copy exits on its own lock."""
+    executable = Path(sys.executable)
+    windowless = executable.with_name('pythonw.exe')
+    subprocess.Popen([str(windowless if windowless.exists() else executable),
+                      str(ROOT / 'moyi_stop_button.py')], cwd=ROOT,
+                     creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+
+
 def start_worker_if_needed() -> bool:
+    try:
+        start_stop_button()
+    except OSError:
+        audit('stop_button_unavailable', '화면 정지 버튼 실행 실패 — 단축키/콘솔로 정지')
     if worker_running():
         return False
     data = ROOT / "data"
@@ -50,6 +63,10 @@ class Console(tk.Tk):
         self.pause_text = tk.StringVar()
         self._build()
         self._update_pause_display()
+        try:
+            start_stop_button()
+        except OSError:
+            audit('stop_button_unavailable', '화면 정지 버튼 실행 실패 — 단축키/콘솔로 정지')
         from core.stop_hotkey import StopHotkey
         self.hotkey = StopHotkey(self.hotkey_stop)
         audit('hotkey_ready' if self.hotkey.registered else 'hotkey_failed', 'Ctrl+Alt+F10')
