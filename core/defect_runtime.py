@@ -50,6 +50,16 @@ def _notice(path, row, payload, export, send, field):
         save(path, row)
 
 
+def completion_message(row):
+    lines = [f"✅ {d.label(row)} 처리했습니다.", "【영업 입력 저장 완료】"]
+    for receipt in row.get('receipt') or []:
+        lines.append(f"{receipt.get('orderYear', '')}년 {receipt.get('orderWeek', '')}차 · {receipt.get('customerName', '')}")
+        lines.append(f"▶ {receipt.get('matchedProductName') or receipt.get('productName', '')} · {receipt.get('quantity', '')}{receipt.get('sourceUnit', '')}")
+        lines.append(f"저장번호: {receipt.get('deductionKey', '')}")
+    lines.append('영업수입불량차감 > 영업 입력에서 확인해주세요.')
+    return '\n'.join(lines)
+
+
 def poll(export, send, phase='all'):
     global _next_collection, _adapter
     cfg = config()
@@ -150,7 +160,7 @@ def poll(export, send, phase='all'):
                     row['retry_at'] = time.time() + 300
                 save(path, row)
         elif status in ('completed', 'declined'):
-            payload = (f"{d.label(row)} 처리했습니다.\n영업수입불량차감 > 영업 입력 저장 완료."
+            payload = (completion_message(row)
                        if status == 'completed' else f"{d.label(row)} 안함 처리했습니다. 입력에서 제외했습니다.")
             _notice(path, row, payload, export, send, 'receipt_event_id')
     except Exception as exc:
