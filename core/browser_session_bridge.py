@@ -20,6 +20,14 @@ def validate_job(job):
     if not re.fullmatch(r'불량-[A-F0-9]{12}', rid):
         raise ValueError('invalid_request_id')
     row = d.load(d.ROOT / (rid + '.json'))
+    if job['method'] == 'SCREENSHOT':
+        if row.get('status') != 'completed' or not row.get('receipt'):
+            raise ValueError('verified_completion_required')
+        expected = [{k: r.get(k) for k in ('customerName', 'matchedProductName', 'quantity', 'orderWeek')}
+                    for r in row['receipt']]
+        if job.get('params') != expected or job.get('body') is not None:
+            raise ValueError('invalid_screenshot_scope')
+        return
     if (row.get('approved_revision') != row['revision']
             or row.get('status') not in ('approved', 'write_unknown')
             or not row.get('approval_event_id') or not d.ready(row)

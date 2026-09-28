@@ -17,7 +17,20 @@ function connect() {
     let result = {status:0,data:{success:false}};
     // Do not broadcast a write to several tabs, or retry a failed send.
     if (tabs.length) {
-      try { result = await chrome.tabs.sendMessage(tabs[0].id, {type:'nenova-defect-job',job}); }
+      try {
+        if (job.method === 'SCREENSHOT') {
+          const tab = tabs[0];
+          const checked = await chrome.tabs.sendMessage(tab.id, {type:'nenova-defect-screenshot-check',job});
+          if (!tab.active || !checked?.ready) throw new Error('saved_row_not_visible');
+          const png = await chrome.tabs.captureVisibleTab(tab.windowId, {format:'png'});
+          if (png.length > 700000) throw new Error('screenshot_too_large');
+          const active = await chrome.tabs.query({active:true,windowId:tab.windowId});
+          if (active[0]?.id !== tab.id) throw new Error('tab_changed');
+          const verified = await chrome.tabs.sendMessage(tab.id, {type:'nenova-defect-screenshot-check',job});
+          if (!verified?.ready) throw new Error('saved_row_changed');
+          result = {status:200,data:{success:true,png}};
+        } else result = await chrome.tabs.sendMessage(tabs[0].id, {type:'nenova-defect-job',job});
+      }
       catch { /* A dispatched write stays unknown, never retried here. */ }
     }
     port?.postMessage({type:'result',id:job.id,...result});

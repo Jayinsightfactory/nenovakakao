@@ -87,7 +87,9 @@ def poll(export, send, phase='all'):
             continue
         if row['status'] in ('needs_match', 'ready_question', 'waiting', 'awaiting_product', 'approved',
                              'question_unknown', 'notice_unknown', 'write_unknown') or (
-                row['status'] in ('completed', 'declined') and not row.get('receipt_event_id')):
+                row['status'] in ('completed', 'declined') and not row.get('receipt_event_id')) or (
+                row['status'] == 'completed' and row.get('screenshot_enabled')
+                and row.get('screenshot_state') not in ('sent', 'unknown')):
             active.append((path, row))
     if not active:
         return
@@ -150,6 +152,10 @@ def poll(export, send, phase='all'):
                     _adapter = DefectAdapter(profile)
             if status == 'approved':
                 d.submit(path, _adapter, is_paused)
+                completed = d.load(path)
+                if completed.get('status') == 'completed':
+                    completed['screenshot_enabled'] = True
+                    save(path, completed)
             else:
                 # Reconcile a possibly successful write; never insert again.
                 _adapter.validate(row)
@@ -162,7 +168,11 @@ def poll(export, send, phase='all'):
         elif status in ('completed', 'declined'):
             payload = (completion_message(row)
                        if status == 'completed' else f"{d.label(row)} 안함 처리했습니다. 입력에서 제외했습니다.")
-            _notice(path, row, payload, export, send, 'receipt_event_id')
+            if not row.get('receipt_event_id'):
+                _notice(path, row, payload, export, send, 'receipt_event_id')
+            if row['status'] == 'completed' and row.get('screenshot_enabled'):
+                from core.defect_screenshot import deliver
+                deliver(path, row, export)
     except Exception as exc:
         from core.moyi_control import OperationPaused
         import pyautogui
