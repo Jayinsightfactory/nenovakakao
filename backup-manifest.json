@@ -1,0 +1,13 @@
+{
+  "purpose": "Source recovery backup only. Do not merge this branch into production. Each listed commit retains its original source tree.",
+  "date": "2026-10-12",
+  "records": [
+    {
+      "kind": "workingTreeSnapshot",
+      "workspace": "Documents/Codex/2026-05-15/codex-nowlink-kr-nenovaweb-com-git/nenovakakao",
+      "sha": "abdb2564d62362f25a639becb55d6d51aaf26fa1",
+      "sourceFiles": 2,
+      "excludedFiles": 0
+    }
+  ]
+}
