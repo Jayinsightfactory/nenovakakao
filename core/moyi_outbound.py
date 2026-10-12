@@ -26,6 +26,7 @@ import time
 import pyautogui
 import pyperclip
 import requests
+from pathlib import Path
 
 from core.window_manager import focus_kakaotalk
 
@@ -74,7 +75,9 @@ def push_inbound(external_room_id: str, sender_name: str, content: str, attachme
     try:
         r = requests.post(
             f"{_base()}/kakao/agent/inbound",
-            json={"external_room_id": external_room_id, "sender_name": sender_name,
+            json={"event_id": f"kakao-{external_room_id}-{int(time.time() * 1000)}",
+                  "room_binding_id": os.getenv("MOYI_ROOM_BINDING_ID") or None,
+                  "external_room_id": external_room_id, "sender_name": sender_name,
                   "content": content, "attachments": attachments or []},
             headers=_headers(),
             timeout=15,
@@ -85,6 +88,25 @@ def push_inbound(external_room_id: str, sender_name: str, content: str, attachme
         return r.json()
     except Exception as e:
         print(f"[moyi-inbound] 전송 실패: {e}")
+        return None
+
+
+def upload_inbound_file(path: str | Path) -> dict | None:
+    """카카오 PC에서 내려받은 파일을 MOYI 드라이브에 업로드한다."""
+    file_path = Path(path)
+    if not file_path.is_file():
+        return None
+    try:
+        with file_path.open("rb") as stream:
+            response = requests.post(
+                f"{_base()}/kakao/agent/files",
+                files={"file": (file_path.name, stream, "application/octet-stream")},
+                headers=_headers(), timeout=60,
+            )
+        response.raise_for_status()
+        return response.json()
+    except Exception as e:
+        print(f"[moyi-file] 업로드 실패: {file_path.name}: {e}")
         return None
 
 

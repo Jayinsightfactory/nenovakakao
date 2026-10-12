@@ -182,6 +182,15 @@ def cmd_monitor() -> int:
                     send_to_mirror_room(room_name, delta)
                     print(f"     → 워크 미러 방 신규 내용 전송 완료")
 
+                    # 2-5. 카카오톡 → MOYI: 텍스트와 내려받은 자료를 함께 보낸다.
+                    try:
+                        from core.moyi_outbound import push_inbound, upload_inbound_file
+                        moyi_attachments = [x for x in (upload_inbound_file(p) for p in downloaded_files) if x]
+                        push_inbound(room_name, "카카오톡", delta, moyi_attachments)
+                        print(f"     → MOYI 전송 완료 (첨부 {len(moyi_attachments)}개)")
+                    except Exception as e:
+                        print(f"     → MOYI 전송 실패: {e}")
+
                     # 2-4. 사진이 있으면 카카오워크 앱으로 업로드
                     if downloaded_files:
                         print(f"     → 워크 앱 이미지 업로드 중...")
