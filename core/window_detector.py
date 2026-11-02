@@ -46,6 +46,17 @@ KAKAOTALK_TITLE = "카카오톡"
 def _exact_main_window():
     windows = [w for w in gw.getWindowsWithTitle(KAKAOTALK_TITLE)
                if w.title == KAKAOTALK_TITLE and w.width > 0 and w.height > 0]
+    if len(windows) > 1:
+        # 2개 이상(트레이 복원 잔상·숨은 사본)이면 실제 메인창 클래스 + 보이는 창으로 좁힌다
+        try:
+            import win32gui
+            narrowed = [w for w in windows
+                        if win32gui.GetClassName(w._hWnd) == 'EVA_Window_Dblclk'
+                        and win32gui.IsWindowVisible(w._hWnd) and not win32gui.IsIconic(w._hWnd)]
+            if len(narrowed) == 1:
+                windows = narrowed
+        except Exception:
+            pass
     if len(windows) != 1:
         raise RuntimeError(f'카카오톡 메인 창을 유일하게 확인할 수 없음: {len(windows)}개')
     return windows[0]
