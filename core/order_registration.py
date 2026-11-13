@@ -154,7 +154,12 @@ def verify_receipt(group, products):
             raise ValueError('저장 후 주문 수량·단위 불일치; 재조회 필요')
 
 
-def register(row, request=None):
+def register(row, request=None, managers=None):
+    """managers: {업체키(str): 전산에 지정된 그 업체 담당자}. 주면 주문 담당자는 업체 기준으로 넣는다.
+
+    카톡에 올린 사람은 기록(row['staff'], 처리 기록)에만 남기고 등록을 막는 조건으로 쓰지 않는다.
+    업체에 담당자가 없거나 전산이 그 담당자를 모르면 담당자를 비워 보내 로그인 계정으로 등록한다.
+    """
     from core import import_order as orders
     from core.moyi_control import is_paused
     if request is None:
@@ -193,13 +198,24 @@ def register(row, request=None):
                 payload_items.append({'prodKey': pk, 'prodName': item['product'], 'qty': item['quantity'],
                     'unit': '송이' if item['unit'] == '스팀' else item['unit'],
                     'expectedCurrentQty': float(product.get('CurrentQty', 0))})
-            payload = {'source': 'sales-paste', 'orderMode': 'ADD', 'manager': manager_name(row['staff']),
+            payload = {'source': 'sales-paste', 'orderMode': 'ADD', 'manager': (str(managers.get(str(key)) or '').strip() if managers is not None
+                                   else manager_name(row['staff'])),
                        'custKey': int(key), 'custName': items[0]['customer'], **scope(row), 'items': payload_items}
             group = {'state': 'write_unknown', 'payload': payload, 'started_at': time.time()}
             journal['groups'][key] = group
             save(path, journal)  # durable BEFORE external write
             try:
-                receipt = request(row['id'], 'POST', body=payload, timeout=50)
+                try:
+                    receipt = request(row['id'], 'POST', body=payload, timeout=50)
+                except OrderRejected as exc:
+                    # 담당자를 전산이 모르는 것은 등록을 막을 이유가 아니다. 쓰인 것이 없으므로
+                    # 담당자만 비워(로그인 계정) 사전 기록을 고친 뒤 한 번 더 보낸다.
+                    if managers is None or not payload['manager'] or 'SALES_MANAGER_INVALID' not in str(exc):
+                        raise
+                    group['manager_fallback'] = payload['manager']
+                    payload['manager'] = ''
+                    save(path, journal)
+                    receipt = request(row['id'], 'POST', body=payload, timeout=50)
             except OrderRejected:
                 # 쓰인 것이 없으므로 사전 기록을 지운다. 남겨 두면 이 업체 묶음이 영구히 '응답 불명'으로 묶인다.
                 journal['groups'].pop(key, None)
