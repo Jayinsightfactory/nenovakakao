@@ -32,3 +32,6 @@ def isolated_error_notice_queue(tmp_path, monkeypatch):
     # Learned defect aliases are operational data too; tests start without them.
     from core import defect_approval
     monkeypatch.setattr(defect_approval, 'LEARNED_ALIASES', tmp_path / 'defect_learned_aliases.json')
+    # Daily send counters are real operational data; tests count in a temp file.
+    from core import moyi_outbound
+    monkeypatch.setattr(moyi_outbound, '_LIMIT_FILE', str(tmp_path / 'send_limits.json'))

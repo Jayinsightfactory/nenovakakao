@@ -119,8 +119,100 @@ def open_room_by_name(room_name: str) -> bool:
     return True
 
 
-def send_text_to_open_room(text: str) -> None:
-    """현재 열린 채팅방 입력란에 텍스트 붙여넣고 전송."""
+def _exact_room_windows(title: str) -> list:
+    import pygetwindow as gw
+    return [w for w in gw.getAllWindows()
+            if w.visible and w.title == title and w.width > 300 and w.height > 300]
+
+
+def open_room_verified(room_name: str, attempts: int = 2, timeout: float = 6.0) -> int:
+    """방을 열고, 정확히 그 제목의 창이 하나 뜰 때까지 기다린 뒤 앞으로 가져온다.
+
+    고정 대기(1.5초) 뒤 바로 제목을 검사하면 카톡이 느린 아침에 메인 창('카카오톡')만 보여
+    발송이 막혔다(2026-11-10~13 일일 보고 실패). 여기서는 아무것도 입력하지 않으므로
+    검색·열기만 다시 시도해도 안전하다. 끝내 못 열면 RuntimeError.
+    """
+    from core.safe_worker_room import open_unique_exact_room
+    last = "창 없음"
+    for attempt in range(max(1, attempts)):
+        if not _exact_room_windows(room_name):
+            open_room_by_name(room_name)
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline:
+            found = _exact_room_windows(room_name)
+            if len(found) == 1:
+                return open_unique_exact_room(room_name, allow_main_activation=False)
+            if len(found) > 1:
+                raise RuntimeError(f"방 '{room_name}' 창이 {len(found)}개: 발송 중단")
+            time.sleep(0.3)
+        try:
+            import win32gui
+            last = win32gui.GetWindowText(win32gui.GetForegroundWindow()) or "제목 없는 창"
+        except Exception:
+            pass
+    raise RuntimeError(f"방 '{room_name}'을(를) 열지 못함 - 앞에 떠 있는 창: '{last}' (카톡 잠금·로그아웃 여부 확인)")
+
+
+class SendLimitExceeded(RuntimeError):
+    """재시도 금지 — 한도 초과는 다음 날까지 같은 결과."""
+
+
+_LIMIT_FILE = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data", "send_limits.json")
+DAILY_LIMIT_PER_ROOM = int(os.getenv("KAKAO_SEND_LIMIT_ROOM", "30"))
+DAILY_LIMIT_TOTAL = int(os.getenv("KAKAO_SEND_LIMIT_TOTAL", "200"))
+
+
+def _limits_load() -> dict:
+    import json
+    from datetime import datetime
+    today = datetime.now().strftime("%Y-%m-%d")
+    try:
+        with open(_LIMIT_FILE, encoding="utf-8") as f:
+            d = json.load(f)
+    except Exception:
+        d = {}
+    if d.get("date") != today:
+        d = {"date": today, "total": 0, "rooms": {}}
+    return d
+
+
+def check_send_limit(room: str) -> None:
+    """방별·일별 발송 상한(파일 영속 — 재시작해도 유지). 초과 시 SendLimitExceeded."""
+    d = _limits_load()
+    if d["total"] >= DAILY_LIMIT_TOTAL:
+        raise SendLimitExceeded(f"일일 전체 발송 한도 {DAILY_LIMIT_TOTAL}건 초과")
+    if d["rooms"].get(room, 0) >= DAILY_LIMIT_PER_ROOM:
+        raise SendLimitExceeded(f"방 '{room}' 일일 발송 한도 {DAILY_LIMIT_PER_ROOM}건 초과")
+
+
+def record_send(room: str) -> None:
+    import json
+    d = _limits_load()
+    d["total"] += 1
+    d["rooms"][room] = d["rooms"].get(room, 0) + 1
+    os.makedirs(os.path.dirname(_LIMIT_FILE), exist_ok=True)
+    tmp = _LIMIT_FILE + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
+        json.dump(d, f, ensure_ascii=False)
+    os.replace(tmp, _LIMIT_FILE)
+
+
+def verify_open_room(expected_title: str) -> int:
+    """발송 직전 검증: 앞에 떠 있는 방 창 제목이 목표와 정확히 같아야 함. 다르면 Enter 없이 중단(오발송 방지)."""
+    import win32con
+    import win32gui
+    fg = win32gui.GetForegroundWindow()
+    root = win32gui.GetAncestor(fg, win32con.GA_ROOTOWNER) if fg else 0
+    titles = {win32gui.GetWindowText(h) for h in (fg, root) if h}
+    if expected_title not in titles:
+        raise RuntimeError(f"대상 방 불일치 - 기대 '{expected_title}', 실제 {sorted(t for t in titles if t)}: 발송 중단")
+    return root or fg
+
+
+def send_text_to_open_room(text: str, expected_title: str | None = None) -> None:
+    """현재 열린 채팅방 입력란에 텍스트 붙여넣고 전송. expected_title 주면 제목 검증 후에만 붙여넣기."""
+    if expected_title:
+        verify_open_room(expected_title)
     pyperclip.copy(text)
     pyautogui.hotkey("ctrl", "v")
     time.sleep(0.4)
@@ -137,8 +229,10 @@ def send_item(item: dict) -> None:
     text = compose_text(item)
     if not text:
         raise RuntimeError("발송할 내용 없음")
+    check_send_limit(room)
     open_room_by_name(room)
-    send_text_to_open_room(text)
+    send_text_to_open_room(text, expected_title=room)
+    record_send(room)
 
 
 def run_worker() -> None:
@@ -160,6 +254,9 @@ def run_worker() -> None:
                 send_item(item)
                 ack(item_id, True)
                 print(f"[moyi-outbound] 발송 OK → {item.get('external_room_id')} ({item_id})")
+            except SendLimitExceeded as e:
+                print(f"[moyi-outbound] 한도 초과 — 오늘 발송 중단 ({item_id}): {e}")
+                break  # ack 안 함 → 내일 다시 노출(소진 방지)
             except Exception as e:
                 # 실패 ack — 서버가 attempts를 올리고 5회 초과 시 held로 보류
                 print(f"[moyi-outbound] 발송 실패 ({item_id}): {e}")
