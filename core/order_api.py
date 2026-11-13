@@ -23,7 +23,10 @@ class OrderAPI:
                                                     allow_redirects=False, **kwargs)
                 if response.status_code == 401:
                     self.auth.authenticated = False
-        if response.status_code != 200:
+        # 네노바웹 주문 저장(POST /api/orders)은 성공 시 201을 돌려준다. 200만 인정하면 저장된 주문을
+        # 실패로 오인해 영수증을 잃고 '응답 불명'으로 영구 보류된다. 조회(GET)는 200만 인정.
+        accepted = (200, 201) if method == 'POST' else (200,)
+        if response.status_code not in accepted:
             raise RuntimeError('주문 API 실패: HTTP ' + str(response.status_code))
         value = response.json()
         if not isinstance(value, dict) or value.get('success') is not True:
