@@ -30,6 +30,29 @@ def master():
     }
 
 
+def test_batch_scope_uses_one_config_snapshot_without_reloading(monkeypatch):
+    monkeypatch.setattr(order, 'config', Mock(side_effect=AssertionError('unexpected per-message config read')))
+    cfg = {'start_at': '2026-10-22T23:59:59.999999+09:00'}
+    assert order.in_current_scope({'timestamp':'2026년 10월 23일 오전 12:00'}, cfg)
+    assert not order.in_current_scope({'timestamp':'2026년 10월 22일 오후 11:59'}, cfg)
+
+
+def test_today_numbered_question_can_bypass_only_old_question_unknown(monkeypatch):
+    monkeypatch.setattr(order, 'config', lambda: {'start_at':'2026-10-22T23:59:59.999999+09:00'})
+    old={'id':'OLD','staff_room':'담당자','status':'request_unknown',
+         'event':{'timestamp':'2026년 10월 14일 오전 11:13'}}
+    today={'id':'NEW','require_request_id':True,
+           'event':{'timestamp':'2026년 10월 23일 오전 9:00'}}
+    assert order._review_slot_available({'old':old}, '담당자', today)
+    assert old['status']=='request_unknown'
+    assert not order._review_slot_available({'old':old}, '담당자')
+    assert not order._review_slot_available({'old':old}, '담당자', {**today,'require_request_id':False})
+    for status in ('registration_unknown','registering'):
+        assert not order._review_slot_available({'old':{**old,'status':status}}, '담당자',today)
+    assert not order._review_slot_available({'old':{**old,'event':today['event']}}, '담당자',today)
+    assert not order._review_slot_available({'old':{**old,'event':{'timestamp':'unknown'}}}, '담당자',today)
+
+
 def parsed():
     return {'staff': '임재용대리', 'customer': '주광농원', 'week': '35-1',
             'items': [{'customer': '주광농원', 'category': 'carnation', 'product': 'novia', 'quantity': 2, 'unit': '박스'}],
@@ -243,18 +266,18 @@ def test_mobile_candidate_letters_select_exact_internal_product(isolated):
 
 
 def test_registration_is_disabled_without_explicit_switch(monkeypatch):
-    monkeypatch.delenv('NENOVA_ORDER_WRITE_ENABLED', raising=False)
+    monkeypatch.setattr(order, 'config', lambda: {'write_enabled': False})
     with pytest.raises(RuntimeError, match='쓰기 비활성'):
         order_services.register_bulk({})
 
 
-def test_registration_uses_exact_staff_room_credential(monkeypatch):
-    monkeypatch.setenv('NENOVA_ORDER_WRITE_ENABLED', '1')
+def test_registration_uses_existing_browser_session_without_staff_password(monkeypatch):
+    monkeypatch.setattr(order, 'config', lambda: {'browser_order_registration': True, 'write_enabled': True})
     seen = []
     monkeypatch.setattr('core.credential_store.load', lambda profile: seen.append(profile) or None)
-    with pytest.raises(RuntimeError, match='임재용대리'):
+    with pytest.raises(ValueError, match='확정된 주문'):
         order_services.register_bulk({'staff': '임재용', 'staff_room': '임재용대리'})
-    assert seen == ['임재용대리']
+    assert seen == []
 
 
 def test_nenova_master_rows_include_cl_code_and_korean_product_aliases():
@@ -270,11 +293,10 @@ def test_nenova_master_rows_include_cl_code_and_korean_product_aliases():
     assert '워싱턴 화이트' in product['name_alias']
 
 
-def test_llm_missing_key_returns_question(monkeypatch):
-    monkeypatch.delenv('ANTHROPIC_API_KEY', raising=False)
-    result = order_llm.parse('주광 노비아 2박스')
-    assert result['items'] == []
-    assert result['questions']
+def test_cli_failure_keeps_analysis_pending(monkeypatch):
+    monkeypatch.setattr('core.subscription_ai.ask', Mock(side_effect=RuntimeError('CLI unavailable')))
+    with pytest.raises(RuntimeError, match='CLI unavailable'):
+        order_llm.parse('주광 노비아 2박스')
 
 
 def history_master():
@@ -296,7 +318,7 @@ def test_history_ranks_before_truncation_without_accepting_ambiguity(isolated):
     assert 2308 not in [o['product_key'] for o in item['candidate_options']]
     message = order.review_message(row)
     assert '후보 1A CARNATION NOVIA 993' in message
-    assert '1. CARNATION CARNATION NOVIA 2박스' in message
+    assert '1. CARNATION NOVIA 2박스' in message
     order._apply(row, ('candidates', [(1, 0)]), history_master())
     assert item['product_key'] == 993
     assert item['unit'] == '박스'
@@ -329,7 +351,60 @@ def test_history_failure_keeps_review_and_requested_unit(isolated):
     assert row['items'][0]['unit'] == '송이'
 
 
+def test_colombia_origin_resolves_korean_barista_alias_but_keeps_supplier_missing(isolated, monkeypatch):
+    from core.order_services import _product_row
+    values = {
+        'products': {'data': [
+            _product_row({'ProdKey': 2720, 'ProdName': 'ROSE / Barista',
+                          'FlowerName': '장미', 'CounName': '콜롬비아'}),
+            _product_row({'ProdKey': 3424, 'ProdName': 'Ecuador Barista 50cm',
+                          'FlowerName': '장미', 'CounName': '에콰도르'}),
+        ]},
+        'customers': {'data': []},
+    }
+    source = event('kakao-colombia-barista')
+    source['content'] = '46-1 콜 장미 발주 추가\n바리스타 20단'
+    parsed_order = {'staff': '정재훈', 'customer': '', 'week': '46-1',
+                    'items': [{'customer': '', 'product': '바리스타', 'quantity': 20,
+                               'unit': '단', 'category': '장미'}], 'questions': []}
+    row = order.build_draft(source, parsed_order, values)
+    item = row['items'][0]
+    assert item['origin'] == '콜롬비아'
+    assert item['matched'] is True
+    assert item['product_key'] == 2720
+    assert item['customer_key'] is None
+    issues = order.validate(row)
+    assert any('거래처 확인 필요' in issue for issue in issues)
+    assert not any('품목 확인 필요' in issue or '품목 코드 확인 필요' in issue for issue in issues)
+
+    monkeypatch.setattr(order, 'registration_enabled', lambda: True)
+    monkeypatch.setattr('core.order_registration.scope', lambda draft: None)
+    details = order._review_message_details(row)
+    assert '1. 업체 미기재 · 장미 ROSE / BARISTA 20단' in details
+    assert '1. · ' not in details
+
+
+def test_barista_without_origin_does_not_guess_colombian_variant(isolated):
+    from core.order_services import _product_row
+    values = {'products': {'data': [
+        _product_row({'ProdKey': 2720, 'ProdName': 'ROSE / Barista',
+                      'FlowerName': '장미', 'CounName': '콜롬비아'}),
+        _product_row({'ProdKey': 3424, 'ProdName': 'Ecuador Barista 50cm',
+                      'FlowerName': '장미', 'CounName': '에콰도르'}),
+    ]}, 'customers': {'data': []}}
+    source = event('kakao-ambiguous-barista')
+    source['content'] = '46-1 장미 발주 추가\n바리스타 20단'
+    parsed_order = {'staff': '정재훈', 'customer': '', 'week': '46-1',
+                    'items': [{'customer': '', 'product': '바리스타', 'quantity': 20,
+                               'unit': '단', 'category': '장미'}], 'questions': []}
+    item = order.build_draft(source, parsed_order, values)['items'][0]
+    assert item['origin'] == ''
+    assert item['matched'] is False
+    assert item['product_key'] is None
+
+
 def test_history_api_checks_customer_and_caches_read_only(monkeypatch):
+    monkeypatch.setattr(order, 'config', lambda: {})
     monkeypatch.setattr(order_services, '_customer_history_cache', {})
     response = Mock()
     response.json.return_value = {'ok': True, 'customer': {'CustKey': 659},
@@ -488,10 +563,10 @@ def test_unverified_receipt_never_completes_or_retries_registration(isolated, mo
 
 
 def test_unverified_production_api_is_never_called(monkeypatch):
-    monkeypatch.setenv('NENOVA_ORDER_WRITE_ENABLED', '1')
+    monkeypatch.setattr(order, 'config', lambda: {'browser_order_registration': True, 'write_enabled': True})
     monkeypatch.setattr('core.credential_store.load', lambda _: {'username': 'test', 'password': 'test'})
     session = Mock(); monkeypatch.setattr(order_services.requests, 'Session', session)
-    with pytest.raises(RuntimeError, match='규격 검증 필요'):
+    with pytest.raises(ValueError, match='확정된 주문'):
         order_services.register_bulk({'staff_room': '정재훈'})
     session.assert_not_called()
 
@@ -527,3 +602,61 @@ def test_account_consent_is_explicit_and_separate_from_registration(isolated):
     row['status'] = 'waiting'
     order._apply(row, order.parse_command(row['id'] + ' 계정사용 거절', row['id']), master())
     assert row['account_consent'] is False and 'confirmed_revision' not in row
+
+
+def test_analysis_error_retries_without_replaying_completed(isolated, monkeypatch):
+    monkeypatch.setattr('core.workflow_settings.config', lambda: {'order_review_only': True})
+    order._save(order.STATE, {'kakao-one': {'id': 'ORD-X', 'status': 'analysis_error',
+        'event': event(), 'items': [], 'error': 'old parser failure'}})
+    order.capture(event(), lambda _: {'items': [], 'questions': []}, master)
+    row = order._read(order.STATE, {})['kakao-one']
+    assert row['status'] == 'ignored'
+    assert row['analysis_attempts'] == 2
+    assert row['analysis_history'][0]['error'] == 'old parser failure'
+    forbidden = Mock(side_effect=AssertionError('must not replay'))
+    order.capture(event(), forbidden, master)
+    forbidden.assert_not_called()
+
+
+def test_analysis_retry_has_backoff_and_limit():
+    assert not order.analysis_retry_due({'status': 'analysis_error', 'analysis_attempts': 3})
+    assert not order.analysis_retry_due({'status': 'analysis_error', 'analysis_retry_at': float('inf')})
+    assert not order.analysis_retry_due({'status': 'completed'})
+    assert not order.analysis_retry_due({'status': 'analysis_error', 'items': [{}]})
+
+def test_grade_digits_never_match_catalog_code():
+    rows = [{'nenova_key': 8, 'code': '8', 'name': '아카시아 MIMOSA'},
+            {'nenova_key': 50, 'code': '50', 'name': '장미 ROSE'}]
+    assert order.match_one('화이트 8F', rows)[0] is None
+    assert order.match_one('클라우드 50cm', rows)[0] is None
+    assert order.match_one('', rows) == (None, [])
+    assert order.match_one('8', rows)[0]['nenova_key'] == 8
+
+
+def test_bounded_parallel_review_never_replays_unknown():
+    rows = {'a': {'staff_room': '직원', 'status': 'waiting'},
+            'b': {'staff_room': '직원', 'status': 'waiting'}}
+    assert order._review_slot_available(rows, '직원')
+    rows['c'] = {'staff_room': '직원', 'status': 'waiting'}
+    assert order._review_slot_available(rows, '직원')
+    rows.pop('c');rows['a']['status'] = 'request_unknown'
+    assert not order._review_slot_available(rows, '직원')
+
+
+def test_request_number_disambiguates_parallel_replies():
+    assert order.parse_command('ORD-A 1A', 'ORD-A', allow_short=False) == ('candidates', [(1, 0)])
+    assert order.parse_command('ORD-A 1 호접 화이트 8F', 'ORD-A', allow_short=False) == ('product', (1, '호접 화이트 8F'))
+    assert order.parse_command('확인', 'ORD-A', allow_short=False) is None
+    assert order.parse_command('ORD-B 확인', 'ORD-A', allow_short=False) is None
+
+def test_explicit_flower_family_excludes_same_name_other_flower():
+    item = {'raw_product': '카라멜', 'category': '카네이션', 'customer_key': None}
+    catalog = {'products': {'data': [
+        {'nenova_key': 2965, 'name': 'DAHLIA CHINA / 달리아 카라멜', 'category': '달리아'},
+        {'nenova_key': 777, 'name': 'CARNATION Caramel', 'category': '카네이션'}]}}
+    order._rematch_item(item, catalog)
+    assert item['product_key'] == 777
+    catalog['products']['data'].pop()
+    order._rematch_item(item, catalog)
+    assert not item['matched'] and item['product_key'] is None
+    assert 'DAHLIA' not in item['product']

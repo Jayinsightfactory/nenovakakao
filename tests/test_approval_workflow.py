@@ -55,12 +55,14 @@ def test_multiple_late_questions_to_delivery_and_receipts(tmp_path, monkeypatch,
     assert result['BBB222']['status'] == '승인거절'
     for _ in range(3):
         n.poll(histories.__getitem__, send, lambda: False, receipts_only=True)
-    assert len(sent) == (2 if uncertain else 3)
+    # Unknown delivery also emits an error notice; it must not resend the order.
+    assert len(sent) == 3
     assert all(r['status']=='sent' for r in n._rows().values() if r.get('kind')=='receipt')
     # Reload and replay exactly the same history: no second send or receipt.
     a.poll(histories.__getitem__, send, lambda: False, Mock())
     n.poll(histories.__getitem__, send, lambda: False, receipts_only=True)
-    assert len(sent) == (2 if uncertain else 3)
+    # Unknown delivery also emits an error notice; it must not resend the order.
+    assert len(sent) == 3
     from core.approval_progress import snapshot
     assert {r['stage'] for r in snapshot()} == ({'결과 확인 필요', '완료'} if uncertain else {'완료'})
 

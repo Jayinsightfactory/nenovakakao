@@ -25,10 +25,21 @@ def _activate_verified(window) -> None:
     # A background worker can be denied foreground activation even when
     # pygetwindow.activate() returns without an exception. An Alt transition
     # grants the normal Windows foreground handoff without minimizing Kakao.
-    pyautogui.press("alt")
-    win32gui.ShowWindow(window._hWnd, win32con.SW_RESTORE)
-    win32gui.SetForegroundWindow(window._hWnd)
-    time.sleep(0.3)
+    last_error = None
+    for _ in range(2):
+        # Activation APIs may raise even after focus changes. Only the actual
+        # foreground owner authorizes subsequent room input.
+        try:
+            pyautogui.press("alt")
+            win32gui.ShowWindow(window._hWnd, win32con.SW_RESTORE)
+            win32gui.SetForegroundWindow(window._hWnd)
+        except Exception as exc:
+            last_error = exc
+        time.sleep(0.3)
+        if _foreground_belongs_to(window._hWnd):
+            return
+    raise RuntimeError("카카오톡 대상 방 포커스 확인 실패: 입력·전송 차단") from last_error
+
 
 def open_unique_exact_room(title: str, *, allow_main_activation=True, require_foreground=False) -> int:
     candidates = [w for w in gw.getAllWindows() if w.visible and w.title == title and w.width > 300 and w.height > 300]

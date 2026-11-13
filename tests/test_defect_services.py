@@ -6,6 +6,11 @@ from core import defect_approval as d
 from tests.test_defect_approval import waiting
 
 
+@pytest.fixture(autouse=True)
+def isolated_config(tmp_path, monkeypatch):
+    monkeypatch.setattr(d, 'ROOT', tmp_path / 'requests')
+
+
 def receipt(adapter, row):
     return [{**item, 'deductionKey': n, 'sourceFileName': adapter.marker(row),
              'orderYear': 2026, 'orderWeek': '38', 'managerName': '박성수'}

@@ -36,13 +36,16 @@ def test_auth_failure_never_retried(monkeypatch):
 
 
 def test_main_window_requires_exact_unique_title(monkeypatch):
-    real = Mock(title='카카오톡', width=400, height=600)
-    other = Mock(title='카카오톡 도움말', width=1200, height=900)
+    real = Mock(title='카카오톡', width=400, height=600, _hWnd=1)
+    other = Mock(title='카카오톡 도움말', width=1200, height=900, _hWnd=2)
+    monkeypatch.setattr(windows, '_is_main_handle', lambda h: h in (1, 3))
+    monkeypatch.setattr('win32gui.IsWindowVisible', lambda h: True)
     monkeypatch.setattr(windows.gw, 'getWindowsWithTitle', lambda _: [other, real])
     assert windows._exact_main_window() is real
     monkeypatch.setattr(windows.gw, 'getWindowsWithTitle', lambda _: [other])
     with pytest.raises(RuntimeError): windows._exact_main_window()
-    monkeypatch.setattr(windows.gw, 'getWindowsWithTitle', lambda _: [real, real])
+    second = Mock(title='카카오톡', width=400, height=600, _hWnd=3)
+    monkeypatch.setattr(windows.gw, 'getWindowsWithTitle', lambda _: [real, second])
     with pytest.raises(RuntimeError): windows._exact_main_window()
 
 

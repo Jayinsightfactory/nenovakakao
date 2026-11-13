@@ -29,7 +29,16 @@ def recipient_for(event):
     return RECIPIENTS.get(event.get('sender_name', ''))
 
 def source_key(event):
-    return (event.get('sender_name'), event.get('timestamp'), clean_text(event.get('content', '')).split())
+    key = (event.get('sender_name'), event.get('timestamp'), clean_text(event.get('content', '')).split())
+    # Older requests have no occurrence_index and continue to identify the
+    # first matching message. Later identical messages in the same minute are
+    # distinct source events and must not be deduplicated against that first.
+    occurrence = event.get('occurrence_index')
+    try:
+        occurrence = int(occurrence)
+    except (TypeError, ValueError):
+        occurrence = 1
+    return (*key, occurrence) if occurrence > 1 else key
 
 def capture(event, cutoff, recipient, directory=None):
     stamp = timestamp(event.get('timestamp', ''))
@@ -159,6 +168,7 @@ def rematch(row, master, learned=None):
     result['customer'] = customer
     result['customer_candidates'] = customers
     products = _data(master, 'products')
+    origin_products = [p for p in products if not source.get('origin') or p.get('origin') == source['origin']]
     category = source.get('category')
     # Never silently accept the same variety name from another flower category.
     if category:
@@ -168,7 +178,10 @@ def rematch(row, master, learned=None):
             near = sorted(c for c in known if c.startswith(category) or category.startswith(c))
             if len(near) == 1:
                 category = near[0]
-        products = [p for p in products if p.get('category') == category]
+        products = [p for p in products if p.get('category') == category or (
+            category == '델피늄' and source.get('origin') == '중국'
+            and p.get('category') == '기타'
+            and re.match(r'^Delphinium\s+CHINA\s*/', p.get('name', ''), re.I))]
     if source.get('origin'):
         products = [p for p in products if p.get('origin') == source['origin']]
     products = deepcopy(products)
@@ -178,8 +191,29 @@ def rematch(row, master, learned=None):
     items = []
     vocabulary = {**PRODUCT_NAMES, **CATEGORY_NAMES.get(category, {}),
                   **ORIGIN_NAMES.get(source.get('origin'), {})}
+    if category == '델피늄' and source.get('origin') == '중국':
+        vocabulary.update({'화이트': 'Delphinium CHINA / 화이트 White',
+                           '화이트델피늄': 'Delphinium CHINA / 화이트 White'})
+    distribution = master.get('distribution', {})
+    periods = []
+    if customer and distribution.get('status') == 'available' and str(
+            distribution.get('customer_key')) == str(customer['nenova_key']):
+        from core.defect_distribution import scopes
+        expected = scopes(row)
+        periods = [p for y, w in expected for p in distribution.get('periods', [])
+                   if p.get('year') == y and p.get('week') == w]
+    result['distribution_lookup'] = distribution
     for item in source['items']:
         term = item['product_raw']
+        # A staff-specified catalog key is more precise than a broad category
+        # inferred from the original wording (e.g. 중국 안개 is filed as 기타).
+        if str(term).isdecimal():
+            chosen = [p for p in origin_products if str(p.get('nenova_key')) == str(term)]
+            if len(chosen) == 1:
+                items.append({**item, 'product': chosen[0], 'candidates': chosen,
+                              'default_size': None, 'matched_by': 'explicit_key',
+                              'distribution_evidence': None})
+                continue
         size = re.search(r'(\d+)\s*cm\b', term, re.I)
         explicit_key = any(str(p.get('nenova_key')) == term for p in products)
         query = re.sub(r'\d+\s*cm\b', '', term, flags=re.I).strip() if size else term
@@ -198,8 +232,39 @@ def rematch(row, master, learned=None):
                 query, size, products, category, learned, _data(master, 'products'))
             candidates = candidates or extra
             default_size = default_size or fallback_size
+        evidence = None
+        if not explicit_key:
+            for period in periods:
+                keys = set(map(str, period['product_keys']))
+                allocated = [p for p in products if str(p.get('nenova_key')) in keys]
+                cm = size[1] if size else '50'
+                allocated = [p for p in allocated if (
+                    re.search(r'(?<!\d)' + cm + r'\s*cm\b', p.get('name', ''), re.I)
+                    or (not size and not re.search(r'\d+\s*cm\b', p.get('name', ''), re.I)))]
+                chosen, options = match_one(term, allocated, vocabulary)
+                if not chosen:
+                    chosen, options, _, _ = _fallback_match(
+                        query, size, allocated, category, learned, allocated)
+                if chosen:
+                    product, candidates = chosen, options
+                    matched_by = 'customer_distribution'
+                    default_size = '50cm' if not size and re.search(
+                        r'(?<!\d)50\s*cm\b', chosen.get('name', ''), re.I) else None
+                    evidence = {'customer_key': customer['nenova_key'],
+                                'year': period['year'], 'week': period['week']}
+                    break
+        # Prefer source-period customer shipment evidence in the explanation,
+        # without turning an ambiguous name into a confirmed catalog key.
+        history_keys = {str(key) for period in periods for key in period['product_keys']}
+        candidates = sorted(candidates, key=lambda c: str(c.get('nenova_key')) not in history_keys)
+        candidate_history = {
+            str(c['nenova_key']): [f"{p['year']}년 {p['week']}차" for p in periods
+                                   if str(c['nenova_key']) in set(map(str, p['product_keys']))]
+            for c in candidates if str(c.get('nenova_key')) in history_keys}
         items.append({**item, 'product': product, 'candidates': candidates,
-                      'default_size': default_size, 'matched_by': matched_by})
+                      'candidate_history': candidate_history,
+                      'default_size': default_size, 'matched_by': matched_by,
+                      'distribution_evidence': evidence})
     result['items'] = items
     result['status'] = 'ready_question'
     result.pop('approved_revision', None)
@@ -251,14 +316,74 @@ def reconcile_question(path, history):
     return True
 
 
+def clarification_field(row):
+    source = row['extracted']
+    if not source.get('sequence'):
+        return 'sequence', None
+    if not row.get('customer'):
+        return ('full', None) if len(source.get('items', [])) > 1 else ('customer', None)
+    for index, item in enumerate(row.get('items', [])):
+        if not item.get('product'):
+            return 'product', index
+    return 'full', None
+
+
 def question(row):
-    from core.defect_scope import upload_scope
+    from core.staff_request_text import original_first
+    return original_first(row, _question_details(row))
+
+
+def _question_details(row):
+    if row.get('information_only'):
+        n = label(row)
+        source = row['extracted']
+        customer = (row.get('customer') or {}).get('name') or source.get('customer') or ''
+        items = row.get('items') or source['items']
+        summary = ' / '.join(f"{i['product_raw']} {i['quantity_raw']}{i['unit_raw']}" for i in items)
+        field, index = clarification_field(row)
+        if field == 'sequence':
+            prompt, example = '원래 몇 차수 물건인가요?\n등록은 카톡 작성 시점과 마감 여부를 확인해 등록 가능한 차수로 처리합니다.', f'{n} 39차'
+        elif field == 'customer':
+            candidates = row.get('customer_candidates') or []
+            if source.get('customer') and candidates:
+                names = list(dict.fromkeys(c['name'] for c in candidates))
+                prompt = '전산 업체를 골라주세요: ' + ' / '.join(names)
+                example = f'{n} {names[0]}'
+            else:
+                prompt, example = '어느 업체 불량인가요?', f'{n} 업체명'
+        elif field == 'product':
+            item = items[index]
+            if '주밀리아' in item['product_raw']:
+                prompt, example = '주밀리아 일반인가요, DY인가요?', f'{n} 일반'
+            else:
+                prompt, example = f"{item['product_raw']}의 정확한 품종·색상을 알려주세요.", f'{n} 품종명 색상'
+            candidates = item.get('candidates') or []
+            if candidates:
+                comparison = []
+                for candidate in candidates:
+                    key = str(candidate['nenova_key'])
+                    history = (item.get('candidate_history') or {}).get(key, [])
+                    basis = ' · 해당 업체 출고이력: ' + ', '.join(history) if history else ' · 해당 업체 거래이력 일치 미확인'
+                    origin = f" · {candidate['origin']}" if candidate.get('origin') else ''
+                    comparison.append(f"- [{key}] {candidate['name']}{origin}{basis}")
+                prompt = '구분이 필요한 전산 후보:\n' + '\n'.join(comparison) + '\n' + prompt
+                prompt += '\n후보가 맞지 않으면 실제 품종명·색상을 적어주세요.'
+                example = f"{n} 품목 {index+1}={candidates[0]['nenova_key']}"
+            else:
+                prompt = '원문에 맞는 전산 후보를 찾지 못했습니다.\n' + prompt
+        else:
+            prompt = '업체별 차수·품목·수량을 다시 적어주세요.'
+            example = f'{n} 원문 뒤에 수정 내용'
+        return f"{n} · {customer} {summary}\n{prompt}\n답장 예: {example}"
     customer = row.get('customer') or {}
     lines = [f"불량 확인 {label(row)} · {row['extracted']['sequence']} {customer.get('name') or row['extracted'].get('customer') or '거래처 확인 필요'}"]
     if row.get('replaces_label'):
         lines.append(f"이전 {row['replaces_label']} 대신 이 번호로 답해주세요.")
-    target = upload_scope(row)
-    lines.append(f"입력: {target['year']}년 {target['week']}차 (원문 다음 차수)")
+    # A clarification message can be sent before destination-period resolution:
+    # that resolution depends on the support registration ledger and is only
+    # required for submission. Requiring it here made unmatched requests fail
+    # before staff could answer, even though the question itself is valid.
+    lines.append('등록 차수: 카톡 작성 시점과 영업지원 전산등록 마감 여부 확인 후 결정')
     for index, item in enumerate(row.get('items', []), 1):
         product = item.get('product') or {}
         lines.append(f"{'원문' if len(row['items']) == 1 else str(index)+'. 원문'}: {item['product_raw']} {item['quantity_raw']}{item['unit_raw']}")
@@ -290,10 +415,42 @@ def apply_reply(row, event, later_event_ids):
             or event.get('sender_name') != result['recipient']):
         return result
     content = event.get('content', '').strip()
-    prefix = re.match(r'^'+re.escape(label(result))+r'\s*(?=맞아|승인|틀려|틀림|안함|안보내|품목|수량|거래처|차수|선택)', content)
+    if result.get('information_only'):
+        short = re.fullmatch(re.escape(label(result)) + r'\s+(.+)', content, re.S)
+        if short and not re.match(r'^(?:맞아|승인|틀려|틀림|안함|안보내|품목|수량|거래처|차수|선택|원문)(?:\s|=|$)', short[1]):
+            answer = short[1].strip()
+            field, index = clarification_field(result)
+            if field == 'sequence':
+                week = re.fullmatch(r'(\d{1,2}(?:-\d+)?)\s*차?', answer)
+                if week:
+                    content = label(result) + ' 차수=' + week[1]
+            elif field == 'customer':
+                content = label(result) + ' 거래처=' + answer
+            elif field == 'product':
+                item = result['items'][index]
+                if '주밀리아' in item['product_raw'] and answer.upper() in ('일반', 'DY'):
+                    options = [c for c in item.get('candidates', []) if
+                        bool(re.search(r'\bDY\b', c['name'], re.I)) == (answer.upper() == 'DY')]
+                    if len(options) != 1:
+                        return result
+                    answer = str(options[0]['nenova_key'])
+                content = f"{label(result)} 품목 {index+1}={answer}"
+    prefix = re.match(r'^'+re.escape(label(result))+r'\s*(?=맞아|승인|틀려|틀림|안함|안보내|품목|수량|거래처|차수|선택|원문)', content)
     if not prefix:
         return result
     command = content[prefix.end():].strip()
+    if command.startswith('원문 ') or command.startswith('원문\n'):
+        original = {**result['event'], 'content': command[2:].strip()}
+        parsed = extract(original)
+        if not parsed['items']:
+            return row
+        result['history'].append({'revision': result['revision'], 'extracted': deepcopy(result['extracted']),
+                                  'correction_event_id': eid})
+        result.update(extracted=parsed, revision=result['revision']+1, status='needs_match')
+        for key in ('question_event_id', 'approved_revision', 'approval_event_id', 'receipt_event_id'):
+            result.pop(key, None)
+        result['processed_replies'].append(eid)
+        return result
     simple_product = re.fullmatch(r'품목\s+(\S.*)', command)
     if simple_product and len(result.get('items',[]))==1 and not re.match(r'\d+\s*=',simple_product[1]):
         command = '품목 1=' + simple_product[1]
@@ -308,7 +465,7 @@ def apply_reply(row, event, later_event_ids):
     if field_edit or quantity_edit:
         from decimal import Decimal
         source = result['extracted']
-        if field_edit and field_edit[1] == '차수' and not re.fullmatch(r'(?:[1-9]|[1-4]\d|5[0-3])-\d+', field_edit[2]):
+        if field_edit and field_edit[1] == '차수' and not re.fullmatch(r'(?:[1-9]|[1-4]\d|5[0-3])(?:-\d+)?', field_edit[2]):
             return row
         if quantity_edit and (not 1 <= int(quantity_edit[1]) <= len(source['items']) or Decimal(quantity_edit[2]) <= 0):
             return row
@@ -350,6 +507,7 @@ def apply_reply(row, event, later_event_ids):
         # the matcher what that wording meant.
         corrected.setdefault('original_product_raw', corrected['product_raw'])
         corrected['product_raw'] = correction[2].strip()
+        result['extracted']['issues'] = [v for v in result['extracted']['issues'] if v != '품목 상세 확인 필요']
         result['revision'] += 1
         result['status'] = 'needs_match'
         result.pop('question_event_id', None)
@@ -365,10 +523,15 @@ def send_question(path, export, send, paused):
     row = load(path)
     if paused() or row['status'] != 'ready_question':
         return
+    # Scope is validated at submission. Clarification questions may themselves
+    # be needed to learn a missing sequence/customer/product; requiring a valid
+    # destination scope first prevented those questions and orphaned requests.
     before = export(row['recipient'])
     # Never reuse a numeric approval token, including after a correction. This
     # prevents a late reply to the previous question from approving a new match.
-    numbers = [int(r.get('reply_number',0)) for p in Path(path).parent.glob('*.json') for r in [load(p)]]
+    numbers = [int(value) for p in Path(path).parent.glob('*.json')
+               for value in [str(load(p).get('reply_number') or '')]
+               if re.fullmatch(r'[0-9]+', value)]
     row['reply_number'] = max(numbers, default=0) + 1
     payload = question(row)
     if paused():
@@ -378,6 +541,34 @@ def send_question(path, export, send, paused):
     save(path, row)
     send(row['recipient'], payload)
     reconcile_question(path, export(row['recipient']))
+
+
+def auto_authorized(row):
+    config_path = ROOT.parent / 'defect_config.json'
+    cfg = load(config_path) if config_path.exists() else {}
+    return (cfg.get('approval_mode') == 'automatic'
+            and row.get('authorization') == {'mode': 'automatic',
+                'policy_id': cfg.get('automatic_policy_id'), 'revision': row['revision']}
+            and bool(cfg.get('automatic_policy_id')))
+
+
+def prepare_automatic(path):
+    row = load(path)
+    cfg = load(ROOT.parent / 'defect_config.json')
+    if cfg.get('approval_mode') != 'automatic':
+        return
+    row['authorization'] = {'mode': 'automatic', 'policy_id': cfg['automatic_policy_id'],
+                            'revision': row['revision']}
+    # Source completeness and destination-period resolution are separate.
+    # submit() calls adapter.validate() to resolve the authoritative period
+    # before lookup/write. A missing server-derived scope is not something
+    # the sender can fix by repeating an already complete source message.
+    eligible = ready(row)
+    row['status'] = 'approved' if eligible else 'clarification_pending'
+    row['information_only'] = not eligible
+    row.pop('receipt_event_id', None)
+    row['approved_revision'] = row['revision']
+    save(path, row)
 
 
 def submit(path, adapter, paused):
@@ -390,19 +581,30 @@ def submit(path, adapter, paused):
     if paused() or row['status'] != 'approved' or row.get('approved_revision') != row['revision'] or not ready(row):
         return
     adapter.validate(row)  # must verify destination, fields, units and identity
-    existing = adapter.lookup(row)
+    from core.defect_services import DuplicateDefect
+    try:
+        existing = adapter.lookup(row)
+    except DuplicateDefect as exc:
+        if not auto_authorized(row):
+            raise
+        row.update(status='duplicate_source_hold', duplicate_receipt=exc.entries,
+                   duplicate_partial=exc.partial)
+        save(path, row)
+        return
     if existing is not None:
         if not adapter.matches(row, existing):
             raise ValueError('기존 등록 내용 불일치')
-        row.update(status='completed', receipt=existing)
+        row.update(status='completed', receipt=existing, completed_at=row.get('completed_at') or time.time())
         save(path, row)
         return
     if paused():
         return
+    from core.defect_scope import upload_scope
+    row['registration_scope'] = upload_scope(row)
     row['status'] = 'write_unknown'
     save(path, row)
     adapter.insert(row)
     receipt = adapter.lookup(row)
     if receipt is not None and adapter.matches(row, receipt):
-        row.update(status='completed', receipt=receipt)
+        row.update(status='completed', receipt=receipt, completed_at=time.time())
         save(path, row)

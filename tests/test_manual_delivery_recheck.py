@@ -20,12 +20,39 @@ def test_distinct_orders_not_treated_as_same_delivery(old,new):
     target={key:value.replace(old,new) for key,value in target.items()}
     assert not k.possible_manual_delivery(source,[target])
 
-def test_similar_manual_delivery_never_sends_missing_notice(case):
+def test_similar_manual_delivery_never_sends_missing_notice(case, monkeypatch):
     row,target,messages,send=case
     source,event=events()
+    monkeypatch.setattr(a.time, 'time', lambda: k.timestamp('2026년 9월 15일 오후 6:00').timestamp())
     row['event']=source;row['events']=[source];row['item_labels']=['가']
     k.save_json(k.STATE,{'s':{'status':'미응답 보류'}})
     target[:]=[event]
     run(row,messages,send)
     send.assert_not_called()
     assert row['item_review_holds']['0']['target_event_ids']==['t']
+
+
+def test_forwarded_wrapper_in_manual_candidate():
+    source,target=events()
+    target['content']='영업담당 - '+target['content']
+    assert k.possible_manual_delivery(source,[target]) == [target]
+
+
+def test_exact_text_on_previous_day_or_before_source_is_not_delivery():
+    source,target=events()
+    target['content']=source['content']
+    assert k.exact_delivery_candidates(source,[target]) == [target]
+    for stamp in ['2026년 9월 14일 오후 4:37','2026년 9월 15일 오후 4:35']:
+        assert k.exact_delivery_candidates(source,[dict(target,timestamp=stamp)]) == []
+
+
+def test_multi_item_split_is_review_only_not_whole_source_missing():
+    source={'content':'43-1 장미 추가\n미카엘\n화이트 2단\n핑크 1단',
+            'timestamp':'2026년 10월 23일 오후 1:00'}
+    target={'event_id':'partial','content':'43-1 장미 추가\n미카엘\n화이트 2단',
+            'timestamp':'2026년 10월 23일 오후 1:01'}
+    assert not k.exact_delivery_candidates(source,[target])
+    assert k.partial_manual_delivery(source,[target])==[target]
+    assert not k.partial_manual_delivery(source,[{**target,'content':target['content'].replace('미카엘','라움')}])
+    assert not k.partial_manual_delivery(source,[{**target,'content':target['content'].replace('2단','3단')}])
+    assert not k.partial_manual_delivery(source,[{**target,'timestamp':'2026년 10월 23일 오후 12:59'}])

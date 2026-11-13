@@ -37,7 +37,7 @@ NOISY_REPORTS = {'inbound_processed', 'archive_completed', 'forward_skipped'}
 ERROR_GUIDANCE = {
     'order_error': ('발주 답변 처리', '담당자의 품목·수량 수정 또는 등록 요청을 정상 반영하지 못했습니다.',
                     '해당 주문은 완료 처리하지 않았고 자동 등록도 중지했습니다.',
-                    '같은 주문을 다시 등록하지 말고 아래 요청번호로 현재 주문 확인 메시지를 기다려주세요.'),
+                    '같은 주문을 다시 등록하지 마세요. 아래 요청번호의 답변·전송·등록 이력 대조가 필요합니다. 매크로 정지 중에는 후속 메시지가 자동 발송되지 않습니다.'),
     'approval_error': ('추가취소 승인 처리', '승인 질문 전송 또는 승인 답변 확인 결과를 확정하지 못했습니다.',
                        '승인되지 않은 내용은 현장 추가취소방에 보내지 않았습니다.',
                        '중복 전송하지 말고 요청번호가 포함된 다음 안내를 확인해주세요.'),
@@ -199,8 +199,20 @@ def enqueue(category, request_id='', context=None):
         request_id = ''
     key = hashlib.sha256(f'{category}:{request_id}'.encode()).hexdigest()[:12]
     rows = _rows(); old = rows.get(key); now = time.time()
-    if old and (old['status'] != 'sent' or now - old['updated_at'] < COOLDOWN):
+    # A catalog outage is one incident until a successful refresh closes it.
+    if category == 'defect_master_error' and old:
+        if old.get('status') == 'sent':
+            return key
+        if old.get('status') == 'resolved':
+            old = None
+    # One notice per unresolved incident; elapsed time alone is not recovery.
+    if old:
         new_context = _safe_context(context)
+        if old.get('status') == 'needs_revalidation' and new_context:
+            old.update(status='queued', context=new_context, last_seen_at=now,
+                       updated_at=now, retry_at=0)
+            save(STATE, rows)
+            return key
         if new_context and old.get('status') == 'queued':
             old['context'] = new_context
             old['last_seen_at'] = now
@@ -232,7 +244,8 @@ def resolve(category, request_id=''):
     key = hashlib.sha256(f'{category}:{request_id}'.encode()).hexdigest()[:12]
     rows = _rows()
     row = rows.get(key)
-    if row and row.get('status') == 'queued':
+    if row and (row.get('status') == 'queued' or
+                (category == 'defect_master_error' and row.get('status') == 'sent')):
         row.update(status='resolved', updated_at=time.time())
         save(STATE, rows)
         _operator_event('incident_resolved', row)
@@ -254,6 +267,45 @@ def resolve_all(category):
 
 
 def message(row):
+    if row.get('category') == 'browser_login_needed':
+        if '자동 재로그인 실패' in (row.get('context') or {}).get('cause', ''):
+            return ('[네노바 자동 로그인 확인 필요]\n자동 재로그인이 완료되지 않아 웹 등록만 대기 중입니다.\n'
+                    '확인할 것: PC가 잠기거나 절전 상태인지, 크롬에 네노바 저장 로그인이 있는지 확인해주세요.\n'
+                    '10분 후 자동 재시도합니다. 직접 불량을 다시 등록하지 마세요.')
+        return ('[네노바 로그인 만료]\n웹 등록 작업만 대기 중입니다. 카톡 수집은 계속됩니다.\n'
+                '해야 할 일: 크롬의 네노바에서 한 번 로그인해주세요. 확장 재설치는 필요 없습니다.\n'
+                '로그인 후 자동으로 연결을 확인하고, 기존 등록 여부를 대조한 뒤 이어서 처리합니다. '
+                '같은 불량을 수동으로 다시 입력하지 마세요.')
+    if row.get('category') in ('defect_error', 'defect_master_error'):
+        context = row.get('context') or {}
+        cause = context.get('cause', '')
+        completed = context.get('stage') == 'completed'
+        if completed and any(part in cause.lower() for part in ('screenshot', '캡처', 'saved_row', 'activetab', 'tab_changed')):
+            state = '불량 등록은 완료됐고, 완료 화면 캡처만 실패했습니다.'
+            action = ('이미 등록된 건이므로 다시 등록하지 마세요. 프로그램에서 실제 등록 차수의 원장을 확인해 '
+                      '처리 확인 이미지를 전송합니다. 로그인이나 확장 새로고침을 반복할 필요는 없습니다.')
+        elif completed:
+            state = '불량 등록은 완료됐고, 완료 안내의 후속 처리를 확인 중입니다.'
+            action = '다시 등록하지 마세요. 프로그램에서 원장을 재조회한 뒤 완료 안내를 처리합니다.'
+        elif '401' in cause:
+            state = '네노바 로그인이 만료되어 웹 등록을 대기 중입니다.'
+            action = '크롬 네노바에 한 번 로그인해주세요. 연결 확인 후 기존 등록 여부부터 대조합니다. 다시 입력하지 마세요.'
+        elif row.get('category') == 'defect_master_error':
+            state = '품목 목록 갱신 연결을 점검해야 합니다.'
+            action = ('임재용대리가 불량을 다시 입력할 필요는 없습니다. 프로그램 관리자에게 '
+                      '“품목 목록 갱신 연결·인증 확인”을 요청해주세요. 마지막 정상 목록을 사용하며 등록 전 서버에서 다시 검증합니다.')
+        elif '브라우저' in cause or '세션' in cause:
+            state = '네노바 웹 연결 문제로 처리가 멈췄습니다.'
+            action = ('크롬에서 네노바에 로그인하고 영업수입불량차감 → 영업 입력을 열어주세요. '
+                      '네노바 불량 승인 연결 확장을 켜고 페이지를 새로고침해주세요. '
+                      '연결 후 기존 등록 내역부터 확인하므로 수동으로 중복 입력하지 마세요.')
+        else:
+            state = '불량 등록 완료 후 후속 처리 오류입니다.' if completed else '불량 처리 결과를 확인해야 합니다.'
+            action = ('아래 요청번호와 원문을 프로그램 관리자에게 전달해주세요. '
+                      '등록 여부를 확인하기 전에는 같은 건을 다시 입력하지 마세요.')
+        return (f"[불량 처리 안내]\n대상: {context.get('sender', '')} {context.get('preview', '')}\n"
+                f"현재 상태: {state}\n해야 할 일: {action}\n"
+                f"확인 내용: {cause}\n요청번호: {row.get('request_id') or row['id']}")
     if row.get('kind') == 'receipt':
         return f"[답변 처리 완료 {row['request_id']}]\n{row['result_text']}"
     if row.get('kind') == 'report':
@@ -287,6 +339,39 @@ def message(row):
             '이 메시지는 오류 알림이며 승인 요청이 아닙니다.')
 
 
+def recipient_for_notice(row):
+    from core.workflow_settings import config
+    if config().get('order_reports_only') and row.get('category', '').startswith(('order_', 'import_order_')):
+        return config().get('order_report_recipient', '임재용대리')
+    if not row.get('kind') and row.get('category') != 'approval_unanswered':
+        return '임재용대리'
+    return operator_name()
+
+
+def revalidate_queued_errors(rows):
+    """Old incidents require fresh failure evidence before chat delivery."""
+    changed = False
+    for entry in rows.values():
+        if entry.get('status') != 'queued' or entry.get('kind') or entry.get('category') == 'approval_unanswered':
+            continue
+        cause = entry.get('context', {}).get('cause', '')
+        if '카카오톡 메인 창을 유일하게 확인할 수 없음' in cause:
+            try:
+                from core.window_detector import _exact_main_window
+                _exact_main_window()
+            except Exception:
+                pass
+            else:
+                entry.update(status='resolved', updated_at=time.time(),
+                             resolution='현재 카카오톡 메인 창 신원 및 유일성 검증 성공')
+                changed = True
+                continue
+        if time.time() - entry.get('last_seen_at', entry.get('created_at', 0)) > 86400:
+            entry.update(status='needs_revalidation', updated_at=time.time())
+            changed = True
+    return changed
+
+
 def poll(export, send, paused, receipts_only=False):
     if paused(): return
     recipient = operator_name()
@@ -295,11 +380,20 @@ def poll(export, send, paused, receipts_only=False):
     if not receipts_only:
         collect_reports()
     rows = _rows()
+    if revalidate_queued_errors(rows):
+        save(STATE, rows)
     from core.keyword_approval import REQUESTS, question_hours_open
     from core.workflow_settings import config as workflow_config
+    if workflow_config().get('order_reports_only'):
+        for entry in rows.values():
+            if (entry.get('status') == 'queued' and entry.get('kind') != 'receipt'
+                    and entry.get('category') != 'approval_unanswered'
+                    and not entry.get('category', '').startswith(('order_', 'import_order_'))):
+                entry.update(status='local_only', updated_at=time.time())
+        save(STATE, rows)
     if not workflow_config().get('operator_reports_enabled', True):
         for entry in rows.values():
-            if entry.get('kind') != 'receipt' and entry.get('status') == 'queued':
+            if entry.get('kind') == 'report' and entry.get('status') == 'queued':
                 entry.update(status='local_only', updated_at=time.time())
         save(STATE, rows)
     from core import keyword_forward as k
@@ -320,11 +414,19 @@ def poll(export, send, paused, receipts_only=False):
         0 if r.get('kind') == 'receipt' else 3 if r.get('kind') == 'report'
         else 2 if r.get('category') == 'approval_unanswered' else 1,
         r['created_at']))
+    # Rate-limit chat alerts across request IDs, preserving all local incidents.
+    interval = max(0, float(workflow_config().get('error_notice_interval_sec', 0)))
+    last_error_sent = max((r.get('updated_at', 0) for r in rows.values()
+                           if not r.get('kind') and r.get('category') != 'approval_unanswered'
+                           and r.get('status') == 'sent'), default=0)
+    error_ready = time.time() - last_error_sent >= interval
     row = next((r for r in ordered if r['status'] == 'queued'
-                and (not receipts_only or r.get('kind') == 'receipt')
+                and (r.get('kind') or r.get('category') == 'approval_unanswered' or error_ready)
+                and (not receipts_only or r.get('kind') == 'receipt' or (not r.get('kind') and r.get('category') != 'approval_unanswered'))
                 and (r.get('category') != 'approval_unanswered' or reminder_ready)
                 and r.get('retry_at', 0) <= time.time()), None)
     if not row: return
+    recipient = recipient_for_notice(row)
     if row.get('kind') == 'report':
         from core.keyword_approval import has_pending_question
         if has_pending_question(): return
@@ -344,7 +446,7 @@ def poll(export, send, paused, receipts_only=False):
         save(STATE, rows)
         audit('error_notice_preflight_failed', '보고 담당자 알림 대기 · 60초 후 조회 재시도')
         return
-    if paused() or operator_name() != recipient: return
+    if paused() or recipient_for_notice(row) != recipient: return
     batch = [row]
     if row.get('kind') == 'receipt':
         batch = [r for r in ordered if r.get('kind') == 'receipt'
@@ -352,7 +454,8 @@ def poll(export, send, paused, receipts_only=False):
                  and r.get('retry_at', 0) <= time.time()][:14]
     elif row.get('kind') == 'report':
         batch = [r for r in ordered if r.get('kind') == 'report' and r['status'] == 'queued'
-                 and r.get('retry_at', 0) <= time.time()][:5]
+                 and r.get('retry_at', 0) <= time.time()
+                 and recipient_for_notice(r) == recipient][:5]
     elif row.get('category') == 'approval_unanswered':
         batch = [r for r in ordered if r.get('category') == 'approval_unanswered'
                  and r['status'] == 'queued' and r.get('retry_at', 0) <= time.time()][:14]
@@ -375,7 +478,7 @@ def poll(export, send, paused, receipts_only=False):
             entry['reminder_attempted_at'] = time.time()
     save(STATE, rows)  # crash or uncertain send must never replay
     try:
-        if operator_name() != recipient:
+        if recipient_for_notice(row) != recipient:
             from core.moyi_control import OperationPaused
             raise OperationPaused('보고 담당자 변경으로 전송 보류')
         send(recipient, payload)

@@ -6,6 +6,17 @@ import time
 from pathlib import Path
 
 
+def read(path):
+    """Windows scanners may briefly lock a freshly replaced snapshot."""
+    for attempt in range(8):
+        try:
+            return json.loads(Path(path).read_text(encoding='utf-8'))
+        except PermissionError:
+            if attempt == 7:
+                raise
+            time.sleep(0.025 * (attempt + 1))
+
+
 def save(path, value):
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)

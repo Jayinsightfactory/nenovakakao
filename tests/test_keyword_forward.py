@@ -148,11 +148,11 @@ class KeywordTests(unittest.TestCase):
         self.run_route(events)
         self.assertEqual(set(k.read_json(k.STATE, {})), {'3', '4', '5', '6', '7'})
 
-    def test_complete_message_requires_approval(self):
+    def test_completed_report_is_reviewed_not_requeued(self):
         self.run_route([self.event('장미 추가 완료')])
         self.send.assert_not_called()
-        self.assertEqual(k.read_json(k.STATE, {})['one']['status'], '승인요청 전송대기')
-        self.assertEqual(len(k.read_json(a.REQUESTS, {})), 1)
+        self.assertEqual(k.read_json(k.STATE, {})['one']['status'], '분류 검토 필요')
+        self.assertEqual(k.read_json(a.REQUESTS, {}), {})
 
     def test_quote_message_requires_approval(self):
         self.run_route([self.event('장미 추가 견적 요청')])
@@ -161,7 +161,7 @@ class KeywordTests(unittest.TestCase):
         self.assertEqual(len(k.read_json(a.REQUESTS, {})), 1)
 
     def test_both_approval_words_create_one_request(self):
-        self.run_route([self.event('장미 추가 견적 완료')])
+        self.run_route([self.event('장미 추가 견적 요청')])
         self.send.assert_not_called()
         self.assertEqual(len(k.read_json(a.REQUESTS, {})), 1)
 
@@ -178,7 +178,7 @@ class KeywordTests(unittest.TestCase):
         self.assertEqual(a.decision(before + [reply('new', a.APPROVER, '보내지마 ABC123')], row), '보내지마')
 
     def test_approval_request_and_accept_flow(self):
-        event = self.event('장미 추가 완료')
+        event = self.event('장미 추가 요청')
         self.run_route([event])
         rid = next(iter(k.read_json(a.REQUESTS, {})))
         histories = {a.APPROVER: a.APPROVER + ' 님과 카카오톡 대화\n--------------- 2026년 8월 26일 수요일 ---------------\n[직원] [오전 9:00] 안녕', '현장 추가취소방': self.history}
@@ -198,7 +198,7 @@ class KeywordTests(unittest.TestCase):
         self.assertEqual(len(sends), 2)
 
     def test_request_failure_is_not_resent(self):
-        self.run_route([self.event('장미 추가 완료')])
+        self.run_route([self.event('장미 추가 요청')])
         export = Mock(side_effect=lambda title: (
             a.APPROVER + ' 님과 카카오톡 대화' if title == a.APPROVER
             else title + ' 님과 카카오톡 대화'))
@@ -218,7 +218,7 @@ class KeywordTests(unittest.TestCase):
         self.assertEqual(len(row['events']), 5)
         self.assertIn('가 보내 나 안보내', a.request_message(row))
         self.assertIn('답하지 않은 건은 대기합니다', a.request_message(row))
-        self.run_route([self.event('다른 추가 완료', eid='next-scan')])
+        self.run_route([self.event('다른 추가 요청', eid='next-scan')])
         self.assertEqual(len(k.read_json(a.REQUESTS, {})), 2)
 
     def test_sales_backlog_is_bounded_and_continues_next_poll(self):
@@ -288,7 +288,7 @@ class KeywordTests(unittest.TestCase):
         self.send.assert_not_called()
         self.assertEqual(k.read_json(k.STATE, {})['one']['status'], '중복 생략')
         # A pending approval must not block regular forwarding.
-        self.run_route([self.event('다른 추가 완료', eid='pending')])
+        self.run_route([self.event('다른 추가 요청', eid='pending')])
         normal = self.event('장미 7박스 추가', eid='normal')
         after = self.history + '\n[나] [오전 9:12] 직원 - 장미 7박스 추가'
         self.run_route([normal])
@@ -297,7 +297,7 @@ class KeywordTests(unittest.TestCase):
         self.assertEqual(k.read_json(k.STATE, {})['normal']['status'], '전송 성공')
 
     def test_batch_exclusion_delivery_and_replay(self):
-        events = [self.event(f'장미 {i} 추가 완료', eid=str(i)) for i in range(3)]
+        events = [self.event(f'장미 {i} 추가 요청', eid=str(i)) for i in range(3)]
         self.run_route(events)
         rid = next(iter(k.read_json(a.REQUESTS, {})))
         histories = {a.APPROVER: a.APPROVER + ' 님과 카카오톡 대화\n--------------- 2026년 8월 26일 수요일 ---------------\n[직원] [오전 9:00] 안녕', '현장 추가취소방': self.history}
@@ -330,10 +330,10 @@ class KeywordTests(unittest.TestCase):
         self.assertEqual(len(sends), 3)
 
     def test_approved_duplicate_is_rechecked(self):
-        event = self.event('장미 추가 완료')
+        event = self.event('장미 추가 요청')
         self.run_route([event])
         a.route_status(event, '승인됨', 'test approval')
-        self.run_route([event], Mock(return_value=self.history + '\n[직원] [오전 9:09] 장미 추가 완료'))
+        self.run_route([event], Mock(return_value=self.history + '\n[직원] [오전 9:09] 장미 추가 요청'))
         self.send.assert_not_called()
         self.assertEqual(k.read_json(k.STATE, {})['one']['status'], '중복 생략')
 

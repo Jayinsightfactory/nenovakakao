@@ -47,63 +47,15 @@ def _parse_json(raw: str) -> list[dict]:
     return json.loads(raw)
 
 
-def _get_client():
-    """Anthropic 클라이언트 반환"""
-    import anthropic
-
-    api_key = os.getenv("ANTHROPIC_API_KEY")
-    if not api_key:
-        raise RuntimeError("ANTHROPIC_API_KEY가 .env에 설정되지 않았습니다.")
-    return anthropic.Anthropic(api_key=api_key)
-
-
 def scan_rooms_single(image_path: Path, max_retries: int = 3) -> list[dict]:
-    """단일 이미지에서 방 리스트 OCR (Claude Vision)"""
-    client = _get_client()
-
-    with open(image_path, "rb") as f:
-        image_data = base64.standard_b64encode(f.read()).decode("utf-8")
-
-    # 파일 확장자로 미디어 타입 결정
-    suffix = image_path.suffix.lower()
-    media_type = {"png": "image/png", "jpg": "image/jpeg", "jpeg": "image/jpeg"}.get(
-        suffix.lstrip("."), "image/png"
-    )
-
-    for attempt in range(max_retries):
-        try:
-            message = client.messages.create(
-                model=CLAUDE_MODEL,
-                max_tokens=4096,
-                messages=[
-                    {
-                        "role": "user",
-                        "content": [
-                            {
-                                "type": "image",
-                                "source": {
-                                    "type": "base64",
-                                    "media_type": media_type,
-                                    "data": image_data,
-                                },
-                            },
-                            {
-                                "type": "text",
-                                "text": PROMPT,
-                            },
-                        ],
-                    }
-                ],
-            )
-            return _parse_json(message.content[0].text)
-        except Exception as e:
-            if "rate" in str(e).lower() or "429" in str(e):
-                wait = 10 * (attempt + 1)
-                print(f"       [RATE LIMIT] {wait}초 대기 후 재시도 ({attempt + 1}/{max_retries})...")
-                time.sleep(wait)
-            else:
-                raise
-    raise RuntimeError(f"Claude API 호출 {max_retries}회 실패")
+    """Subscription CLI vision; no hidden paid API retry."""
+    from core.subscription_ai import ask
+    value = ask(PROMPT, {'task':'room_list'}, images=[image_path])
+    if not isinstance(value, list) or any(not isinstance(r, dict) or
+            not isinstance(r.get('name'), str) or type(r.get('unread')) is not int
+            or r['unread'] < 0 or type(r.get('order')) is not int for r in value):
+        raise ValueError('방 목록 JSON 형식 오류')
+    return value
 
 
 def scan_rooms_full(window, captures_dir: Path, max_pages: int = 20) -> list[dict]:

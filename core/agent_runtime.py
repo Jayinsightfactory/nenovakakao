@@ -8,7 +8,7 @@ from __future__ import annotations
 import json
 import threading
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable
 from core.moyi_control import OperationPaused
@@ -23,6 +23,7 @@ class Agent:
     next_at: float = 0.0
     runs: int = 0
     failures: int = 0
+    consecutive_failures: int = 0
 
 
 class AgentCoordinator:
@@ -51,14 +52,15 @@ class AgentCoordinator:
 
     def run_due(self):
         outcomes = []
+        queued_at = self.clock()
         for agent in self.due():
-            queued_at = self.clock()
             due_at = agent.next_at
             with self._executor:
                 started = self.clock()
                 self._append({'at': self.wall_clock(), 'agent': agent.name,
                               'priority': agent.priority, 'outcome': 'started'})
                 outcome, error_type, value = 'ok', '', None
+                callback_error_type = ''
                 try:
                     value = agent.operation()
                 except OperationPaused:
@@ -66,16 +68,32 @@ class AgentCoordinator:
                 except Exception as exc:
                     outcome, error_type = 'error', type(exc).__name__
                     agent.failures += 1
-                    self.on_error(agent, exc)
+                    agent.consecutive_failures += 1
+                    try:
+                        self.on_error(agent, exc)
+                    except Exception as callback_exc:
+                        # Reporting must not abort scheduling or lose the cooldown.
+                        callback_error_type = type(callback_exc).__name__
+                else:
+                    agent.consecutive_failures = 0
                 finished = self.clock()
             agent.runs += 1
-            agent.next_at = finished + agent.interval
+            delay = agent.interval
+            if outcome == 'error':
+                # Retry polling, never replay a transaction here. Keep the normal
+                # interval as a floor and cap exponential growth at five minutes.
+                delay = max(agent.interval, min(300.0, 30.0 *
+                            2 ** min(agent.consecutive_failures - 1, 4)))
+            agent.next_at = finished + delay
             record = {'at': self.wall_clock(), 'agent': agent.name,
                       'priority': agent.priority, 'outcome': outcome,
                       'queue_ms': round((started - queued_at) * 1000, 3),
                       'overdue_ms': round(max(0, started - due_at) * 1000, 3) if due_at else 0,
                       'duration_ms': round((finished - started) * 1000, 3),
-                      'error_type': error_type}
+                      'error_type': error_type,
+                      'callback_error_type': callback_error_type,
+                      'consecutive_failures': agent.consecutive_failures,
+                      'next_delay_sec': delay}
             self._append(record)
             outcomes.append((agent.name, outcome, value))
             if outcome == 'paused':
