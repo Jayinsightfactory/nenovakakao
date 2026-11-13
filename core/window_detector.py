@@ -27,12 +27,7 @@ def _restore_hidden_kakaotalk() -> None:
         import win32gui
     except ImportError:
         return
-    handles: list[int] = []
-    win32gui.EnumWindows(
-        lambda hwnd, found: found.append(hwnd)
-        if win32gui.GetWindowText(hwnd) == KAKAOTALK_TITLE else None,
-        handles,
-    )
+    handles = [_exact_main_window()._hWnd]
     for hwnd in handles:
         if not win32gui.IsWindowVisible(hwnd) or win32gui.IsIconic(hwnd):
             win32gui.ShowWindow(hwnd, win32con.SW_RESTORE)
@@ -43,20 +38,28 @@ def _restore_hidden_kakaotalk() -> None:
 KAKAOTALK_TITLE = "카카오톡"
 
 
+def _is_main_handle(hwnd):
+    import win32gui
+    import win32process
+    import psutil
+    try:
+        return (win32gui.GetWindowText(hwnd) == KAKAOTALK_TITLE
+                and win32gui.GetClassName(hwnd) == 'EVA_Window_Dblclk'
+                and not win32gui.GetWindow(hwnd, 4)
+                and psutil.Process(win32process.GetWindowThreadProcessId(hwnd)[1]).name().lower() == 'kakaotalk.exe')
+    except (OSError, psutil.Error):
+        return False
+
+
 def _exact_main_window():
-    windows = [w for w in gw.getWindowsWithTitle(KAKAOTALK_TITLE)
-               if w.title == KAKAOTALK_TITLE and w.width > 0 and w.height > 0]
-    if len(windows) > 1:
-        # 2개 이상(트레이 복원 잔상·숨은 사본)이면 실제 메인창 클래스 + 보이는 창으로 좁힌다
-        try:
-            import win32gui
-            narrowed = [w for w in windows
-                        if win32gui.GetClassName(w._hWnd) == 'EVA_Window_Dblclk'
-                        and win32gui.IsWindowVisible(w._hWnd) and not win32gui.IsIconic(w._hWnd)]
-            if len(narrowed) == 1:
-                windows = narrowed
-        except Exception:
-            pass
+    import win32gui
+    unique = {w._hWnd: w for w in gw.getWindowsWithTitle(KAKAOTALK_TITLE)
+              if w.title == KAKAOTALK_TITLE and w.width > 0 and w.height > 0
+              and _is_main_handle(w._hWnd)}
+    windows = list(unique.values())
+    visible = [w for w in windows if win32gui.IsWindowVisible(w._hWnd)]
+    if visible:
+        windows = visible
     if len(windows) != 1:
         raise RuntimeError(f'카카오톡 메인 창을 유일하게 확인할 수 없음: {len(windows)}개')
     return windows[0]
@@ -191,7 +194,12 @@ def activate_kakaotalk() -> KakaoWindow:
         pyautogui.press('alt')
         win32gui.SetWindowPos(main._hWnd, win32con.HWND_TOP, 0, 0, 0, 0,
                              win32con.SWP_NOMOVE | win32con.SWP_NOSIZE)
-        win32gui.SetForegroundWindow(main._hWnd)
+        try:
+            win32gui.SetForegroundWindow(main._hWnd)
+        except Exception:
+            # A Windows error is not proof of focus failure; the verification
+            # below still blocks all input unless the correct window owns it.
+            pass
         time.sleep(0.3)
     if not _wait_for_foreground(main._hWnd):
         raise RuntimeError('카카오톡 메인 창 포커스 확인 실패: 검색 차단')

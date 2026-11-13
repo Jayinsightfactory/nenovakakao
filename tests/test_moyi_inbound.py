@@ -68,6 +68,23 @@ second line
         self.assertEqual(first[0]["event_id"], second[0]["event_id"])
         self.assertNotEqual(first[0]["event_id"], first[1]["event_id"])
 
+    def test_parse_export_keeps_identical_same_minute_messages_distinct(self):
+        text = """room 님과 카카오톡 대화
+--------------- 2026년 10월 27일 화요일 ---------------
+[정재훈] [오전 10:04] 43-1 카네이션 SP믹스 15단
+검증꽃집
+[정재훈] [오전 10:04] 43-1 카네이션 SP믹스 15단
+검증꽃집
+"""
+        first = parse_export(text, "binding")
+        second = parse_export(text, "binding")
+        self.assertEqual(len(first), 2)
+        self.assertNotEqual(first[0]["event_id"], first[1]["event_id"])
+        self.assertEqual(first[0]["event_id"], second[0]["event_id"])
+        self.assertEqual(first[1]["event_id"], second[1]["event_id"])
+        self.assertNotIn("occurrence_index", first[0])
+        self.assertEqual(first[1]["occurrence_index"], 2)
+
     def test_room_without_unread_badge_is_not_opened(self):
         with TemporaryDirectory() as tmp, patch.object(inbound, "STATE_FILE", Path(tmp) / "state.json"):
             inbound._save_state({"binding": ["known"]})
@@ -229,3 +246,71 @@ second line
 
 if __name__ == "__main__":
     unittest.main()
+
+def test_sales_raw_periodic_scan_ignores_cleared_unread_badge():
+    assert inbound._sales_raw_scan_due('영업방', 'sales', {}, 1000)
+    state = {'_sales_raw_scanned_at': {'sales': 1000}}
+    assert not inbound._sales_raw_scan_due('영업방', 'sales', state, 1299)
+    assert inbound._sales_raw_scan_due('영업방', 'sales', state, 1300)
+    assert not inbound._sales_raw_scan_due('수입방', 'sales', {}, 1300)
+    with patch('core.keyword_forward.config', return_value={'target': '현장 추가취소방'}):
+        assert inbound._sales_raw_scan_due('현장 추가취소방', 'target', {}, 1300)
+        assert not inbound._sales_raw_scan_due('현장 추가취소방', 'target',
+                    {'_sales_raw_scanned_at': {'target': 1200}}, 1300)
+
+
+def test_deferred_file_is_durable_and_does_not_block_later_text(tmp_path):
+    import json
+    rooms = Mock()
+    rooms.json.return_value = {'items': [{'room_binding_id':'binding','exact_title':'room'}]}
+    events=[{'event_id':'known','content':'known','timestamp':'t','sender_name':'A'},
+            {'event_id':'file','content':'파일: order.xlsx','timestamp':'t','sender_name':'A'},
+            {'event_id':'text','content':'노비아 2박스','timestamp':'t','sender_name':'A'}]
+    with patch.object(inbound,'STATE_FILE',tmp_path/'state.json'), \
+         patch('core.deferred_files.QUEUE',tmp_path/'files'), \
+         patch.object(inbound,'OUTBOUND_JOURNAL',tmp_path/'journal.jsonl'), \
+         patch.object(inbound.requests,'get',return_value=rooms), \
+         patch.object(inbound.requests,'post') as post, \
+         patch.object(inbound,'has_unread_exact_room',return_value=True), \
+         patch.object(inbound,'export_exact_room',return_value='export'), \
+         patch.object(inbound,'parse_export',return_value=events), \
+         patch.object(inbound,'_find_local_kakao_file') as find, \
+         patch.object(inbound,'_collect_file_files') as collect:
+        inbound._save_state({'binding':['known']})
+        result=inbound.poll_once('https://example.test','secret',defer_files=True)
+        assert result['sent']==1
+        find.assert_not_called(); collect.assert_not_called()
+        assert [c.kwargs['json']['event_id'] for c in post.call_args_list if c.args[0].endswith('/inbound')]==['text']
+        assert 'file' in inbound._load_state()['binding']
+    queued=list((tmp_path/'files').glob('*.json'))
+    assert len(queued)==1
+    assert json.loads(queued[0].read_text(encoding='utf-8'))['event']==events[1]
+
+
+def test_sales_raw_backlog_is_queued_before_business_failure(tmp_path):
+    from core import keyword_forward, mindmap_sink
+    events = [{'event_id': 'known', 'content': 'baseline'}] + [
+        {'event_id': f'new-{i}', 'content': '잔량 또는 답장', 'sender_name': 'A', 'timestamp': 't'}
+        for i in range(12)
+    ]
+    rooms = Mock()
+    rooms.json.return_value = {'items': [{'room_binding_id': 'sales', 'exact_title': '영업방'}]}
+    with patch.object(inbound, 'STATE_FILE', tmp_path / 'state.json'), \
+         patch.object(inbound.requests, 'get', return_value=rooms), \
+         patch.object(inbound.requests, 'post'), \
+         patch.object(inbound, 'has_unread_exact_room', return_value=False), \
+         patch.object(inbound, 'export_exact_room', return_value='export'), \
+         patch.object(inbound, 'parse_export', return_value=events), \
+         patch.object(mindmap_sink, 'enqueue_events') as enqueue, \
+         patch.object(keyword_forward, 'config', return_value={'enabled': True, 'source': '영업방'}), \
+         patch.object(keyword_forward, 'process_source', side_effect=RuntimeError('target unavailable')):
+        inbound._save_state({'sales': ['known']})
+        try:
+            inbound.poll_once('https://example.test', 'secret', only_title='영업방', defer_archive=True, max_events=5)
+        except RuntimeError as exc:
+            assert str(exc) == 'target unavailable'
+        else:
+            raise AssertionError('expected business failure')
+        assert len(enqueue.call_args.args[2]) == 12
+        assert inbound._load_state()['sales'] == ['known']
+        assert 'sales' in inbound._load_state()['_needs_rescan']

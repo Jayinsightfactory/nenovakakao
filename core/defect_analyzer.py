@@ -386,20 +386,6 @@ def _parse_variety_or_customer(line: str, report: DefectReport) -> None:
 # Gemini Vision 이미지 분석
 # ──────────────────────────────────────────────
 
-def _load_gemini_key() -> str:
-    """GEMINI_API_KEY를 .env에서 로드."""
-    key = os.environ.get("GEMINI_API_KEY", "")
-    if key:
-        return key
-    env_path = Path(__file__).parent.parent / ".env"
-    if env_path.exists():
-        for raw in env_path.read_text(encoding="utf-8").splitlines():
-            line = raw.strip()
-            if line.startswith("GEMINI_API_KEY="):
-                return line.split("=", 1)[1].strip()
-    return ""
-
-
 def _encode_image_base64(image_path: str) -> tuple[str, str]:
     """이미지 파일을 base64로 인코딩. (data, mime_type) 반환."""
     p = Path(image_path)
@@ -454,99 +440,20 @@ JSON만 출력하세요. 추가 설명 불필요."""
 
 
 def analyze_defect_image(image_path: str) -> ImageAnalysisResult:
-    """
-    단일 이미지를 Gemini Vision으로 분석한다.
-
-    API 키가 없거나 호출 실패 시 mock 결과를 반환한다.
-    """
-    api_key = _load_gemini_key()
-
-    if not api_key:
-        logger.warning("GEMINI_API_KEY 미설정 — mock 결과 반환")
-        return _mock_analysis(image_path)
-
-    if not Path(image_path).exists():
-        logger.error("이미지 파일 없음: %s", image_path)
-        return ImageAnalysisResult(description=f"파일 없음: {image_path}")
-
+    """Subscription CLI image analysis; failures are explicitly unanalysed."""
+    from core.subscription_ai import ask
     try:
-        return _call_gemini_vision(api_key, image_path)
-    except Exception as e:
-        logger.error("Gemini Vision 호출 실패: %s — mock 결과 반환", e)
-        return _mock_analysis(image_path)
-
-
-def _call_gemini_vision(api_key: str, image_path: str) -> ImageAnalysisResult:
-    """Gemini 2.5 Flash API를 직접 호출한다 (requests 사용)."""
-    import requests
-
-    img_data, mime_type = _encode_image_base64(image_path)
-
-    url = (
-        "https://generativelanguage.googleapis.com/v1beta/models/"
-        "gemini-2.5-flash:generateContent"
-        f"?key={api_key}"
-    )
-
-    payload = {
-        "contents": [
-            {
-                "parts": [
-                    {"text": _build_vision_prompt()},
-                    {
-                        "inline_data": {
-                            "mime_type": mime_type,
-                            "data": img_data,
-                        }
-                    },
-                ]
-            }
-        ],
-        "generationConfig": {
-            "temperature": 0.2,
-            "maxOutputTokens": 512,
-        },
-    }
-
-    resp = requests.post(url, json=payload, timeout=30)
-    resp.raise_for_status()
-    data = resp.json()
-
-    # Gemini 응답에서 텍스트 추출
-    text = ""
-    try:
-        text = data["candidates"][0]["content"]["parts"][0]["text"]
-    except (KeyError, IndexError):
-        logger.error("Gemini 응답 파싱 실패: %s", json.dumps(data, ensure_ascii=False)[:500])
-        return ImageAnalysisResult(
-            description="API 응답 파싱 실패",
-            raw_response=json.dumps(data, ensure_ascii=False)[:1000],
-        )
-
-    # JSON 추출 (코드 블록 안에 있을 수 있음)
-    json_text = text.strip()
-    if json_text.startswith("```"):
-        # ```json ... ``` 형태 처리
-        json_text = re.sub(r"^```(?:json)?\s*", "", json_text)
-        json_text = re.sub(r"\s*```$", "", json_text)
-
-    try:
-        parsed = json.loads(json_text)
-    except json.JSONDecodeError:
-        logger.error("Gemini JSON 파싱 실패: %s", json_text[:300])
-        return ImageAnalysisResult(
-            description=text[:200],
-            raw_response=text,
-        )
-
-    return ImageAnalysisResult(
-        flower_type=parsed.get("flower_type", ""),
-        defect_type=parsed.get("defect_type", ""),
-        severity=int(parsed.get("severity", 0)),
-        description=parsed.get("description", ""),
-        confidence=float(parsed.get("confidence", 0)),
-        raw_response=text,
-    )
+        parsed = ask(_build_vision_prompt(), {'task':'defect_image'}, images=[image_path])
+        severity, confidence = parsed.get('severity'), parsed.get('confidence')
+        if type(severity) is not int or not 1 <= severity <= 5 or type(confidence) not in (int,float) or not 0 <= confidence <= 1:
+            raise ValueError('불량 사진 응답 형식 오류')
+        return ImageAnalysisResult(flower_type=parsed.get('flower_type',''),
+            defect_type=parsed.get('defect_type',''), severity=severity,
+            description=parsed.get('description',''), confidence=confidence,
+            raw_response=json.dumps(parsed,ensure_ascii=False))
+    except Exception as exc:
+        logger.warning('구독 CLI 이미지 분석 보류: %s', type(exc).__name__)
+        return ImageAnalysisResult(description='[분석 미수행] CLI 확인 필요', confidence=0, severity=0)
 
 
 def _mock_analysis(image_path: str) -> ImageAnalysisResult:

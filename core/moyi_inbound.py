@@ -61,10 +61,25 @@ def parse_export(text: str, binding_id: str) -> list[dict]:
             current["content"] += "\n" + raw_line
     if current:
         events.append(current)
+    # Kakao's text export timestamps only have minute precision. Two separate,
+    # identical messages from one sender in the same minute therefore used to
+    # receive the same event_id and be collapsed by defect_approval.source_key.
+    # Keep the legacy ID for the first occurrence, then give later identical
+    # occurrences a deterministic ordinal so existing request IDs stay stable.
+    from core.defect_deduction_parser import clean_text
+    occurrences: dict[tuple[str, str, tuple[str, ...]], int] = {}
     for event in events:
+        source_signature = (event["timestamp"], event["sender_name"],
+                            tuple(clean_text(event["content"]).split()))
+        occurrence = occurrences.get(source_signature, 0) + 1
+        occurrences[source_signature] = occurrence
+        if occurrence > 1:
+            event["occurrence_index"] = occurrence
         identity = "\x1f".join(
             (binding_id, event["timestamp"], event["sender_name"], event["content"])
         )
+        if occurrence > 1:
+            identity += f"\x1foccurrence:{occurrence}"
         event["event_id"] = "kakao_" + hashlib.sha256(identity.encode()).hexdigest()
     return events
 
@@ -170,6 +185,64 @@ def _visible_dialogs_for_process(process_id: int) -> set[int]:
     return dialogs
 
 
+def _cancel_blocking_kakao_save_as_dialog() -> bool:
+    """Cancel one stale Kakao Save As modal before trying to focus a room.
+
+    A paused worker can leave the native Save As dialog open. Kakao disables
+    every chat window while it is open, so attempting to activate another
+    room fails before the normal export preflight can identify the modal.
+    This path only cancels an exact, visible Kakao-owned Save As dialog whose
+    owner is a disabled Kakao chat window. It never clicks Save/OK and never
+    types into the dialog. Any ambiguity remains fail-closed.
+    """
+    candidates = []
+
+    def collect(hwnd: int, _extra: object) -> None:
+        if (not win32gui.IsWindowVisible(hwnd)
+                or win32gui.GetClassName(hwnd) != '#32770'
+                or win32gui.GetWindowText(hwnd) not in ('다른 이름으로 저장', 'Save As')):
+            return
+        owner = win32gui.GetWindow(hwnd, win32con.GW_OWNER)
+        if not owner:
+            return
+        _, dialog_pid = win32process.GetWindowThreadProcessId(hwnd)
+        _, owner_pid = win32process.GetWindowThreadProcessId(owner)
+        if dialog_pid == owner_pid:
+            candidates.append((hwnd, owner, dialog_pid))
+
+    win32gui.EnumWindows(collect, None)
+    if not candidates:
+        return False
+    if len(candidates) != 1:
+        raise RuntimeError(f'Kakao stale Save As dialog is ambiguous: {len(candidates)} dialogs')
+
+    dialog, owner, process_id = candidates[0]
+    if (not win32gui.IsWindowVisible(owner)
+            or win32gui.GetClassName(owner) != 'EVA_Window_Dblclk'
+            or not win32gui.GetWindowText(owner)
+            or win32gui.IsWindowEnabled(owner)):
+        raise RuntimeError('Kakao Save As dialog owner is not a verified blocked chat window')
+    cancel = win32gui.GetDlgItem(dialog, win32con.IDCANCEL)
+    if not cancel or win32gui.GetClassName(cancel) != 'Button':
+        raise RuntimeError('Kakao Save As cancel button was not found; room input remains blocked')
+
+    _assert_export_running()
+    win32api.SendMessage(cancel, win32con.BM_CLICK, 0, 0)
+    deadline = time.monotonic() + 2.0
+    while time.monotonic() < deadline:
+        _assert_export_running()
+        if (not win32gui.IsWindow(dialog) or not win32gui.IsWindowVisible(dialog)):
+            if win32gui.IsWindowEnabled(owner):
+                return True
+            # Kakao re-enables the owner asynchronously after the native
+            # dialog disappears; keep verifying instead of racing that UI
+            # transition and reporting a false failure.
+        time.sleep(0.1)
+    raise RuntimeError(
+        f'Kakao Save As cancel was not verified; owner={win32gui.GetWindowText(owner)}; '
+        f'process={process_id}; no save or send attempted')
+
+
 def _child_controls(hwnd: int) -> dict[str, int]:
     controls = {}
     def collect(child: int, _extra: object) -> None:
@@ -178,6 +251,22 @@ def _child_controls(hwnd: int) -> dict[str, int]:
             controls.setdefault(text, child)
     win32gui.EnumChildWindows(hwnd, collect, None)
     return controls
+
+
+def _owned_export_notices(chat_hwnd: int, process_id: int, include_custom=False) -> set[int]:
+    """Find named export notices even when another application has focus."""
+    notices = set()
+    def collect(hwnd, _):
+        if (win32gui.IsWindowVisible(hwnd)
+                and win32process.GetWindowThreadProcessId(hwnd)[1] == process_id
+                and win32gui.GetWindow(hwnd, win32con.GW_OWNER) == chat_hwnd
+                and (win32gui.GetWindowText(hwnd) in ('대화 내보내기', 'Export Conversation')
+                     or (include_custom and not win32gui.GetWindowText(hwnd)
+                         and win32gui.GetClassName(hwnd) == 'EVA_Window_Dblclk'
+                         and not win32gui.IsWindowEnabled(chat_hwnd)))):
+            notices.add(hwnd)
+    win32gui.EnumWindows(collect, None)
+    return notices
 
 
 def _save_export_dialog(chat_hwnd: int, title: str, dialogs_before: set[int], timeout: float = 8.0) -> None:
@@ -233,13 +322,15 @@ def _save_export_dialog(chat_hwnd: int, title: str, dialogs_before: set[int], ti
 
 def _dismiss_export_complete_dialog(chat_hwnd: int, title: str,
                                     dialogs_before: set[int], foreground_before: int = 0,
-                                    timeout: float = 3.0) -> None:
+                                    timeout: float = 3.0,
+                                    allow_exact_target_escape: bool = False) -> None:
     """Dismiss only Kakao's verified export-complete dialog for this room."""
     _, process_id = win32process.GetWindowThreadProcessId(chat_hwnd)
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
         _assert_export_running()
         dialog_handles = _visible_dialogs_for_process(process_id) - dialogs_before
+        dialog_handles.update(_owned_export_notices(chat_hwnd, process_id) - dialogs_before)
         foreground = win32gui.GetForegroundWindow()
         foreground_process = 0
         if foreground and foreground != chat_hwnd:
@@ -248,13 +339,21 @@ def _dismiss_export_complete_dialog(chat_hwnd: int, title: str,
                 dialog_handles.add(foreground)
         candidates = [dialog for dialog in dialog_handles
                       if win32gui.GetWindowText(dialog) in ('대화 내보내기', 'Export Conversation')]
-        custom_completion = (not candidates and foreground and foreground != chat_hwnd
+        owned_custom = (_owned_export_notices(chat_hwnd, process_id, include_custom=True)
+                        - dialogs_before - {chat_hwnd, foreground_before})
+        owned_custom = {h for h in owned_custom if not win32gui.GetWindowText(h)}
+        custom_completion = False
+        if not candidates and owned_custom:
+            candidates = list(owned_custom)
+            custom_completion = True
+        foreground_custom = (not candidates and foreground and foreground != chat_hwnd
                 and foreground != foreground_before
                 and foreground_process == process_id
                 and not win32gui.IsWindowEnabled(chat_hwnd)
                 and win32gui.GetClassName(foreground) == 'EVA_Window_Dblclk')
-        if custom_completion:
+        if foreground_custom:
             candidates = [foreground]
+            custom_completion = True
         if len(candidates) > 1:
             raise RuntimeError('Kakao export completion dialog is ambiguous')
         if len(candidates) == 1:
@@ -271,6 +370,9 @@ def _dismiss_export_complete_dialog(chat_hwnd: int, title: str,
                 win32api.SendMessage(button, win32con.BM_CLICK, 0, 0)
             elif custom_completion:
                 win32gui.SetForegroundWindow(dialog)
+                time.sleep(.1)
+                if win32gui.GetForegroundWindow() != dialog:
+                    raise RuntimeError('대화 저장 완료창 초점 복구 실패; Enter 차단')
                 pyautogui.press('enter')
             else:
                 raise RuntimeError('Kakao export completion OK button was not found')
@@ -284,6 +386,9 @@ def _dismiss_export_complete_dialog(chat_hwnd: int, title: str,
                 # confirm once before declaring the export failed.
                 if custom_completion and not fallback_sent:
                     win32gui.SetForegroundWindow(dialog)
+                    time.sleep(.1)
+                    if win32gui.GetForegroundWindow() != dialog:
+                        raise RuntimeError('대화 저장 완료창 초점 복구 실패; Enter 차단')
                     pyautogui.press('enter')
                     fallback_sent = True
                 time.sleep(0.1)
@@ -295,6 +400,24 @@ def _dismiss_export_complete_dialog(chat_hwnd: int, title: str,
         return
     foreground = win32gui.GetForegroundWindow()
     _, foreground_process = win32process.GetWindowThreadProcessId(foreground) if foreground else (0, 0)
+    # Some Kakao builds leave the exact chat HWND as foreground while an
+    # unenumerable, textless modal keeps it disabled. Escape cancels rather
+    # than confirms or sends; use it only when the exact target identity is
+    # independently verified, then require the target to become enabled.
+    if (allow_exact_target_escape and foreground == chat_hwnd
+            and foreground_process == process_id
+            and win32gui.GetWindowText(chat_hwnd) == title
+            and win32gui.GetClassName(chat_hwnd) == 'EVA_Window_Dblclk'):
+        _assert_export_running()
+        pyautogui.press('esc')
+        settle_deadline = time.monotonic() + min(timeout, 1.0)
+        while time.monotonic() < settle_deadline:
+            _assert_export_running()
+            if (win32gui.IsWindowEnabled(chat_hwnd)
+                    and win32gui.GetWindowText(chat_hwnd) == title
+                    and win32gui.GetForegroundWindow() == chat_hwnd):
+                return
+            time.sleep(0.1)
     raise RuntimeError(
         f'대화 저장 완료 안내 확인 실패: {title}; '
         f'foreground={win32gui.GetWindowText(foreground) if foreground else "없음"}; '
@@ -313,12 +436,15 @@ def has_unread_exact_room(title: str) -> bool:
     image_name = hashlib.sha256(title.encode()).hexdigest()[:16] + ".png"
     image_path = capture_room_list(window, ROOT / "captures" / "inbound_unread" / image_name)
     # Search results live at the top; the bottom Kakao ad also contains red.
-    badges = detect_badge_positions(image_path, y_end_ratio=0.35)
-    clear_room_search(window)
-    switch_to_chat_tab(window)
-    if len(badges) > 1:
-        raise RuntimeError(f"unread badge conflict for exact room: {len(badges)} matches")
-    return len(badges) == 1
+    try:
+        badges = detect_badge_positions(image_path, y_end_ratio=0.35)
+    finally:
+        clear_room_search(window)
+        switch_to_chat_tab(window)
+    # Red clusters are only a collection hint, never a room identity or click
+    # target. Multiple clusters may be unrelated search results. Request an
+    # export through open_unique_exact_room, which still rejects ambiguity.
+    return bool(badges)
 
 
 def _open_friend_once(title, retry=False):
@@ -388,6 +514,7 @@ def _assert_export_target(hwnd: int, title: str) -> None:
 def _export_exact_room(title: str) -> str:
     """Open one exact room, export its text, and return the UTF-8 content."""
     _assert_export_running()
+    _cancel_blocking_kakao_save_as_dialog()
     # Recursive file discovery may take seconds. Do it before taking focus.
     before = _txt_files()
     _assert_export_running()
@@ -403,7 +530,8 @@ def _export_exact_room(title: str) -> str:
         # Ctrl+S safety gate; unrelated dialogs remain blocked.
         if not win32gui.IsWindowEnabled(hwnd):
             _dismiss_export_complete_dialog(
-                hwnd, title, set(), foreground_before=hwnd, timeout=1.0
+                hwnd, title, set(), foreground_before=hwnd, timeout=1.0,
+                allow_exact_target_escape=True,
             )
         _assert_export_target(hwnd, title)
         pyautogui.hotkey("ctrl", "s")
@@ -420,7 +548,10 @@ def _export_exact_room(title: str) -> str:
             raise RuntimeError("KakaoTalk export file was not created")
         latest = max(candidates, key=lambda path: after[path])
         content = latest.read_text(encoding="utf-8")
-        _dismiss_export_complete_dialog(hwnd, title, dialogs_before, foreground_before)
+        _dismiss_export_complete_dialog(
+            hwnd, title, dialogs_before, foreground_before,
+            allow_exact_target_escape=True,
+        )
         return content
     finally:
         from core.moyi_control import is_paused
@@ -498,21 +629,27 @@ def _find_local_kakao_file(name: str) -> Path:
 
 
 def order_feed_events(title: str, events: list[dict]) -> list[dict]:
-    """Limit the sales room's raw archive to add/cancel/shipment-change text.
+    """Archive complete source text; forwarding eligibility is separate.
 
-    nenovaweb's paste-order inbox reads the 영업방 archive from the mindmap
-    sink. Operators asked for that feed to carry only add/cancel work, so
-    generic status chatter is not uploaded. Other rooms keep the full archive.
+    Replies and stock notices are evidence needed to interpret later changes.
+    Archiving them must not itself create an order or forward a message.
     """
-    from core.keyword_forward import classify_transfer, config as forward_config
-    if title != forward_config().get('source', '영업방'):
-        return events
-    return [event for event in events
-            if classify_transfer(str(event.get('content') or ''))['decision'] != 'exclude']
+    return events
+
+
+def _sales_raw_scan_due(title: str, binding: str, state: dict, now: float) -> bool:
+    """Unread badges can disappear when an operator reads an open room."""
+    from core.keyword_forward import config as forward_config
+    if title not in ('영업방', forward_config().get('target', '현장 추가취소방')):
+        return False
+    scans = state.get('_sales_raw_scanned_at', {})
+    last = scans.get(binding, 0) if isinstance(scans, dict) else 0
+    return now - float(last or 0) >= 300
 
 
 def poll_once(server: str, secret: str, only_title: str | None = None,
-              defer_archive=False, max_events=MAX_AUTO_INBOUND_EVENTS) -> dict[str, int]:
+              defer_archive=False, max_events=MAX_AUTO_INBOUND_EVENTS,
+              defer_files=False) -> dict[str, int]:
     """Open only unread/retry rooms and post messages newer than the baseline."""
     from core.mindmap_sink import enqueue_events, flush_pending
 
@@ -542,7 +679,8 @@ def poll_once(server: str, secret: str, only_title: str | None = None,
             if not needs_initialization and binding not in retry_bindings
             else False
         )
-        if not needs_initialization and binding not in retry_bindings and not has_unread:
+        raw_scan_due = _sales_raw_scan_due(title, binding, state, time.time())
+        if not needs_initialization and binding not in retry_bindings and not has_unread and not raw_scan_due:
             continue
         # Opening a room clears KakaoTalk's unread badge. Persist a retry marker
         # first so a transient export/API failure cannot silently lose messages.
@@ -559,6 +697,16 @@ def poll_once(server: str, secret: str, only_title: str | None = None,
         )
         verify.raise_for_status()
         events = parse_export(text, binding)
+        # Raw evidence must not wait behind five-item business processing or
+        # approval/target-room checks. Persist it first, without advancing the
+        # business checkpoint. The sink deduplicates stable source event IDs.
+        from core.keyword_forward import config as forward_config
+        priority_raw_room = title in ('영업방', forward_config().get('target', '현장 추가취소방'))
+        if binding in state and priority_raw_room:
+            raw_events = _events_after_checkpoint(events, state.get(binding, []))
+            enqueue_events(binding, title, order_feed_events(title, raw_events))
+            state.setdefault('_sales_raw_scanned_at', {})[binding] = time.time()
+            _save_state(state)
         from core import keyword_forward
         from core.moyi_control import is_paused
         route_cfg = keyword_forward.config()
@@ -586,6 +734,14 @@ def poll_once(server: str, secret: str, only_title: str | None = None,
             _save_state(state)
             continue
         new_events = _events_after_checkpoint(events, known_ids)
+        # Current order requests must not wait behind the archival backlog.
+        from core import import_order
+        order_cfg = import_order.config()
+        if order_cfg.get('enabled') and title == order_cfg.get('source', '수입방'):
+            from core.order_analysis_queue import enqueue
+            for event in new_events:
+                if import_order.in_current_scope(event, order_cfg):
+                    enqueue(event)
         backlog_remaining = len(new_events) > max_events
         if len(new_events) > max_events:
             print(
@@ -600,19 +756,17 @@ def poll_once(server: str, secret: str, only_title: str | None = None,
             order_cfg = import_order.config()
             if order_cfg.get('enabled') and title == order_cfg.get('source', '수입방'):
                 for event in new_events:
-                    from core.workflow_settings import config as workflow_config
-                    if workflow_config()['order_review_only']:
-                        from core.order_analysis_queue import enqueue
+                    from core.order_analysis_queue import enqueue
+                    if import_order.in_current_scope(event, order_cfg):
                         enqueue(event)
-                    else:
-                        import_order.capture(event, order_llm.parse, order_services.master)
         except Exception as order_exc:
             from core.error_notifications import notify
             notify('order_capture_failed')
             print(f"[MOYI] import order capture held ({title}): {type(order_exc).__name__}")
             # Do not advance the source checkpoint if durable enqueue failed.
             raise
-        enqueue_events(binding, title, order_feed_events(title, new_events))
+        if not priority_raw_room:
+            enqueue_events(binding, title, order_feed_events(title, new_events))
         try:
             flushed = 0 if defer_archive else flush_pending()
             if flushed:
@@ -633,6 +787,13 @@ def poll_once(server: str, secret: str, only_title: str | None = None,
             file_match = FILE_MARKER_RE.match(event["content"].strip())
             if file_match:
                 name = file_match.group("name").strip()
+                if defer_files:
+                    from core.deferred_files import enqueue as defer_file
+                    defer_file(binding, title, event, name)
+                    held_event_ids.add(event['event_id'])
+                    _hold_attachment_event(state, binding, title, event,
+                        '파일 첨부 별도 대조 대기; 텍스트 발주 처리 계속')
+                    continue
                 try:
                     local_file = _find_local_kakao_file(name)
                     event["attachments"] = [_timed('upload:' + title, _upload_attachment, server, headers, local_file)]

@@ -10,8 +10,8 @@ def test_capture_failure_keeps_original_for_retry(tmp_path, monkeypatch):
     assert len(list(tmp_path.glob('*.json'))) == 1
     def fail(event):
         raise RuntimeError('offline')
-    with pytest.raises(RuntimeError):
-        queue.drain(fail, lambda: False)
+    queue.drain(fail, lambda: False)
+    assert len(list(tmp_path.glob('*.json'))) == 1
     saved = []
     queue.drain(saved.append, lambda: True)
     assert not saved
@@ -60,3 +60,26 @@ def test_collection_queues_before_checkpoint_and_retains_on_disk_error(tmp_path,
     with pytest.raises(OSError):
         inbound.poll_once('https://example.test', 'test', only_title='수입방', defer_archive=True)
     assert 'new' not in inbound._load_state()['b']
+
+
+def test_failed_event_does_not_block_next_order(tmp_path, monkeypatch):
+    monkeypatch.setattr(queue, 'QUEUE', tmp_path)
+    queue.enqueue({'event_id': 'bad', 'content': 'bad'})
+    queue.enqueue({'event_id': 'good', 'content': 'good'})
+    captured = []
+    def capture(event):
+        if event['event_id'] == 'bad':
+            raise RuntimeError('LLM JSON 응답 없음')
+        captured.append(event['event_id'])
+    queue.drain(capture, lambda: False)
+    assert captured == ['good']
+    remaining = list(tmp_path.glob('*.json'))
+    assert len(remaining) == 1
+    assert 'bad' in remaining[0].read_text(encoding='utf-8')
+
+
+@pytest.mark.parametrize('text', ['사진', '사진 3장', ' 사진 4장 '])
+def test_photo_placeholder_needs_no_llm(text, monkeypatch):
+    from core import order_llm
+    monkeypatch.delenv('ANTHROPIC_API_KEY', raising=False)
+    assert order_llm.parse(text) == {'staff': '', 'week': '', 'items': [], 'questions': []}

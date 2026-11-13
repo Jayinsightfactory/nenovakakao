@@ -19,4 +19,4 @@ def register_agents(coordinator, sales, approval, order):
     coordinator.add('approval', 0, 0, approval)
     coordinator.add('sales', 10, 0, sales)
     if config()['order_processing_enabled']:
-        coordinator.add('order', 30, config()['order_interval_sec'], order)
+        coordinator.add('order', 12, config()['order_interval_sec'], order)

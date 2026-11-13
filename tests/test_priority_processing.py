@@ -133,6 +133,7 @@ def test_worker_checks_replies_between_lower_priority_stages(monkeypatch, tmp_pa
     with pytest.raises(EndCycle): worker.run()
     # The sales archive flushes right after each sales export so nenovaweb's
     # paste-order inbox keeps pace with approvals; the 30-minute cycle remains.
-    assert stages == ['approval', 'receipts', 'sales', 'archive', 'inbound'] + ([] if review_only else ['order']) + [
+    # 추가취소방 보관 에이전트(300초 주기)가 영업방 다음에 한 번 돌고 바로 올린다: 'inbound', 'archive'.
+    assert stages == ['approval', 'receipts', 'sales', 'archive', 'inbound', 'archive', 'inbound'] + ([] if review_only else ['order']) + [
         'pending', 'approval', 'receipts', 'sales', 'archive', 'approval', 'receipts', 'sales', 'archive', 'archive']
     order_review.start_sync.assert_called_once()

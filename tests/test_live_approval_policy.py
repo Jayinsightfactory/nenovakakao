@@ -17,7 +17,10 @@ def test_internal_errors_stay_local_while_rejection_receipts_are_sent(monkeypatc
                  lambda room, payload: sent.append(payload), lambda: False)
     assert len(sent) == 1 and '처리했습니다' in sent[0]
     assert 'exact room' not in sent[0]
-    assert all(r['status'] == 'local_only' for r in notices._rows().values() if r.get('kind') != 'receipt')
+    # 일반 상황 보고만 로컬 보존한다. 오류 알림은 대기열에 남아 간격 제한에 따라 따로 나간다(11월 운영 PC 정책).
+    rows = list(notices._rows().values())
+    assert all(r['status'] == 'local_only' for r in rows if r.get('kind') == 'report')
+    assert [r['status'] for r in rows if not r.get('kind')] == ['queued']
 
 
 def test_stale_unsent_requests_are_preserved_without_affecting_sent_requests():

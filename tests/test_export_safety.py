@@ -48,6 +48,53 @@ def test_paused_export_does_not_touch_ui_or_files(export_io, monkeypatch):
     export_io.assert_not_called()
 
 
+def test_stale_kakao_save_as_is_cancelled_only_for_disabled_chat_owner(monkeypatch):
+    dialog_open = [True]
+    owner_enabled_checks = [0]
+    monkeypatch.setattr(moyi_control, 'is_paused', lambda: False)
+    monkeypatch.setattr(inbound.win32gui, 'EnumWindows',
+                        lambda callback, extra: callback(500, extra))
+    monkeypatch.setattr(inbound.win32gui, 'IsWindowVisible',
+                        lambda hwnd: dialog_open[0] if hwnd == 500 else True)
+    monkeypatch.setattr(inbound.win32gui, 'IsWindow',
+                        lambda hwnd: dialog_open[0] if hwnd == 500 else True)
+    monkeypatch.setattr(inbound.win32gui, 'GetClassName',
+                        lambda hwnd: '#32770' if hwnd == 500 else
+                        ('Button' if hwnd == 2 else 'EVA_Window_Dblclk'))
+    monkeypatch.setattr(inbound.win32gui, 'GetWindowText',
+                        lambda hwnd: '다른 이름으로 저장' if hwnd == 500 else '현장 추가취소방')
+    monkeypatch.setattr(inbound.win32gui, 'GetWindow', lambda hwnd, cmd: 123 if hwnd == 500 else 0)
+    monkeypatch.setattr(inbound.win32process, 'GetWindowThreadProcessId', lambda _: (1, 42))
+    def is_enabled(hwnd):
+        if hwnd != 123:
+            return True
+        owner_enabled_checks[0] += 1
+        return owner_enabled_checks[0] >= 3
+    monkeypatch.setattr(inbound.win32gui, 'IsWindowEnabled', is_enabled)
+    monkeypatch.setattr(inbound.win32gui, 'GetDlgItem', lambda hwnd, control_id: 2)
+
+    def cancel(hwnd, message, wparam, lparam):
+        assert (hwnd, message, wparam, lparam) == (2, win32con.BM_CLICK, 0, 0)
+        dialog_open[0] = False
+
+    send = Mock(side_effect=cancel)
+    monkeypatch.setattr(inbound.win32api, 'SendMessage', send)
+    assert inbound._cancel_blocking_kakao_save_as_dialog() is True
+    send.assert_called_once()
+
+
+def test_unrelated_dialog_is_never_cancelled_as_stale_save_as(monkeypatch):
+    monkeypatch.setattr(inbound.win32gui, 'EnumWindows',
+                        lambda callback, extra: callback(500, extra))
+    monkeypatch.setattr(inbound.win32gui, 'IsWindowVisible', lambda _: True)
+    monkeypatch.setattr(inbound.win32gui, 'GetClassName', lambda _: '#32770')
+    monkeypatch.setattr(inbound.win32gui, 'GetWindowText', lambda _: '삭제 확인')
+    send = Mock()
+    monkeypatch.setattr(inbound.win32api, 'SendMessage', send)
+    assert inbound._cancel_blocking_kakao_save_as_dialog() is False
+    send.assert_not_called()
+
+
 def test_pause_during_file_scan_does_not_open_room(export_io, monkeypatch):
     def scan():
         monkeypatch.setattr(moyi_control, 'is_paused', lambda: True)
@@ -72,6 +119,8 @@ def test_wrong_target_never_receives_save_shortcut(export_io, monkeypatch, wrong
 
 def test_scan_finishes_before_focus_and_pause_stops_dialog(export_io, monkeypatch):
     order = []
+    monkeypatch.setattr(inbound, '_cancel_blocking_kakao_save_as_dialog',
+                        lambda: order.append('stale-modal-check'))
     monkeypatch.setattr(inbound, '_txt_files', lambda: order.append('scan') or {})
     monkeypatch.setattr(inbound, '_open_or_reuse_exact_room', lambda _: order.append('open') or 123)
     def pause(*args):
@@ -79,7 +128,7 @@ def test_scan_finishes_before_focus_and_pause_stops_dialog(export_io, monkeypatc
     export_io.side_effect = pause
     with pytest.raises(RuntimeError, match='일시정지'):
         inbound.export_exact_room('대상방')
-    assert order == ['scan', 'open']
+    assert order == ['stale-modal-check', 'scan', 'open']
     export_io.assert_called_once_with('ctrl', 's')
     inbound.close_room.assert_not_called()
 
@@ -181,7 +230,10 @@ def test_export_clears_verified_stale_completion_before_shortcut(export_io, monk
         side_effect=RuntimeError('stop after shortcut')))
     with pytest.raises(RuntimeError, match='stop after shortcut'):
         inbound.export_exact_room('대상방')
-    dismiss.assert_called_once_with(123, '대상방', set(), foreground_before=123, timeout=1.0)
+    dismiss.assert_called_once_with(
+        123, '대상방', set(), foreground_before=123, timeout=1.0,
+        allow_exact_target_escape=True,
+    )
     export_io.assert_called_once_with('ctrl', 's')
 
 
@@ -213,6 +265,7 @@ def test_foreground_kakao_completion_window_is_accepted(dialog_env, monkeypatch)
 
 
 def test_kakao_custom_completion_window_requires_exact_controls(dialog_env, monkeypatch):
+    monkeypatch.setattr(inbound.win32gui, 'EnumWindows', lambda fn, arg: fn(500, arg))
     monkeypatch.setattr(inbound, '_visible_dialogs_for_process', lambda _: set())
     monkeypatch.setattr(inbound.win32gui, 'GetForegroundWindow', lambda: 500)
     monkeypatch.setattr(inbound.win32gui, 'GetWindowText', lambda h: '대상방' if h == 123 else '')
@@ -236,3 +289,124 @@ def test_missing_completion_dialog_is_ok_only_when_room_reenabled(dialog_env, mo
     monkeypatch.setattr(inbound.win32gui, 'IsWindowEnabled', lambda _: False)
     with pytest.raises(RuntimeError, match='완료 안내 확인 실패'):
         inbound._dismiss_export_complete_dialog(123, '대상방', set(), timeout=0)
+
+
+def test_exact_target_modal_can_be_cancelled_after_verified_save(dialog_env, monkeypatch):
+    enabled = [False]
+    monkeypatch.setattr(inbound, '_visible_dialogs_for_process', lambda _: set())
+    monkeypatch.setattr(inbound, '_owned_export_notices', lambda *args, **kwargs: set())
+    monkeypatch.setattr(inbound.win32gui, 'GetForegroundWindow', lambda: 123)
+    monkeypatch.setattr(inbound.win32gui, 'GetWindowText', lambda h: '대상방')
+    monkeypatch.setattr(inbound.win32gui, 'GetClassName', lambda h: 'EVA_Window_Dblclk')
+    monkeypatch.setattr(inbound.win32gui, 'IsWindowEnabled', lambda _: enabled[0])
+    press = Mock(side_effect=lambda key: enabled.__setitem__(0, key == 'esc'))
+    monkeypatch.setattr(inbound.pyautogui, 'press', press)
+
+    inbound._dismiss_export_complete_dialog(
+        123, '대상방', set(), foreground_before=123, timeout=.2,
+        allow_exact_target_escape=True,
+    )
+
+    press.assert_called_once_with('esc')
+    dialog_env.assert_not_called()
+
+
+def test_unenumerable_completion_notice_never_gets_escape_without_fresh_save_proof(dialog_env, monkeypatch):
+    monkeypatch.setattr(inbound, '_visible_dialogs_for_process', lambda _: set())
+    monkeypatch.setattr(inbound, '_owned_export_notices', lambda *args, **kwargs: set())
+    monkeypatch.setattr(inbound.win32gui, 'GetForegroundWindow', lambda: 123)
+    monkeypatch.setattr(inbound.win32gui, 'GetWindowText', lambda h: '대상방')
+    monkeypatch.setattr(inbound.win32gui, 'GetClassName', lambda h: 'EVA_Window_Dblclk')
+    monkeypatch.setattr(inbound.win32gui, 'IsWindowEnabled', lambda _: False)
+    press = Mock()
+    monkeypatch.setattr(inbound.pyautogui, 'press', press)
+
+    with pytest.raises(RuntimeError, match='완료 안내 확인 실패'):
+        inbound._dismiss_export_complete_dialog(
+            123, '대상방', set(), foreground_before=123, timeout=0,
+        )
+
+    press.assert_not_called()
+
+
+def test_owned_named_completion_is_found_behind_another_app(dialog_env, monkeypatch):
+    monkeypatch.setattr(inbound, '_visible_dialogs_for_process', lambda _: set())
+    monkeypatch.setattr(inbound.win32gui, 'EnumWindows', lambda fn, arg: fn(500, arg))
+    monkeypatch.setattr(inbound.win32gui, 'GetForegroundWindow', lambda: 777)
+    monkeypatch.setattr(inbound.win32process, 'GetWindowThreadProcessId',
+                        lambda h: (1, 3 if h == 777 else 2))
+    monkeypatch.setattr(inbound.win32gui, 'GetWindowText',
+                        lambda h: '대화 내보내기' if h == 500 else '대상방')
+    monkeypatch.setattr(inbound, '_child_controls', lambda _: {})
+    monkeypatch.setattr(inbound.win32gui, 'IsWindow', lambda _: not dialog_env.called)
+    inbound._dismiss_export_complete_dialog(123, '대상방', set(), timeout=0.1)
+    dialog_env.assert_called_once_with(999, win32con.BM_CLICK, 0, 0)
+
+
+def test_export_notice_from_another_room_is_not_adopted(dialog_env, monkeypatch):
+    monkeypatch.setattr(inbound.win32gui, 'EnumWindows', lambda fn, arg: fn(500, arg))
+    monkeypatch.setattr(inbound.win32gui, 'GetWindowText', lambda _: '대화 내보내기')
+    monkeypatch.setattr(inbound.win32gui, 'GetWindow', lambda *args: 999)
+    assert inbound._owned_export_notices(123, 2) == set()
+
+
+def test_owned_custom_completion_recovers_focus_from_other_app(dialog_env, monkeypatch):
+    monkeypatch.setattr(inbound, '_visible_dialogs_for_process', lambda _: set())
+    monkeypatch.setattr(inbound.win32gui, 'EnumWindows', lambda fn, arg: fn(500, arg))
+    foreground = [777]
+    monkeypatch.setattr(inbound.win32gui, 'GetForegroundWindow', lambda: foreground[0])
+    monkeypatch.setattr(inbound.win32gui, 'SetForegroundWindow', lambda h: foreground.__setitem__(0, h))
+    monkeypatch.setattr(inbound.win32process, 'GetWindowThreadProcessId', lambda h: (1, 3 if h == 777 else 2))
+    monkeypatch.setattr(inbound.win32gui, 'GetWindowText', lambda h: '대상방' if h == 123 else '')
+    monkeypatch.setattr(inbound.win32gui, 'GetClassName', lambda _: 'EVA_Window_Dblclk')
+    monkeypatch.setattr(inbound.win32gui, 'IsWindowEnabled', lambda _: False)
+    monkeypatch.setattr(inbound, '_child_controls', lambda _: {})
+    monkeypatch.setattr(inbound.win32gui, 'GetDlgItem', lambda *args: 0)
+    press = Mock()
+    monkeypatch.setattr(inbound.pyautogui, 'press', press)
+    monkeypatch.setattr(inbound.win32gui, 'IsWindow', lambda _: not press.called)
+    monkeypatch.setattr(inbound.win32gui, 'IsWindowVisible', lambda _: not press.called)
+    inbound._dismiss_export_complete_dialog(123, '대상방', set(), foreground_before=123, timeout=.3)
+    press.assert_called_once_with('enter')
+    assert foreground[0] == 500
+    dialog_env.assert_not_called()
+
+@pytest.mark.parametrize('positions', [[], [80], [80, 130], [80, 130, 190]])
+def test_badges_only_hint_at_safe_exact_export(monkeypatch, positions):
+    from core import window_detector, badge_monitor
+    monkeypatch.setattr(window_detector, 'activate_kakaotalk', lambda: object())
+    monkeypatch.setattr(window_detector, 'switch_to_chat_tab', Mock())
+    monkeypatch.setattr(window_detector, 'capture_room_list', Mock(return_value='capture.png'))
+    monkeypatch.setattr(inbound, 'replace_room_search', Mock())
+    cleanup = Mock()
+    monkeypatch.setattr(inbound, 'clear_room_search', cleanup)
+    monkeypatch.setattr(badge_monitor, 'detect_badge_positions', Mock(return_value=positions))
+    # No badge coordinates are clicked here; exact room verification remains
+    # the responsibility of the export path tested elsewhere in this file.
+    assert inbound.has_unread_exact_room('수입방') is bool(positions)
+    cleanup.assert_called_once()
+
+
+def test_raw_archive_timeout_keeps_queue_and_allows_next_cycle(tmp_path, monkeypatch):
+    import json
+    import requests
+    from core import mindmap_sink, moyi_worker
+    path = tmp_path / 'outbox.json'
+    path.write_text(json.dumps([{'external_message_id': 'stable-id', 'message': '원문'}]), encoding='utf-8')
+    monkeypatch.setattr(mindmap_sink, 'OUTBOX_FILE', path)
+    monkeypatch.setattr(mindmap_sink, 'configured', lambda: True)
+    monkeypatch.setattr(mindmap_sink.requests, 'post', Mock(side_effect=requests.ReadTimeout('timeout')))
+    monkeypatch.setattr(moyi_worker, '_timed', lambda name, fn, **kwargs: fn(**kwargs))
+    event = Mock()
+    monkeypatch.setattr(moyi_worker, '_event', event)
+    assert moyi_worker.flush_raw_archive('addcancel') == 0
+    assert json.loads(path.read_text(encoding='utf-8'))[0]['external_message_id'] == 'stable-id'
+    assert event.call_args.args[1:] == ('archive_deferred', 'addcancel:ReadTimeout')
+
+
+def test_raw_archive_contract_failure_is_not_hidden(monkeypatch):
+    from core import mindmap_sink, moyi_worker
+    monkeypatch.setattr(mindmap_sink, 'flush_pending', Mock(side_effect=RuntimeError('unaccounted batch')))
+    monkeypatch.setattr(moyi_worker, '_timed', lambda name, fn, **kwargs: fn(**kwargs))
+    with pytest.raises(RuntimeError, match='unaccounted batch'):
+        moyi_worker.flush_raw_archive('addcancel')

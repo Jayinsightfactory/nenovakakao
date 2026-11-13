@@ -57,3 +57,32 @@ def test_conflicting_origins_require_review():
     from core.defect_deduction_parser import extract
     source=extract({'sender_name':'박성수','content':'33-2 중국 콜 장미\n수경\n만달라 10단'})
     assert '여러 원산지; 항목별 확인 필요' in source['issues']
+
+
+def test_farm_metadata_and_packaging_description_do_not_block_defect():
+    from core.defect_deduction_parser import extract
+    from core.defect_approval import rematch, ready
+    source = extract({'sender_name': '박성수', 'content':
+        '37-1 콜 수국 불량\n농장확인필요\n영남꽃소재\n화이트 30송이\n박스안에 30송이가 전부 저렇다고합니다'})
+    master = {'customers': [{'nenova_key': 1, 'name': '(주)영남꽃소재'}],
+              'products': [{'nenova_key': 2, 'name': 'Hydrangea White (화이트)',
+                            'origin': '콜롬비아', 'category': '수국'}]}
+    row = rematch({'extracted': source}, master)
+    assert len(row['items']) == 1
+    assert row['items'][0]['quantity_raw'] == '30'
+    assert ready(row)
+
+
+def test_farm_candidate_ignored_when_explicit_customer_alias_matches():
+    source = {'customer': None, 'customer_candidates': ['세레주엘라', '미정화훼'],
+              'issues': ['거래처/농장/품종 후보 복수; 확인 필요']}
+    chosen, _ = customer(source, [{'nenova_key': 1, 'name': '미정화훼유통'}])
+    assert chosen['nenova_key'] == 1
+    assert not source['issues']
+
+
+def test_different_packaging_quantity_is_not_silently_discarded():
+    from core.defect_deduction_parser import extract
+    source = extract({'sender_name': '박성수', 'content':
+        '37-1 콜 수국 불량\n영남꽃소재\n화이트 30송이\n박스안에 20송이'})
+    assert len(source['items']) == 2
