@@ -603,7 +603,14 @@ def submit(path, adapter, paused):
     row['registration_scope'] = upload_scope(row)
     row['status'] = 'write_unknown'
     save(path, row)
-    adapter.insert(row)
+    try:
+        adapter.insert(row)
+    except Exception as exc:
+        # 저장 직전 재확인(차수·조회·담당자)에서 멈췄으면 전산에 보낸 것이 없다. 승인 상태로 되돌려 다음 주기에 다시 시도한다.
+        if getattr(adapter, 'post_dispatched', None) is False:
+            row.update(status='approved', last_error='저장 전 확인 실패: ' + str(exc)[:200])
+            save(path, row)
+        raise
     receipt = adapter.lookup(row)
     if receipt is not None and adapter.matches(row, receipt):
         row.update(status='completed', receipt=receipt, completed_at=time.time())

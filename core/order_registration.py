@@ -13,6 +13,13 @@ from core.atomic_json import read, save
 JOURNALS = Path(__file__).resolve().parents[1] / 'data' / 'order_registration'
 
 
+class OrderRejected(RuntimeError):
+    """저장 요청을 보내지 못했거나 전산이 명확히 거절했다 — 전산에 쓰인 것이 없다.
+
+    응답을 못 받은 경우(시간 초과·연결 끊김·5xx)는 여기에 해당하지 않으며 계속 '응답 불명'이다.
+    """
+
+
 def scope(row):
     match = re.fullmatch(r'\s*(?:(20\d{2})[년 /-]+)?(\d{1,2})\s*(?:차)?[-.]([123])(?:차)?\s*', str(row.get('week', '')))
     if not match or not 1 <= int(match[2]) <= 53:
@@ -143,7 +150,13 @@ def register(row, request=None):
             group = {'state': 'write_unknown', 'payload': payload, 'started_at': time.time()}
             journal['groups'][key] = group
             save(path, journal)  # durable BEFORE external write
-            receipt = request(row['id'], 'POST', body=payload, timeout=50)
+            try:
+                receipt = request(row['id'], 'POST', body=payload, timeout=50)
+            except OrderRejected:
+                # 쓰인 것이 없으므로 사전 기록을 지운다. 남겨 두면 이 업체 묶음이 영구히 '응답 불명'으로 묶인다.
+                journal['groups'].pop(key, None)
+                save(path, journal)
+                raise
             group['server_receipt'] = receipt
             save(path, journal)  # durable BEFORE the second read
             products = load_products(request, row, key)
