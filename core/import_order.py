@@ -40,9 +40,15 @@ def _save(path, value):
     save(path, value)
 
 
+# 사장님 지시(2026-11-13): 이 사람들에게는 발주 확인 메시지를 아직 보내지 않는다. 원문은 기록만 남긴다.
+# 운영 PC 의 import_order_config.json 에 "excluded_senders" 를 적으면 그 목록이 이 기본값을 대신한다(빈 목록 = 해제).
+DEFAULT_EXCLUDED_SENDERS = ['김인석']
+
+
 def config():
     value = _read(CONFIG, {'enabled': False, 'source': '수입방', 'start_at': None,
                           'staff_rooms': {}, 'allowed_senders': [], 'write_enabled': False})
+    value.setdefault('excluded_senders', list(DEFAULT_EXCLUDED_SENDERS))
     from core.operator_settings import CONFIG as OPERATOR_CONFIG, operator_name
     if value.get('review_gate_room') and OPERATOR_CONFIG.exists():
         value['review_gate_room'] = operator_name()
@@ -52,6 +58,11 @@ def config():
 def registration_enabled():
     cfg = config()
     return cfg.get('transport') == 'direct-api' or bool(cfg.get('browser_order_registration'))
+
+
+def sender_excluded(event):
+    names = {normalize(n) for n in config().get('excluded_senders') or [] if str(n).strip()}
+    return bool(names) and normalize((event or {}).get('sender_name', '')) in names
 
 
 def direct_contacts():
@@ -497,12 +508,14 @@ def capture(event, parse, master):
         draft['analysis_retry_at'] = time.time() + 300
     if not draft['items'] and draft.get('status') != 'analysis_error':
         draft['status'] = 'ignored'
+    elif draft.get('status') == 'draft' and sender_excluded(event):
+        draft.update(status='sender_excluded', previous_status='draft')
     rows = _read(STATE, {})
     if event['event_id'] in rows and rows[event['event_id']] != previous:
         return rows[event['event_id']]['id']
     rows[event['event_id']] = draft
     _save(STATE, {event['event_id']: draft})
-    if draft['items']:
+    if draft['items'] and draft.get('status') != 'sender_excluded':
         from core.error_notifications import report
         report('order_received', draft['id'])
     return draft['id']
@@ -755,6 +768,11 @@ def poll(export, send, master, registrar, paused):
         if row['status'] in ('draft', 'waiting', 'gate_waiting', 'gate_request_unknown') and not in_current_scope(row.get('event', {})):
             row.update(previous_scope_status=row['status'], status='archived_previous_scope')
             rows[event_id] = row; _save(STATE, rows)
+            continue
+        if row['status'] in ('draft', 'waiting', 'gate_waiting', 'gate_request_unknown') and sender_excluded(row.get('event')):
+            row.update(previous_status=row['status'], status='sender_excluded')
+            rows[event_id] = row; _save(STATE, rows)
+            append_log(row, 'sender_excluded', '확인 메시지 발송 제외 대상')
             continue
         # Recovery is read-only after a possible write; the registrar's journal
         # never issues a second POST for an uncertain customer group.
