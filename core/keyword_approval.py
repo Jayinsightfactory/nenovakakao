@@ -103,6 +103,12 @@ def filter_queued_requests(rows):
         if row.get('status') != 'queued':
             continue
         events = row.get('events') or [row.get('event', {})]
+        reviews = [k.classify_transfer(event.get('content', '')) for event in events]
+        if any(r['decision'] == 'review' for r in reviews):
+            row.update(status='classification_review', classification_reasons=[
+                r['reason'] for r in reviews if r['decision'] == 'review'], filtered_at=time.time())
+            changed = True
+            continue  # Preserve the whole unsent batch and its original indexes.
         actionable = [event for event in events if k.requires_approval(event.get('content', ''))]
         if len(actionable) == len(events):
             continue
@@ -646,61 +652,119 @@ def poll(export, send, paused, mark_rescan):
     recheck_missing(rows, export, send, paused, history)
 
 
-def recheck_missing(rows, export, send, paused, history):
+def recheck_today(event, now):
+    stamp = k.timestamp(event.get('timestamp', ''))
+    return stamp is not None and stamp.astimezone(k.KST).date() == datetime.fromtimestamp(now, k.KST).date()
+
+
+def recheck_missing(rows, export, send, paused, history, *, schedule_slot=None, request_id=None):
     """Reconcile unanswered items, then send at most one verified reminder.
 
     Original decisions/labels stay immutable. Unknown sends are never retried.
     """
     cfg = k.config()
+    if cfg.get('approval_missing_recheck_mode') == 'fixed' and not schedule_slot:
+        return
     if (paused() or not cfg.get('enabled') or not question_hours_open(cfg)
             or not cfg.get('approval_missing_recheck', False)):
         return
     now = time.time()
     interval = max(60, cfg.get('approval_missing_recheck_sec', 1800))
-    if any(now - r.get('missing_recheck_attempted_at', 0) < interval for r in rows.values()):
+    if not schedule_slot and any(now - r.get('missing_recheck_attempted_at', 0) < interval for r in rows.values()):
         return
     candidates = [r for r in rows.values()
                   if r['status'] in ('waiting', 'awaiting_late_reply')
+                  and (request_id is None or r['id']==request_id)
+                  and any(recheck_today(e, now) for e in (r.get('events') or [r['event']]))
                   and r.get('item_labels') and r.get('request_event_id')
                   and r.get('approver_name', LEGACY_NAME) == operator_name()
                   and r.get('choice_format') == 'per_item'
-                  and r.get('sent_at') and now - r['sent_at'] >= interval
+                  and r.get('sent_at') and (schedule_slot or now - r['sent_at'] >= interval)
                   and r.get('missing_recheck_status') != 'unknown'
-                  and now - r.get('missing_recheck_checked_at', 0) >= interval]
+                  and (schedule_slot or now - r.get('missing_recheck_checked_at', 0) >= interval)]
     if not candidates:
-        return
+        return {'status':'ineligible_existing_state'}
     row = min(candidates, key=lambda r: r.get('missing_recheck_checked_at', r['sent_at']))
     row['missing_recheck_checked_at'] = now
     k.save_json(REQUESTS, rows)
     from core.moyi_inbound import parse_export
     text = export(cfg['target'])
-    if cfg['target'] not in '\n'.join(text.splitlines()[:3]):
+    if (text.splitlines() or [''])[0].strip() not in (
+            cfg['target']+' 님과 카카오톡 대화', cfg['target']+' 임과 카카오톡 대화'):
         raise RuntimeError('재확인 대상 방 제목 불일치')
     target = parse_export(text, 'keyword-target-recheck')
     if not target:
-        return  # An unreadable/empty export is not evidence of absence.
+        return {'status':'history_unavailable'}  # No evidence of absence.
     state = k.read_json(k.STATE, {})
     missing = []
+    needs_confirmation = False
+    insufficient_history = False
     events = row.get('events') or [row['event']]
     for i, event in enumerate(events):
+        if not recheck_today(event, now):
+            continue
         if (str(i) in row.get('item_answers', {}) or
                 state.get(event['event_id'], {}).get('status') not in
                 ('승인대기', '미응답 보류', '승인요청 전송대기')):
             continue
-        if k.duplicate(event['content'], target):
-            route_status(event, '중복 생략', '미전달 재확인 중 대상 방 동일 원문 확인')
+        if k.manual_handled_claim(event['content']):
+            row.setdefault('item_review_holds',{})[str(i)]={
+                'reason':'원문에 현장 지시·전달 완료 표시; 미전달 알림 대신 직접 처리 내역 대조 필요',
+                'checked_at':now}
+            continue
+        exact = k.exact_delivery_candidates(event, target)
+        # Repeated source messages or target matches cannot be allocated by text.
+        repeated = len({source['event_id'] for request in rows.values()
+                       for source in (request.get('events') or [request['event']])
+                       if recheck_today(source, now) and
+                       k.normalize(source.get('content', '')) == k.normalize(event['content'])}) > 1
+        if len(exact) == 1 and not repeated:
+            row.setdefault('missing_recheck_evidence', {})[str(i)] = {
+                'source_event_id': event['event_id'], 'target_event_id': exact[0]['event_id'],
+                'target_timestamp': exact[0]['timestamp'], 'checked_at': now}
+            route_status(event, '중복 생략', '미전달 재확인 중 당일 원문 이후 동일 내용 전달 확인')
+        elif exact:
+            row.setdefault('item_review_holds', {})[str(i)] = {
+                'reason': '동일 원문 반복으로 원문과 전달 건의 일대일 연결 확인 필요',
+                'target_event_ids': [e['event_id'] for e in exact], 'checked_at': now}
+
         else:
-            similar = k.possible_manual_delivery(event,target)
+            similar = k.possible_manual_delivery(event,target) or k.partial_manual_delivery(event,target)
             if similar:
                 row.setdefault('item_review_holds',{})[str(i)] = {
-                    'reason':'차수/출고 문구가 다른 동일 거래처·품목·수량 전달 후보',
+                    'reason':'차수/출고 문구 변경 또는 복수 품목 중 일부 전달 후보: 전체 미전달로 단정 금지',
                     'target_event_ids':[e['event_id'] for e in similar],
                     'target_times':[e.get('timestamp') for e in similar], 'checked_at':now}
             elif str(i) not in row.get('item_review_holds',{}):
-                missing.append((i, event))
+                stamps=[stamp for e in target if (stamp:=k.timestamp(e.get('timestamp',''))) is not None]
+                source_stamp=k.timestamp(event.get('timestamp',''))
+                if not stamps or source_stamp is None or min(stamps)>source_stamp:
+                    insufficient_history = True
+                    row.setdefault('missing_recheck_evidence',{})[str(i)]={
+                        'status':'insufficient_target_history','checked_at':now,
+                        'source_event_id':event['event_id']}
+                    continue
+                evidence=row.setdefault('missing_absence_checks',{}).setdefault(str(i),{
+                    'source_event_id':event['event_id'],'source_content':k.normalize(event['content']),
+                    'first_absent_at':now,'confirmed_checks':0})
+                # Old observations cannot confirm a changed source body.
+                if evidence['source_event_id']!=event['event_id'] or evidence['source_content']!=k.normalize(event['content']):
+                    evidence.update(source_event_id=event['event_id'],source_content=k.normalize(event['content']),
+                                    first_absent_at=now,confirmed_checks=0)
+                confirmation_sec=max(60,float(cfg.get('approval_missing_confirmation_sec',60)))
+                if not evidence['confirmed_checks'] or now-evidence.get('last_absent_at',0)>=confirmation_sec:
+                    evidence.update(confirmed_checks=evidence['confirmed_checks']+1,last_absent_at=now,
+                                    target_oldest_at=min(stamps).isoformat(),target_latest_at=max(stamps).isoformat())
+                if evidence['confirmed_checks']>=2:
+                    missing.append((i, event))
+                    from core.keyword_missing_notices import enqueue
+                    enqueue(row,event,evidence)
+                else:
+                    needs_confirmation = True
     k.save_json(REQUESTS,rows)
     if not missing:
-        return
+        return {'status': 'history_unavailable' if insufficient_history else
+                'awaiting_confirmation' if needs_confirmation else 'checked_no_missing'}
     new_labels = numbered_labels(row, rows)
     body = '\n\n'.join(f"{new_labels[i]} — {e['sender_name']}\n{e['content']}" for i, e in missing)
     payload = (f"[추가취소 미전달 재확인 {row['id']}]\n{body}\n\n"
@@ -722,3 +786,5 @@ def recheck_missing(rows, export, send, paused, history):
         row.update(missing_recheck_status='sent', missing_recheck_event_id=matched[0]['event_id'],
                    recheck_labels=new_labels)
         k.save_json(REQUESTS, rows)
+    return {'status':'reminder_sent' if len(matched)==1 else 'reminder_unknown',
+            'missing_count':len(missing)}

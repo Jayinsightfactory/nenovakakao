@@ -2,6 +2,21 @@ from unittest.mock import Mock
 from core import error_notifications as notices
 
 
+def test_screenshot_failure_does_not_claim_registration_failed():
+    text = notices.message({'category': 'defect_error', 'id': 'test',
+        'context': {'stage': 'completed', 'cause': 'screenshot_year_week_mismatch'}})
+    assert '등록은 완료' in text
+    assert '캡처만 실패' in text
+    assert '해야 할 일:' in text
+    assert '다시 등록하지 마세요' in text
+
+
+def test_errors_are_routed_to_admin_not_approval_operator(monkeypatch):
+    monkeypatch.setattr(notices, 'operator_name', lambda: '김도준(j)')
+    assert notices.recipient_for_notice({'category': 'defect_error'}) == '임재용대리'
+    assert notices.recipient_for_notice({'kind': 'receipt'}) == '김도준(j)'
+
+
 def test_unanswered_group_is_throttled_and_receipts_keep_priority(monkeypatch):
     from core import keyword_approval as a, keyword_forward as k
     monkeypatch.setattr('core.moyi_control.audit', Mock())
@@ -282,3 +297,91 @@ def test_normal_reports_batch_and_error_has_priority(monkeypatch):
     notices.poll(export, send, lambda: False)
     assert sent[1].count('[매크로 상황 보고') == 2
     assert all(r['status'] == 'sent' for r in notices._rows().values())
+
+
+def test_master_warning_once_until_verified_recovery(monkeypatch):
+    now = [10000]
+    monkeypatch.setattr(notices.time, 'time', lambda: now[0])
+    key = notices.enqueue('defect_master_error')
+    rows = notices._rows()
+    rows[key].update(status='sent')
+    notices.save(notices.STATE, rows)
+    now[0] += notices.COOLDOWN * 3
+    notices.enqueue('defect_master_error')
+    assert notices._rows()[key]['status'] == 'sent'
+    assert notices.resolve('defect_master_error')
+    notices.enqueue('defect_master_error')
+    assert notices._rows()[key]['status'] == 'queued'
+
+
+def test_master_unknown_is_not_resolved_or_requeued(monkeypatch):
+    key = notices.enqueue('defect_master_error')
+    rows = notices._rows()
+    rows[key]['status'] = 'unknown'
+    notices.save(notices.STATE, rows)
+    assert not notices.resolve('defect_master_error')
+    notices.enqueue('defect_master_error')
+    assert notices._rows()[key]['status'] == 'unknown'
+
+
+def test_sent_incident_does_not_requeue_after_cooldown(tmp_path, monkeypatch):
+    monkeypatch.setattr(notices, 'STATE', tmp_path / 'notices.json')
+    key = notices.enqueue('order_error', 'ORD-ABC123')
+    rows = notices._rows()
+    rows[key].update(status='sent', updated_at=1)
+    notices.save(notices.STATE, rows)
+    notices.enqueue('order_error', 'ORD-ABC123')
+    assert notices._rows()[key]['status'] == 'sent'
+
+
+def test_daily_error_limit_keeps_new_incident_queued(tmp_path, monkeypatch):
+    monkeypatch.setattr(notices, 'STATE', tmp_path / 'notices.json')
+    monkeypatch.setattr(notices, 'collect_reports', lambda: None)
+    monkeypatch.setattr('core.workflow_settings.config', lambda: {'error_notice_interval_sec': 86400})
+    first = notices.enqueue('order_error', 'ORD-AAA111')
+    rows = notices._rows()
+    rows[first].update(status='sent', updated_at=notices.time.time())
+    notices.save(notices.STATE, rows)
+    second = notices.enqueue('order_error', 'ORD-BBB222')
+    export, send = Mock(), Mock()
+    notices.poll(export, send, lambda: False)
+    export.assert_not_called()
+    send.assert_not_called()
+    assert notices._rows()[second]['status'] == 'queued'
+
+
+def test_old_error_waits_for_fresh_evidence(monkeypatch):
+    monkeypatch.setattr(notices.time,'time',lambda:100000)
+    rows={'a':{'status':'queued','category':'defect_error','created_at':1,'context':{'cause':'old failure'}}}
+    assert notices.revalidate_queued_errors(rows)
+    assert rows['a']['status']=='needs_revalidation'
+
+
+def test_recovered_main_window_suppresses_queued_error(monkeypatch):
+    monkeypatch.setattr('core.window_detector._exact_main_window',Mock(return_value=object()))
+    rows={'a':{'status':'queued','category':'defect_error','created_at':1,'context':{'cause':'카카오톡 메인 창을 유일하게 확인할 수 없음: 2개'}}}
+    assert notices.revalidate_queued_errors(rows)
+    assert rows['a']['status']=='resolved'
+
+
+def test_unknown_sent_alert_is_not_requeued():
+    rows={'a':{'status':'unknown','category':'defect_error','created_at':1}}
+    assert not notices.revalidate_queued_errors(rows)
+    assert rows['a']['status']=='unknown'
+
+
+def test_order_reports_route_to_requested_staff(monkeypatch):
+    monkeypatch.setattr('core.workflow_settings.config',lambda:{'order_reports_only':True,'order_report_recipient':'임재용대리'})
+    monkeypatch.setattr(notices,'operator_name',lambda:'김도준(j)')
+    assert notices.recipient_for_notice({'kind':'report','category':'order_completed'})=='임재용대리'
+    assert notices.recipient_for_notice({'kind':'receipt','category':'approval_result'})=='김도준(j)'
+
+
+def test_order_only_reports_keep_nonorder_errors_local(monkeypatch):
+    from core.atomic_json import save
+    monkeypatch.setattr('core.workflow_settings.config',lambda:{'order_reports_only':True,'operator_reports_enabled':True})
+    save(notices.STATE,{'a':{'id':'a','status':'queued','category':'defect_error','created_at':100000000000,'updated_at':100000000000,'context':{'cause':'test'}}})
+    export,send=Mock(),Mock()
+    notices.poll(export,send,lambda:False)
+    assert notices._rows()['a']['status']=='local_only'
+    send.assert_not_called()

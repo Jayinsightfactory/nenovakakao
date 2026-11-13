@@ -22,20 +22,38 @@ def requires_approval(content):
     return classify_transfer(content)['decision'] == 'forward'
 
 
+def manual_handled_claim(content):
+    """A claim of direct warehouse instruction needs review, not retransmission."""
+    return bool(re.search(r'현장\s*(?:직접\s*)?(?:지시|전달|요청)\s*완료|추가취소방\s*전달\s*완료', content))
+
+
 def classify_transfer(content):
     """Explain routing without treating an uncertain request as a confirmed instruction."""
     text = normalize(content)
     action = bool(re.search('추가|취소', text) or ('출고' in text and '변경' in text))
     if not action:
         return {'decision': 'exclude', 'reason': '추가·취소·출고 변경 내용 없음'}
-    # A polite confirmation request does not cancel an explicit operational instruction.
-    explicit = bool(re.search(r'(?:추가|취소|변경)\s*(?:부탁|해주세요|해 주세요|해주세|해 주세|처리)', text))
-    uncertain = re.search(r'(?:추가|취소|변경).{0,30}(?:가능할|가능한가|가능 여부|할까요|될까요|하겠습니다|하지 마|하지마|말아|말고)', text)
-    if uncertain:
-        return {'decision': 'review', 'reason': '가능 여부·예정·금지 표현이 있어 확정 지시로 판단 불가'}
+    if manual_handled_claim(content):
+        return {'decision':'review','reason':'현장 지시·전달 완료 표시; 신규 전달 전 직접 처리 내역 대조 필요'}
+    # Tie uncertainty to the action itself. A separate packing prohibition such
+    # as 검역표시하지말아주세요 must not cancel an explicit quantity cancellation.
+    uncertain = re.search(
+        r'(?:추가|취소|변경)\s*(?:가능|예정|하겠습니다|할\s*예정|할까요|될까요|해도|하지\s*마|하지말|말아|말고|안\s*해|불가|시\s*가능)', text)
+    conditional = re.search(r'(?:확인되면|가능하면|있으면|취소시).{0,25}(?:추가|취소|변경|가능)', text)
+    if uncertain or conditional:
+        return {'decision': 'review', 'reason': '가능 여부·예정·조건·금지 표현; 확정 처리 지시 대조 필요'}
+    # Completed actions and transport incidents are not fresh warehouse orders.
+    if re.search(r'(?:추가|취소|변경)(?:\s*견적)?\s*(?:완료|처리\s*완료|됐|되었|했습니다|했어요)', text):
+        return {'decision': 'review', 'reason': '기처리 완료 보고; 신규 전달 여부 확인 필요'}
+    if re.search(r'(?:운항|항공편|비행편|항공|일정)[이가은는 ]*취소', text):
+        return {'decision': 'review', 'reason': '운송 일정 취소 안내; 업체 주문 취소와 구분 필요'}
+    explicit = bool(re.search(r'(?:추가|취소|변경)\s*(?:부탁|해주세요|해 주세요|해주세|해 주세|처리|필요|요청)', text))
     if not explicit and re.search(r'누가 취소|추가/취소 내용 적용|추가 확인|추가 설명|연락처 변경', text):
-        return {'decision': 'review', 'reason': '처리 지시보다 경위·재고·정보 확인에 해당'}
-    return {'decision': 'forward', 'reason': '추가·취소 또는 출고 변경 지시 후보'}
+        return {'decision': 'review', 'reason': '경위·재고·정보 확인; 처리 지시 불명확'}
+    if not explicit and re.search(r'추가\s*(?:입고|사용|물량\s*안내)|(?:입고|재고)\s*추가', text):
+        return {'decision': 'review', 'reason': '입고·재고 안내; 실제 추가 처리 요청 확인 필요'}
+    return {'decision': 'forward', 'reason': '추가·취소 또는 출고 변경 지시 후보; 승인 후 전달'}
+
 
 
 def read_json(path, default):
@@ -90,6 +108,17 @@ def duplicate(body, target_events):
     return False
 
 
+def exact_delivery_candidates(source, target_events):
+    """Text alone is insufficient: require same-day, non-earlier delivery."""
+    stamp = timestamp(source.get('timestamp', ''))
+    if stamp is None:
+        return []
+    return [e for e in target_events
+            if (target_stamp := timestamp(e.get('timestamp', ''))) is not None
+            and target_stamp.date() == stamp.date() and target_stamp >= stamp
+            and duplicate(source['content'], [e])]
+
+
 def possible_manual_delivery(source, target_events):
     """Evidence for review only, never proof authorizing a send or completion.
 
@@ -97,6 +126,9 @@ def possible_manual_delivery(source, target_events):
     Only the leading shipment week and non-quantity shipping prose may differ.
     """
     def signature(text):
+        # Strip only the known forwarding sender wrapper, not arbitrary prose.
+        if ' - ' in text.split('\n', 1)[0]:
+            text = text.split(' - ', 1)[1]
         lines = [line.strip() for line in text.splitlines() if line.strip()]
         if not lines:
             return ''
@@ -118,6 +150,32 @@ def possible_manual_delivery(source, target_events):
         target_stamp=timestamp(event.get('timestamp',''))
         if (target_stamp is not None and target_stamp.date()==stamp.date() and target_stamp>=stamp
                 and signature(event['content'])==key):
+            matches.append(event)
+    return matches
+
+
+def partial_manual_delivery(source, target_events):
+    """Review-only evidence when a multi-item original was split in the target."""
+    quantity=re.compile(r'\d+(?:\.\d+)?\s*(?:박스|단|대|송이|스팀)')
+    compact=lambda value:re.sub(r'\s+','',value)
+    lines=[line.strip() for line in source['content'].splitlines() if line.strip()]
+    items=[compact(line) for line in lines if quantity.search(line)]
+    if len(items)<2: return []
+    customers=[compact(line) for line in lines if not quantity.search(line)
+               and not re.match(r'^\d{1,2}(?:\s*[-/]\s*\d{1,2})?\s*차?',line)
+               and not re.search(r'추가|취소|변경|출고|배송|농장|부탁|감사|확인|^[-=>]',line)
+               and 2<=len(compact(line))<=30]
+    actions=set(re.findall(r'추가|취소|변경',source['content']))
+    stamp=timestamp(source.get('timestamp',''))
+    if stamp is None or not customers or not actions: return []
+    matches=[]
+    for event in target_events:
+        target_stamp=timestamp(event.get('timestamp',''))
+        if target_stamp is None or target_stamp.date()!=stamp.date() or target_stamp<stamp: continue
+        text=compact(event['content'])
+        if (any(customer in text for customer in customers)
+                and actions.intersection(re.findall(r'추가|취소|변경',event['content']))
+                and any(item in text for item in items)):
             matches.append(event)
     return matches
 

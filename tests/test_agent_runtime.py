@@ -65,3 +65,70 @@ def test_pause_stops_remaining_due_agents(tmp_path):
     runtime.add('order', 30, 5, lower)
     assert runtime.run_due() == [('approval', 'paused', None)]
     lower.assert_not_called()
+
+
+def test_queue_time_includes_previous_operation(tmp_path):
+    clock=Clock()
+    runtime=AgentCoordinator(tmp_path/'timings.jsonl',clock=clock,wall_clock=clock)
+    def slow(): clock.value+=12
+    runtime.add('approval',0,0,slow)
+    runtime.add('sales',10,0,lambda:None)
+    runtime.run_due()
+    rows=[json.loads(s) for s in (tmp_path/'timings.jsonl').read_text().splitlines()]
+    assert rows[-1]['queue_ms']==12000
+
+
+def test_failure_backoff_caps_and_success_restores_normal_interval(tmp_path):
+    clock = Clock()
+    operation = Mock(side_effect=[RuntimeError('offline')] * 7 + [None, RuntimeError('again')])
+    runtime = AgentCoordinator(tmp_path / 'agents.jsonl', clock=clock)
+    agent = runtime.add('sales', 0, 5, operation)
+    for delay in [30, 60, 120, 240, 300, 300, 300, 5, 30]:
+        runtime.run_due()
+        assert agent.next_at == clock.value + delay
+        clock.value = agent.next_at - 0.01
+        assert runtime.run_due() == []
+        clock.value = agent.next_at
+    assert agent.failures == 8
+    assert agent.consecutive_failures == 1
+
+
+def test_cooldown_does_not_delay_healthy_agent(tmp_path):
+    clock = Clock()
+    runtime = AgentCoordinator(tmp_path / 'agents.jsonl', clock=clock)
+    runtime.add('sales', 0, 5, Mock(side_effect=RuntimeError()))
+    healthy = runtime.add('order', 1, 5, Mock())
+    runtime.run_due()
+    clock.value += 5
+    assert [row[:2] for row in runtime.run_due()] == [('order', 'ok')]
+    assert healthy.runs == 2
+
+
+def test_error_report_failure_is_isolated_and_logged_without_content(tmp_path):
+    clock = Clock()
+    path = tmp_path / 'agents.jsonl'
+    runtime = AgentCoordinator(path, clock=clock,
+        on_error=Mock(side_effect=ValueError('secret')))
+    agent = runtime.add('sales', 0, 5, Mock(side_effect=RuntimeError('private')))
+    runtime.add('order', 1, 5, Mock())
+    assert [row[:2] for row in runtime.run_due()] == [('sales', 'error'), ('order', 'ok')]
+    assert agent.next_at == 130
+    rows = [json.loads(line) for line in path.read_text().splitlines()]
+    assert rows[1]['callback_error_type'] == 'ValueError'
+    assert 'secret' not in path.read_text() and 'private' not in path.read_text()
+
+
+def test_pause_preserves_failure_streak_and_long_interval_is_not_shortened(tmp_path):
+    from core.moyi_control import OperationPaused
+    clock = Clock()
+    runtime = AgentCoordinator(tmp_path / 'agents.jsonl', clock=clock)
+    agent = runtime.add('sales', 0, 600,
+        Mock(side_effect=[RuntimeError(), OperationPaused(), None]))
+    runtime.run_due()
+    assert agent.next_at == 700
+    clock.value = 700
+    runtime.run_due()
+    assert agent.consecutive_failures == 1 and agent.failures == 1
+    clock.value = 1300
+    runtime.run_due()
+    assert agent.consecutive_failures == 0

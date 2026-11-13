@@ -40,6 +40,8 @@ def extract(event):
     elif len(origins) > 1:
         result['issues'].append('여러 원산지; 항목별 확인 필요')
     sequences = list(dict.fromkeys(f'{m[1]}-{m[2]}' for m in SEQUENCE.finditer(text)))
+    if not sequences:
+        sequences = list(dict.fromkeys(m[1] for m in re.finditer(r'(?<!\d)(\d{1,2})\s*차(?!\s*[-/~∼～])', text)))
     if len(sequences) == 1:
         result['sequence'] = sequences[0]
     else:
@@ -51,7 +53,18 @@ def extract(event):
         if re.match(r'^(?:[-=]*>|※|\*)', line):
             result['notes'].append(line)
             continue
+        # Farm metadata is not a defect item or a customer requirement.
+        if re.match(r'^농장(?:명)?(?:\s|:|：|확인|미상|불명)', line):
+            result['notes'].append(line)
+            continue
         amounts = list(QUANTITY.finditer(line))
+        # A packaging explanation repeating an already extracted quantity is
+        # evidence about that item, not another product named '박스안에'.
+        if re.match(r'^박스\s*안에\s*', line) and len(amounts) == 1 and any(
+                i['quantity_raw'] == amounts[0]['value'] and
+                i['unit_raw'] == amounts[0]['unit'] for i in result['items']):
+            result['notes'].append(line)
+            continue
         if amounts:
             if len(amounts) > 1:
                 result['issues'].append('한 줄 복수 수량/포장 환산 병기; 확인 필요')

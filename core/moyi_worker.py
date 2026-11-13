@@ -20,6 +20,16 @@ ROOM_FAILURE_LIMIT = 3
 ROOM_CIRCUIT_SEC = 1800
 
 
+def flush_raw_archive(stage, batch_size=100):
+    """A network timeout leaves durable source text queued for the next cycle."""
+    from core.mindmap_sink import flush_pending
+    try:
+        return _timed('archive:' + stage, flush_pending, batch_size=batch_size, timeout=10)
+    except requests.RequestException as exc:
+        _event(None, 'archive_deferred', stage + ':' + type(exc).__name__)
+        return 0
+
+
 class RoomCircuitBreaker:
     """Quarantine only a repeatedly failing room; other rooms keep running."""
     def __init__(self):
@@ -355,6 +365,12 @@ def run() -> int:
         if is_paused(): return None
         result = _timed('agent:approval', keyword_approval.poll, export_exact_room,
                         keyword_forward.send_exact, is_paused, mark_rescan)
+        from core.keyword_missing_schedule import poll as poll_missing_schedule
+        _timed('approval:scheduled_missing_check', poll_missing_schedule, export_exact_room,
+               keyword_forward.send_exact, is_paused)
+        from core.keyword_missing_notices import poll as poll_missing_notices
+        _timed('approval:missing_notices', poll_missing_notices, export_exact_room,
+               keyword_forward.send_exact, is_paused)
         from core.error_notifications import poll as poll_notices
         _timed('approval:receipts', poll_notices, export_exact_room,
                keyword_forward.send_exact, is_paused, receipts_only=True)
@@ -362,10 +378,18 @@ def run() -> int:
         resolve_all('approval_check_failed')
         return result
 
+    def addcancel_archive_agent():
+        if is_paused(): return None
+        title = keyword_forward.config().get('target', '현장 추가취소방')
+        result = _timed('agent:addcancel_archive', poll_inbound_once, server, secret,
+                        only_title=title, defer_archive=True, max_events=5)
+        flush_raw_archive('addcancel')
+        return result
+
     def order_agent():
         if is_paused() or not workflow_config()['order_processing_enabled']: return None
         result = _timed('agent:import_collection', poll_inbound_once, server, secret,
-                        only_title='수입방', defer_archive=True, max_events=5)
+                        only_title='수입방', defer_archive=True, max_events=5, defer_files=True)
         from core.order_review import start_sync
         from core.order_analysis_queue import start as start_analysis
         start_analysis()
@@ -377,6 +401,8 @@ def run() -> int:
                       order_services.register_bulk, is_paused)
 
     def defect_agent(phase='intake'):
+        from core.browser_relogin import maybe_recover
+        maybe_recover()
         from core.defect_runtime import poll as poll_defects
         from core.moyi_inbound import parse_export
         def history(title):
@@ -386,7 +412,7 @@ def run() -> int:
     error_states = {'sales': 'inbound_room_failed', 'approval': 'approval_check_failed',
                     'defect': 'defect_check_failed',
                     'defect_responses': 'defect_check_failed',
-                    'order': 'import_order_check_failed'}
+                    'order': 'import_order_check_failed', 'daily_report': 'daily_report_failed'}
     def agent_error(agent, exc):
         if isinstance(exc, pyautogui.FailSafeException):
             set_paused(True)
@@ -396,8 +422,18 @@ def run() -> int:
     coordinator = AgentCoordinator(AGENT_LOG, clock=time.monotonic,
                                    wall_clock=time.time, on_error=agent_error)
     register_agents(coordinator, sales_agent, approval_agent, order_agent)
-    coordinator.add('defect_responses', 5, 5, lambda: defect_agent('responses'))
+    error_states['addcancel_archive'] = 'inbound_room_failed'
+    coordinator.add('addcancel_archive', 11, 300, addcancel_archive_agent)
+    coordinator.add('defect_responses', 15, 5, lambda: defect_agent('responses'))
     coordinator.add('defect', 20, 15, defect_agent)
+
+    def daily_report_agent():
+        from core.daily_staff_reports import poll
+        from core.moyi_inbound import parse_export
+        return poll(lambda room: parse_export(export_exact_room(room), 'daily-report:' + room),
+                    lambda room, text: keyword_forward.send_exact(room, text, require_forward_enabled=False),
+                    is_paused)
+    coordinator.add('daily_report', 40, 30, daily_report_agent)
 
     def priority_poll():
         nonlocal next_primary_at
@@ -409,7 +445,7 @@ def run() -> int:
             start_archive()
     print("[MOYI] Kakao connector worker started (fail-closed)")
     report('worker_started')
-    print("[MOYI] agents: approvals, defect replies, sales, defect intake; optional import; 30-minute background")
+    print("[MOYI] agents: approvals, sales, defect replies, defect intake; optional import; 30-minute background")
     while True:
         if is_paused():
             if not pause_announced:
@@ -470,7 +506,9 @@ def run() -> int:
                 rooms = [
                     room for room in rooms_response.json().get("items", [])
                     if str(room.get("exact_title") or "").strip()
-                    and str(room.get("exact_title") or "").strip() not in ('영업방', '수입방', '수입불량방')
+                    and str(room.get("exact_title") or "").strip() not in (
+                        '영업방', '수입방', '수입불량방',
+                        keyword_forward.config().get('target', '현장 추가취소방'))
                 ]
                 if rooms and not is_paused():
                     for room in _inbound_schedule(rooms):

@@ -79,11 +79,13 @@ def main():
     required = {'approval', 'sales', 'defect_responses', 'defect'}
     if workflow_config()['order_processing_enabled']:
         required.add('order')
-    if not error and not required.issubset(agents):
-        error = 'startup_incomplete'
+    # Observation timeout is not a worker failure. Do not interrupt a valid
+    # Kakao send/export just because the monitoring window has ended.
+    startup_complete = required.issubset(agents)
     if error:
         emergency_stop('supervised_start:' + error)
     result = {'running': bool(list(worker_processes())), 'paused': is_paused(),
+              'startup_complete': startup_complete,
               'error_state': error, 'observed_stage_count': stages,
               'observed_agents': sorted(agents), 'observed_seconds': duration,
               'at': time.time()}

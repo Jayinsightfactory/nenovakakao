@@ -6,6 +6,14 @@ def parse(text, sender='박성수'):
     return extract({'event_id':'test', 'sender_name':sender, 'timestamp':'2026년 9월 14일 오후 4:35', 'content':text})
 
 
+def test_week_without_subsequence_is_valid_but_range_is_not():
+    row = parse('38차 반커부쉬 25단\n소재2호')
+    assert row['sequence'] == '38'
+    assert '차수 없음' not in row['issues']
+    assert row['items'][0]['product_raw'] == '반커부쉬'
+    assert parse('38차~39차 반커부쉬 25단\n소재2호')['issues']
+
+
 def test_header_quantity_and_customer_on_next_line():
     r = parse('37-1 카네이션 SP믹스  15단\n\n검증꽃집')
     assert r['status'] == 'matching_candidate'

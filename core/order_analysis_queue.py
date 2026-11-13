@@ -24,7 +24,14 @@ def drain(capture, paused):
         if paused():
             break
         event = json.loads(path.read_text(encoding='utf-8'))
-        capture(event)  # capture persists by event_id before acknowledgement
+        try:
+            capture(event)  # capture persists by event_id before acknowledgement
+        except Exception as exc:
+            # Retain the original for retry without blocking unrelated orders.
+            print(json.dumps({'at': time.time(), 'event_id': event.get('event_id'),
+                              'analysis_error': type(exc).__name__,
+                              'detail': str(exc)[:300]}, ensure_ascii=False), flush=True)
+            continue
         path.unlink()
 
 
@@ -32,6 +39,10 @@ def start():
     global _process
     if _process is not None and _process.poll() is None:
         return
+    from core import import_order
+    for row in import_order._read(import_order.STATE, {}).values():
+        if import_order.analysis_retry_due(row) and row.get('event'):
+            enqueue(row['event'])
     if not any(QUEUE.glob('*.json')):
         return
     with (ROOT / 'data' / 'order_analysis.log').open('a', encoding='utf-8') as log:
@@ -43,6 +54,8 @@ def start():
 
 def main():
     import msvcrt
+    from dotenv import load_dotenv
+    load_dotenv(ROOT / '.env')
     from core import import_order, order_llm, order_services, order_review
     from core.moyi_control import is_paused
     from core.workflow_settings import config
@@ -53,11 +66,11 @@ def main():
             msvcrt.locking(lock.fileno(), msvcrt.LK_NBLCK, 1)
         except OSError:
             return
-        if not config()['order_review_only'] or not config()['order_processing_enabled']:
+        if not config()['order_processing_enabled']:
             return
         started = time.time()
         drain(lambda event: import_order.capture(event, order_llm.parse, order_services.master),
-              lambda: is_paused() or not config()['order_review_only'] or not config()['order_processing_enabled']
+              lambda: is_paused() or not config()['order_processing_enabled']
                       or not import_order.config().get('enabled'))
         print(json.dumps({'at': time.time(), 'duration_sec': time.time()-started,
                           'pending': len(list(QUEUE.glob('*.json')))}), flush=True)

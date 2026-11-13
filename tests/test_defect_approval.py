@@ -21,6 +21,23 @@ def waiting(tmp_path):
     return path, row
 
 
+def test_capture_preserves_identical_same_minute_claims_as_separate_requests(tmp_path):
+    from core.moyi_inbound import parse_export
+    text = """room 님과 카카오톡 대화
+--------------- 2026년 10월 27일 화요일 ---------------
+[정재훈] [오전 10:04] 43-1 카네이션 SP믹스 15단
+검증꽃집
+[정재훈] [오전 10:04] 43-1 카네이션 SP믹스 15단
+검증꽃집
+"""
+    events = parse_export(text, 'defect-room')
+    captured = [d.capture(event, '2026-10-01T00:00:00+09:00', '박성수', tmp_path)
+                for event in events]
+    assert len(events) == 2
+    assert captured[0] != captured[1]
+    assert len(list(tmp_path.glob('*.json'))) == 2
+
+
 def reply(row, text, eid='answer-1', sender='강현우'):
     return {'event_id': eid, 'sender_name': sender, 'content': d.label(row) + ' ' + text}
 
@@ -75,6 +92,9 @@ def test_successful_write_verified_once(tmp_path):
     row = d.apply_reply(row, reply(row, '맞아'), {'answer-1'})
     save(path, row)
     adapter = Mock()
+    adapter.validate.side_effect = lambda checked: checked.update(
+        registration_scope={'year': 2026, 'week': 38},
+        period_resolution={'examined': [{'year': 2026, 'week': 38}]})
     adapter.lookup.side_effect = [None, {'registration_id': 1}]
     adapter.matches.return_value = True
     d.submit(path, adapter, lambda: False)
@@ -87,6 +107,9 @@ def test_unknown_write_never_replayed(tmp_path):
     path, row = waiting(tmp_path)
     save(path, d.apply_reply(row, reply(row, '맞아'), {'answer-1'}))
     adapter = Mock()
+    adapter.validate.side_effect = lambda checked: checked.update(
+        registration_scope={'year': 2026, 'week': 38},
+        period_resolution={'examined': [{'year': 2026, 'week': 38}]})
     adapter.lookup.return_value = None
     adapter.insert.side_effect = TimeoutError()
     with pytest.raises(TimeoutError): d.submit(path, adapter, lambda: False)
@@ -180,3 +203,28 @@ def test_explicit_length_overrides_default(tmp_path):
     row=d.rematch(d.load(p),master)
     assert row['items'][0]['product']['nenova_key']==1471
     assert row['items'][0]['default_size'] is None
+
+def test_information_question_shows_comparison_and_verified_history():
+    row = {'reply_number': 167, 'information_only': True,
+           'extracted': {'sequence': '40-1', 'customer': '알파', 'items': []},
+           'customer': {'name': '알파플라워'},
+           'items': [{'product_raw': '염색연그린', 'quantity_raw': '15', 'unit_raw': '대',
+                      'product': None, 'candidates': [
+                          {'nenova_key': 3209, 'name': '염색연그린 GL', 'origin': '콜롬비아'},
+                          {'nenova_key': 3208, 'name': '염색연그린 AT', 'origin': '콜롬비아'}],
+                      'candidate_history': {'3209': ['2026년 40차']}}]}
+    text = d._question_details(row)
+    assert '[3209] 염색연그린 GL' in text
+    assert '[3208] 염색연그린 AT' in text
+    assert '해당 업체 출고이력: 2026년 40차' in text
+    assert '거래이력 일치 미확인' in text
+    assert '167 품목 1=3209' in text
+
+
+def test_information_question_does_not_invent_candidate():
+    row = {'reply_number': 168, 'information_only': True,
+           'extracted': {'sequence': '40-1', 'customer': '라움', 'items': []},
+           'customer': {'name': '라움'},
+           'items': [{'product_raw': '연보라', 'quantity_raw': '2', 'unit_raw': '대',
+                      'product': None, 'candidates': []}]}
+    assert '전산 후보를 찾지 못했습니다' in d._question_details(row)

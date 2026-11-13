@@ -50,7 +50,7 @@ def test_export_room_title_uses_exact_kakao_header(tmp_path: Path):
     assert sink._export_room_title(export) == "수입방"
 
 
-def test_sales_room_archive_keeps_only_add_cancel_text(monkeypatch):
+def test_sales_room_archive_preserves_replies_and_stock_without_forwarding(monkeypatch):
     from core import moyi_inbound as inbound
     monkeypatch.setattr('core.keyword_forward.config', lambda: {'source': '영업방'})
     events = [
@@ -59,5 +59,5 @@ def test_sales_room_archive_keeps_only_add_cancel_text(monkeypatch):
         {'event_id': 'c', 'content': '플라야블랑카 10단 취소 가능할까요'},
     ]
     kept = [event['event_id'] for event in inbound.order_feed_events('영업방', events)]
-    assert kept == ['a', 'c']
+    assert kept == ['a', 'b', 'c']
     assert inbound.order_feed_events('수입방', events) == events

@@ -12,6 +12,12 @@ def norm(value):
 
 
 PRODUCT_NAMES = {
+    '레게핑크': 'CARNATION Lege Pink',
+    '스프레이장미소피아베베a급': 'SPRAY ROSE CHINA / 소피아 베베 (Spray-Rose Sofia babe)',
+    '화이트오하라': 'ROSE / White Ohara 50cm',
+    '레드펜서': 'ROSE / Red Panther 50cm',
+    '아틱': 'MiniCarnation Artic/Ibis(화이트)',
+    '블랙잭1kg': 'Eucalyptus CHINA / 블랙잭 (베이비 블루) (대) 1Kg',
     '모멘텀': 'ROSE / Momentum 50cm',
     '롤리팝화이트블루': 'ROSE / Lollipop White Blue 50cm',
     '하츠': 'ROSE / Hearts 50cm', '아가판글리스터': 'Agapanthus / Gletsjer',
@@ -61,6 +67,8 @@ ORIGIN_NAMES = {'중국': {
     '만달라': 'ROSE CHINA / 만달라(Mandala) MQ',
 }}
 CUSTOMER_NAMES = {
+    '영남꽃소재': '(주)영남꽃소재', '미정화훼': '미정화훼유통',
+    '시흥': '플라워 #(시흥장미)',
     '그린': '그린화원', '미우': '아이엠（미우）', '대구희경': '희경(Hee Kyoung)',
     '꽃동산': '동산(꽃동산)', '라움': '주식회사 트라움에스앤씨 (라움)',
     '일신': '일신원예', '서부꽃집': '부산 서부꽃집', '영남소재': '(주)영남꽃소재',
@@ -77,13 +85,16 @@ CUSTOMER_NAMES = {
     '초이문': '초이문(센스앤센서빌러티)', '레바논': '레바논 꽃방',
     '대지': '대지원예2', '자연': '자연플라워 (중매 1493)',
     '플로르아름': '에프에스오2025(fso2025)',
+    '꽃사레': '주식회사 꽃사레', '남촌': '남촌양재',
+    '태림원예a': '태림A',
 }
 
 CATEGORY_NAMES = {
     '수국': {'화이트':'Hydrangea White (화이트)', '블루':'Hydrangea Blue (블루）',
            '라벤더':'Hydrangea Lavender (라벤더)', '라벤다':'Hydrangea Lavender (라벤더)',
            '피치':'Hydrangea Peach (Florentina) 피치', '버건디':'Hydrangea Burgundy (버건디)',
-           '진그린':'Hydrangea G/ Esmeral (진그린)', '진핑크':'Hydrangea Dark Pink (진핑크)'},
+           '진그린':'Hydrangea G/ Esmeral (진그린)', '진핑크':'Hydrangea Dark Pink (진핑크)',
+           '연핑크':'Hydrangea light pink (연핑크)'},
 }
 
 
