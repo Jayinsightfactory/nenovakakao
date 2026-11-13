@@ -20,14 +20,62 @@ class OrderRejected(RuntimeError):
     """
 
 
+TITLES = ('차장', '대리', '과장', '부장', '팀장', '실장', '이사', '주임', '사원', '님')
+
+
+def manager_name(staff):
+    """카톡 보낸 사람 이름을 전산 사용자 이름으로 다듬는다. 예: '김도준(j)' → '김도준', '김원영차장' → '김원영'.
+
+    전산에 없는 이름(외부 인원 등)은 data/import_order_config.json 의 manager_aliases 로 지정한다:
+    {"manager_aliases": {"카톡 이름": "전산 사용자 이름 또는 ID"}}. 추측으로 다른 사람에게 붙이지 않는다.
+    """
+    from core import import_order
+    raw = str(staff or '').strip()
+    alias = (import_order.config().get('manager_aliases') or {}).get(raw)
+    if alias:
+        return str(alias).strip()
+    name = re.sub(r'\s*[(\[（][^)\]）]*[)\]）]\s*', ' ', raw).strip()
+    changed = True
+    while changed:
+        changed = False
+        for title in TITLES:
+            if name.endswith(title) and len(name) - len(title) >= 2:
+                name = name[:-len(title)].strip()
+                changed = True
+    return name
+
+
+def source_date(row):
+    """주문 원문이 카톡에 올라온 날. 수집·분석이 늦어져도 원문 날짜를 기준으로 삼는다."""
+    event = row.get('event') or {}
+    source = str(event.get('source_timestamp') or '')
+    if re.match(r'^20\d{2}-\d{2}-\d{2}', source):
+        return datetime.fromisoformat(source[:10])
+    from core.keyword_forward import timestamp
+    stamp = timestamp(str(event.get('timestamp') or ''))
+    if stamp is not None:
+        return stamp.replace(tzinfo=None)
+    return datetime.fromtimestamp(row['created_at'])
+
+
+def order_year(day, week):
+    """연도가 적히지 않은 차수의 연도. 원문 날짜와 가장 가까운 해의 차수로 본다.
+
+    12월 말에 올라온 '1-1차'는 다음 해 1차 물량이고, 1월 초에 올라온 '52-1차'는 지난해 차수다.
+    """
+    base_year, current_week, _ = day.isocalendar()
+    if current_week - week > 26:
+        return base_year + 1
+    if week - current_week > 26:
+        return base_year - 1
+    return base_year
+
+
 def scope(row):
     match = re.fullmatch(r'\s*(?:(20\d{2})[년 /-]+)?(\d{1,2})\s*(?:차)?[-.]([123])(?:차)?\s*', str(row.get('week', '')))
     if not match or not 1 <= int(match[2]) <= 53:
         raise ValueError('주문 차수를 41-1처럼 확인해주세요. 불량 차수 이월 규칙은 주문에 적용하지 않습니다.')
-    source = str(row.get('event', {}).get('source_timestamp', ''))
-    year = match[1] or (source[:4] if re.match(r'^20\d{2}', source) else None)
-    if not year:
-        year = str(datetime.fromtimestamp(row['created_at']).year)
+    year = match[1] or str(order_year(source_date(row), int(match[2])))
     return {'year': year, 'week': f'{int(match[2]):02d}-{int(match[3]):02d}'}
 
 
@@ -145,7 +193,7 @@ def register(row, request=None):
                 payload_items.append({'prodKey': pk, 'prodName': item['product'], 'qty': item['quantity'],
                     'unit': '송이' if item['unit'] == '스팀' else item['unit'],
                     'expectedCurrentQty': float(product.get('CurrentQty', 0))})
-            payload = {'source': 'sales-paste', 'orderMode': 'ADD', 'manager': row['staff'].replace('차장', '').replace('대리', '').strip(),
+            payload = {'source': 'sales-paste', 'orderMode': 'ADD', 'manager': manager_name(row['staff']),
                        'custKey': int(key), 'custName': items[0]['customer'], **scope(row), 'items': payload_items}
             group = {'state': 'write_unknown', 'payload': payload, 'started_at': time.time()}
             journal['groups'][key] = group
