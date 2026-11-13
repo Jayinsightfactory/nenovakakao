@@ -35,3 +35,9 @@ def isolated_error_notice_queue(tmp_path, monkeypatch):
     # Daily send counters are real operational data; tests count in a temp file.
     from core import moyi_outbound
     monkeypatch.setattr(moyi_outbound, '_LIMIT_FILE', str(tmp_path / 'send_limits.json'))
+    # Auto-update must never fetch or restart from tests.
+    from core import self_update
+    monkeypatch.setattr(self_update, 'CONFIG', tmp_path / 'update_config.json')
+    monkeypatch.setattr(self_update, 'LOG', tmp_path / 'update_events.jsonl')
+    monkeypatch.setattr(self_update, '_next_at', 0.0)
+    monkeypatch.setattr(self_update, '_rejected', set())

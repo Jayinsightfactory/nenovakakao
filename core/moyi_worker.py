@@ -314,6 +314,8 @@ def process_item(server: str, secret: str, item: dict) -> None:
         close_room(hwnd)
 
 def run() -> int:
+    from core import self_update
+    self_update.wait_for_parent()
     server, secret = _config()
     pending_poller = PendingPoller()
     room_breaker = RoomCircuitBreaker()
@@ -447,6 +449,8 @@ def run() -> int:
     report('worker_started')
     print("[MOYI] agents: approvals, sales, defect replies, defect intake; optional import; 30-minute background")
     while True:
+        # 반복문 맨 위는 카톡·전산 작업이 진행 중이 아닌 순간이다. 정지 중에도 코드만 갱신한다.
+        self_update.poll()
         if is_paused():
             if not pause_announced:
                 print("[MOYI] connector paused from operations console")
