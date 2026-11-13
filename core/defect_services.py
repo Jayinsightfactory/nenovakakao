@@ -209,6 +209,7 @@ class DefectAdapter:
     def insert(self, row):
         # Recheck immediately before saving; write_unknown here is only our
         # write-ahead marker, not permission to ignore a newly closed period.
+        self.post_dispatched = False
         check_row = {**row, 'status': 'approved'}
         self.resolve_registration_period(check_row)
         if self.scope(check_row) != self.scope(row):
@@ -217,6 +218,7 @@ class DefectAdapter:
         self.ensure_period_open(check_row, self.registration_listing(check_row, listing))
         if not self.owner:
             raise ValueError('입력 담당자 검증 필요')
+        self.post_dispatched = True  # 이 줄 뒤의 실패만 '결과 불명'이다
         result = self.request('POST', json={**self.payload(row), **self.owner})
         if result.get('saved') != len(row['items']):
             raise ValueError('저장 항목 수 불일치; 자동 재시도 금지')

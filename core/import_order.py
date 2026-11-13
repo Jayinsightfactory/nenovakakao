@@ -768,6 +768,12 @@ def poll(export, send, master, registrar, paused):
                            pending_response=response, status_before_reply='completed')
                 rows[event_id] = row; _save(STATE, rows)
             except Exception as exc:
+                from core.order_registration import OrderRejected
+                if isinstance(exc, OrderRejected):
+                    row.update(status='hold', error='전산 거절(저장된 내용 없음): ' + str(exc)[:260])
+                    append_log(row, 'rejected', row['error'])
+                    rows[event_id] = row; _save(STATE, rows)
+                    continue
                 row.update(status='registration_unknown', error=str(exc)[:300], next_reconcile_at=time.time()+300)
                 rows[event_id] = row; _save(STATE, rows)
                 continue
@@ -845,6 +851,7 @@ def poll(export, send, master, registrar, paused):
                 if len(matches) == 1:
                     row.update(status='gate_waiting', gate_request_event_id=matches[0]['event_id'])
                     append_log(row, 'gate_recovered', '검증 질문 전송 확인 복구')
+                    rows[event_id] = row; _save(STATE, rows)
                 return
             elif row['status'] == 'gate_waiting':
                 replies = cached_history(row['gate_room'])
@@ -902,9 +909,20 @@ def poll(export, send, master, registrar, paused):
                         else:
                             if paused(): return
                             row['status'] = 'registering'; rows[event_id] = row; _save(STATE, rows)
-                            result = registrar(row)  # registrar must verify the persisted order
-                            response = final_message(row, result)
-                            row.update(status='completed', registration_result=result, completed_at=time.time())
+                            from core.order_registration import OrderRejected
+                            try:
+                                result = registrar(row)  # registrar must verify the persisted order
+                            except OrderRejected as exc:
+                                row.update(status='waiting', error=str(exc)[:300])
+                                append_log(row, 'rejected', row['error'])
+                                response = ('전산에 등록되지 않았습니다(저장된 내용 없음): ' + str(exc)[:200]
+                                            + '\n내용을 고치거나 잠시 후 다시 확인해주세요.\n\n' + review_message(row))
+                            else:
+                                response = final_message(row, result)
+                                row.update(status='completed', registration_result=result, completed_at=time.time(),
+                                           pending_response=response, status_before_reply='completed')
+                                # 등록 사실을 알림 전송보다 먼저 남긴다. 전송이 실패해도 '보류'로 덮이지 않는다.
+                                rows[event_id] = row; _save(STATE, rows)
                 if response:
                     # A reply is itself the new boundary for the next command.
                     row['status_before_reply'] = row['status']
@@ -930,6 +948,7 @@ def poll(export, send, master, registrar, paused):
             # No automatic retry after a possible external write.
             if row.get('status') == 'registering': row['status'] = 'registration_unknown'
             elif row.get('status') == 'request_unknown': pass
+            elif row.get('status') == 'completed' and row.get('pending_response'): pass  # 등록 완료, 알림만 다음 주기에 재확인
             else: row['status'] = 'hold'
             row['error'] = str(exc)[:300]
             append_log(row, 'error', row['error'])
