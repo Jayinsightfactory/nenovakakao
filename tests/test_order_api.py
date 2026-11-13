@@ -43,3 +43,18 @@ def test_redirect_is_not_followed():
     api.auth.session.request.return_value=Mock(status_code=302)
     with pytest.raises(RuntimeError,match='302'):api.read('/api/master',{'entity':'products'})
     assert api.auth.session.request.call_args.kwargs['allow_redirects'] is False
+
+
+def test_created_response_is_a_successful_order_write():
+    """네노바웹은 주문 저장 성공을 201로 답한다. 실패로 오인하면 저장된 주문의 영수증을 잃는다."""
+    api=OrderAPI('test');api.auth=Mock()
+    receipt={'success':True,'verified':True,'orderMasterKey':30,'verifiedCount':1,'results':[]}
+    api.auth.session.request.return_value=Mock(status_code=201,json=lambda:receipt)
+    assert api._call('POST','/api/orders',json={})==receipt
+    assert api.auth.session.request.call_count==1
+
+
+def test_created_status_is_not_accepted_for_reads():
+    api=OrderAPI('test');api.auth=Mock()
+    api.auth.session.request.return_value=Mock(status_code=201,json=lambda:{'success':True})
+    with pytest.raises(RuntimeError,match='201'):api.read('/api/master',{'entity':'products'})

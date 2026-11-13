@@ -129,3 +129,26 @@ def test_current_scope_retains_new_events_after_large_old_backlog(monkeypatch):
     monkeypatch.setattr(orders, 'config', lambda: {'start_at': '2026-10-02T11:20:00+09:00'})
     events = [{'timestamp': '2026년 9월 14일 오전 10:10'}] * 1454 + [{'timestamp': '2026년 10월 2일 오후 1:00'}]
     assert len([e for e in events if orders.in_current_scope(e)]) == 1
+
+
+@pytest.mark.parametrize('ledger_unit, receipt_unit', [('Box', '박스'), ('스팀', '송이'), ('대', '송이'), ('Bunch', '단')])
+def test_receipt_unit_matches_ledger_spelling_of_same_unit(row, ledger_unit, receipt_unit):
+    """조회 OutUnit 은 원장 원문, 저장 응답 단위는 서버 통일 표기 — 같은 단위면 정상 저장으로 본다."""
+    request, calls = transport()
+    def spelled(rid, method, **kw):
+        data = request(rid, method, **kw)
+        if method == 'POST': data['results'][0]['unit'] = receipt_unit
+        else: data['products'][0]['OutUnit'] = ledger_unit
+        return data
+    assert reg.register(row, spelled)['verified']
+    assert [m for m, _ in calls].count('POST') == 1
+
+
+def test_unknown_unit_spelling_is_not_treated_as_a_box(row):
+    request, calls = transport()
+    def odd(rid, method, **kw):
+        data = request(rid, method, **kw)
+        if method == 'POST': data['results'][0]['unit'] = '박스'
+        else: data['products'][0]['OutUnit'] = '팩'
+        return data
+    with pytest.raises(ValueError, match='단위 불일치'): reg.register(row, odd)

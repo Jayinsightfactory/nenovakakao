@@ -56,6 +56,21 @@ def validate_job(job):
         raise ValueError('order_write_ahead_required')
 
 
+def normalize_unit(unit):
+    """네노바웹 lib/orderUtils.normalizeOrderUnit 과 같은 표기 통일(박스·단·송이).
+
+    저장 응답의 단위는 서버가 통일한 값이고 조회의 OutUnit 은 원장 원문(Box, 스팀, 대 등)이라
+    글자 그대로 비교하면 정상 저장도 불일치로 보인다. 모르는 표기는 통일하지 않고 원문 그대로 둔다.
+    """
+    raw = str(unit or '').strip()
+    lower = raw.lower()
+    if raw in ('박스', '단', '송이'): return raw
+    if raw in ('개', '대') or re.fullmatch(r'st|ea', lower) or re.search(r'stem|steam|송이|개|대|스팀|스템', lower): return '송이'
+    if re.search(r'bunch|bun|단', lower): return '단'
+    if re.search(r'box|박스|박', lower): return '박스'
+    return raw
+
+
 def load_products(request, row, customer_key):
     params = {**scope(row), 'custKey': int(customer_key)}
     result = request(row['id'], 'GET', params=params)
@@ -80,7 +95,7 @@ def verify_receipt(group, products):
         product = by_key.get(int(result['prodKey']))
         if result.get('status') not in {'OK', 'ADDED', 'UPDATED'} or not product:
             raise ValueError('주문 저장 품목 확인 실패')
-        if product.get('OutUnit') != result.get('unit') or not math.isclose(float(product['CurrentQty']), float(result['finalQty']), abs_tol=0.0001):
+        if normalize_unit(product.get('OutUnit')) != normalize_unit(result.get('unit')) or not math.isclose(float(product['CurrentQty']), float(result['finalQty']), abs_tol=0.0001):
             raise ValueError('저장 후 주문 수량·단위 불일치; 재조회 필요')
 
 
