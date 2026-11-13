@@ -141,12 +141,22 @@ def master():
     return value
 
 
+def customer_managers():
+    """업체키 → 전산에 지정된 담당자. 기준표를 못 읽으면 빈 표(담당자 없이 등록)로 진행한다."""
+    try:
+        rows = master().get('customers', {}).get('data', [])
+    except Exception:
+        return {}
+    return {str(r.get('nenova_key')): str(r.get('staff') or '').strip()
+            for r in rows if r.get('nenova_key') is not None}
+
+
 def register_bulk(draft):
     from core import import_order
     if not import_order.registration_enabled() or not import_order.config().get('write_enabled'):
         raise RuntimeError('네노바 주문 쓰기 비활성')
     from core.order_registration import register
-    return register(draft)
+    return register(draft, managers=customer_managers())
 
 
 def json_dumps(value):
